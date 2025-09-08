@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+.next/
+.turbo/
+
+# Env files
+.env
+**/.env
+.env.local
+**/.env.local
+
+# macOS
+.DS_Store
+._*
+
+
