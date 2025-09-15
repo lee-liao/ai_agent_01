@@ -3,5 +3,6 @@ requests==2.31.0
 urllib3<2
 openai>=1.35.0,<2
 python-dotenv>=1.0.1,<2
+yfinance>=0.2.40,<0.3
 
 

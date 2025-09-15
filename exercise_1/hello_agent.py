@@ -5,9 +5,15 @@ import argparse
 import shlex
 from typing import Optional, List, Dict, Tuple
 from dotenv import load_dotenv
+from pathlib import Path
 
 
-load_dotenv()
+load_dotenv()  # load from current working directory if present
+# Also attempt to load .env next to this file so it works regardless of CWD
+try:
+    load_dotenv(dotenv_path=(Path(__file__).parent / ".env"), override=False)
+except Exception:
+    pass
 
 
 def require_env(var_name: str) -> str:
@@ -17,28 +23,67 @@ def require_env(var_name: str) -> str:
     return value
 
 
-def fetch_stock_price(symbol: str) -> Optional[Dict]:
+def fetch_stock_price_from_alpha(symbol: str) -> Optional[Dict]:
     """Fetch latest stock price and change percent from Alpha Vantage."""
-    api_key = require_env("ALPHA_VANTAGE_KEY")
-    url = "https://www.alphavantage.co/query"
-    params = {
-        "function": "GLOBAL_QUOTE",
-        "symbol": symbol,
-        "apikey": api_key,
-    }
-    response = requests.get(url, params=params, timeout=30)
-    response.raise_for_status()
-    data = response.json()
-    quote = data.get("Global Quote") or data.get("GlobalQuote")
-    if not quote:
+    try:
+        api_key = require_env("ALPHA_VANTAGE_KEY")
+    except RuntimeError:
         return None
     try:
+        url = "https://www.alphavantage.co/query"
+        params = {
+            "function": "GLOBAL_QUOTE",
+            "symbol": symbol,
+            "apikey": api_key,
+        }
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        quote = data.get("Global Quote") or data.get("GlobalQuote")
+        if not quote:
+            return None
         price = float(quote["05. price"]) if "05. price" in quote else float(quote["price"])  # type: ignore[index]
         change_percent_str = quote.get("10. change percent") or quote.get("change_percent") or "0%"
         change_percent = float(str(change_percent_str).replace("%", ""))
         return {"symbol": symbol, "price": price, "change_percent": change_percent}
     except Exception:
         return None
+
+
+def fetch_stock_price_from_yahoo(symbol: str) -> Optional[Dict]:
+    """Fetch latest stock price and change percent using yfinance (robust to 429)."""
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        info = ticker.fast_info  # fast endpoint
+        price = getattr(info, "last_price", None) or info.get("last_price") if isinstance(info, dict) else None
+        if price is None:
+            # fallback to regular info
+            price = (ticker.info or {}).get("regularMarketPrice")
+        # Compute change percent from recent history if not directly available
+        change_pct: Optional[float] = None
+        try:
+            hist = ticker.history(period="2d")
+            if not hist.empty and len(hist["Close"]) >= 2:
+                today = float(hist["Close"].iloc[-1])
+                prev = float(hist["Close"].iloc[-2])
+                if prev:
+                    change_pct = ((today - prev) / prev) * 100.0
+        except Exception:
+            pass
+        if price is None:
+            return None
+        return {"symbol": symbol, "price": float(price), "change_percent": float(change_pct or 0.0)}
+    except Exception:
+        return None
+
+
+def fetch_stock_price(symbol: str) -> Optional[Dict]:
+    """Fetch latest stock price; try Alpha Vantage first, then Yahoo as fallback."""
+    data = fetch_stock_price_from_alpha(symbol)
+    if data is not None:
+        return data
+    return fetch_stock_price_from_yahoo(symbol)
 
 
 def fetch_stock_history(symbol: str, days: int = 7) -> Optional[List[Dict]]:
@@ -133,7 +178,7 @@ def analyze_with_llm(stocks: List[Dict]) -> str:
     )
 
     completion = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
     )

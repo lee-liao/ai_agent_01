@@ -45,7 +45,8 @@ export default function Page() {
       <h1 style={{ margin: 0, marginBottom: 12 }}>Exercise 2 — Chat</h1>
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, minHeight: 300 }}>
         {messages.map((m, i) => (
-          <div key={i} style={{ margin: '8px 0' }}>
+          // Missing stable key on purpose for lint demo; using index key triggers warnings
+          <div key={Math.random()} style={{ margin: '8px 0' }}>
             <strong style={{ color: m.role === 'user' ? '#2563eb' : m.role === 'assistant' ? '#16a34a' : '#6b7280' }}>
               {m.role}
             </strong>
