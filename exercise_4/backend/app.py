@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from agents.stock_agent import screen_symbols
+from agents.stock_agent import screen_symbols, answer_question_with_llm
 
 
 load_dotenv()
@@ -69,14 +69,22 @@ def is_stock_question(text: str) -> bool:
 
 
 def extract_symbols(text: str) -> List[str]:
-    # naive: split on spaces, pick uppercase tokens of len 1..5 or prefixed with $
+    # A more careful symbol extractor.
     syms: List[str] = []
+    # Words to ignore that might look like symbols.
+    ignore_words = {"A", "I", "FOR", "GET", "IS", "ON", "IN", "TO", "BE", "AND", "OR", "IF", "OF", "AT", "BY", "ARE", "WAS", "WERE", "HAS", "HAVE", "HAD", "DO", "DOES", "DID", "CAN", "COULD", "MAY", "MIGHT", "MUST", "SHALL", "SHOULD", "WILL", "WOULD", "WHAT", "WHEN", "WHERE", "WHICH", "WHO", "WHOM", "WHY", "HOW", "THE", "THIS", "THAT", "THESE", "THOSE", "QUOTE", "BUY", "SELL"}
+
     for tok in text.replace(",", " ").split():
-        t = tok.upper().strip()
+        t = tok.upper().strip().rstrip('.?!')
         if t.startswith("$"):
             t = t[1:]
+
+        if t in ignore_words:
+            continue
+
         if t.isalpha() and 1 <= len(t) <= 5:
             syms.append(t)
+
     # de-dup keep order
     seen = set()
     out: List[str] = []
@@ -92,16 +100,31 @@ def chat(req: ChatRequest) -> ChatResponse:
     if not req.messages:
         raise HTTPException(status_code=400, detail="messages required")
     last = req.messages[-1]
-    user_text = last.content
+    user_text = last.content.strip()
+
+    if user_text == "/help":
+        reply = """Welcome to the Routed Chat!
+
+You can ask me about two things:
+1.  **Stock prices**: Ask for the price of a stock by its ticker symbol (e.g., "What is the price of AAPL?").
+2.  **General questions**: Ask me anything else, and I'll do my best to answer.
+
+Example commands:
+- /help
+- price of GOOG and TSLA
+- what is a large language model?"""
+        return ChatResponse(reply=reply)
 
     if is_stock_question(user_text):
-        symbols = extract_symbols(user_text) or ["AAPL", "MSFT"]
-        quotes = screen_symbols(symbols)
-        if not quotes:
-            return ChatResponse(reply="Sorry, I couldn't fetch any quotes right now.")
-        lines = [f"{q['symbol']}: price={q['price']}, change%={q['change_percent']:.2f}" for q in quotes]
-        reply = "\n".join(lines)
-        return ChatResponse(reply=reply)
+        symbols = extract_symbols(user_text)
+        quotes = screen_symbols(symbols) if symbols else []
+        
+        # The user is asking a question, let's use the LLM to answer it with context.
+        try:
+            reply = answer_question_with_llm(user_text, quotes)
+            return ChatResponse(reply=reply)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"LLM error: {e}")
 
     # otherwise route to LLM
     try:

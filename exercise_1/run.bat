@@ -1,4 +1,17 @@
 @echo off
+setlocal
+
+pushd "%~dp0" >nul
+
+if exist .venv (
+  call .venv\Scripts\activate
+)
+
+python hello_agent.py %*
+
+popd >nul
+endlocal
+@echo off
 setlocal ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION
 
 REM Change to this script's directory

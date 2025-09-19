@@ -12,7 +12,7 @@ BACKEND_BASE = os.getenv("BACKEND_BASE", "http://localhost:8020").rstrip("/")
 
 st.set_page_config(page_title="Exercise 4 — Routed Chat (Python UI)", page_icon="💬")
 st.title("Exercise 4 — Routed Chat (Python UI)")
-st.caption("Stock questions route to stock agent; others go to LLM via FastAPI backend.")
+st.caption("Stock questions route to a stock agent; others go to an LLM. Type /help for examples.")
 
 if "messages" not in st.session_state:
     st.session_state.messages: List[Dict[str, str]] = [
@@ -52,7 +52,7 @@ def send_message(user_text: str) -> None:
 
 render_history()
 
-if prompt := st.chat_input("Ask about AAPL price or any other question..."):
+if prompt := st.chat_input("Ask about stocks, or type /help for examples..."):
     with st.spinner("Sending..."):
         send_message(prompt)
         st.rerun()

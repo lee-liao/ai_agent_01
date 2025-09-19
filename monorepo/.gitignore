@@ -302,3 +302,5 @@ secrets.json
 # Temporary files
 *.tmp
 *.temp
+
+apps/trading-agent/reports/default_trader/
