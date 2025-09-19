@@ -12,7 +12,7 @@ python -m uvicorn app:app --host 0.0.0.0 --port 8001 --reload
 ### Option 2: From the monorepo directory
 ```bash
 cd /Volumes/KINGSTON/vic_ai_trainning_class/class_1/monorepo
-npm run start:trading
+pnpm run start:trading
 ```
 
 ### Option 3: Using the shell script

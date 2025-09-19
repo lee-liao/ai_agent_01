@@ -64,12 +64,12 @@ curl http://localhost:8000/health
 ```bash
 # Setup and run
 cd exercise_2/frontend
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 
 # Build for production
-npm run build
-npm start
+pnpm run build
+pnpm start
 ```
 
 ### Key Configuration

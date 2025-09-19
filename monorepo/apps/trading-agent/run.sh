@@ -38,7 +38,7 @@ echo "🔍 Checking PostgreSQL connection..."
 if ! python -c "import asyncpg; import asyncio; asyncio.run(asyncpg.connect('$DATABASE_URL'))" 2>/dev/null; then
     echo "⚠️  PostgreSQL not available - running with mock data"
     echo "   To use full database features:"
-    echo "   1. Start observability stack: npm run observability:start"
+    echo "   1. Start observability stack: pnpm run observability:start"
     echo "   2. Wait for PostgreSQL to be ready"
 else
     echo "✅ PostgreSQL connection successful"

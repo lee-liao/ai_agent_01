@@ -30,20 +30,20 @@ monorepo/
 
 - **Python 3.9+**
 - **Node.js 18+**
-- **npm 8+**
+- **pnpm 8+**
 
 ### Installation
 
 1. **Clone and setup the monorepo:**
    ```bash
    cd monorepo
-   npm install
-   npm run setup
+   pnpm install
+   pnpm run setup
    ```
 
 2. **Start development servers:**
    ```bash
-   npm run dev
+   pnpm run dev
    ```
 
    This starts:
@@ -62,8 +62,8 @@ python -m uvicorn app:app --reload
 **Frontend only:**
 ```bash
 cd apps/web
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 ## 🛠️ Tools & Features
@@ -101,7 +101,7 @@ npm run dev
 
 ### Run all tests:
 ```bash
-npm run test
+pnpm run test
 ```
 
 ### Backend tests (pytest + Hypothesis):

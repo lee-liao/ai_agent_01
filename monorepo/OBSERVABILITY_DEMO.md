@@ -26,7 +26,7 @@ pip install httpx
 
 ```bash
 # Start Jaeger, Prometheus, Grafana, and OTEL Collector
-npm run observability:start
+pnpm run observability:start
 
 # Or manually:
 ./setup-observability.sh
@@ -49,13 +49,13 @@ cd apps/api
 
 ```bash
 # Run basic demo scenarios
-npm run demo
+pnpm run demo
 
 # Run with concurrent operations
-npm run demo:concurrent
+pnpm run demo:concurrent
 
 # Run multiple times for more data
-npm run demo:repeat
+pnpm run demo:repeat
 ```
 
 ## 📊 Demo Scenarios
@@ -122,13 +122,13 @@ python demo_traces.py --repeat 5
 
 ```bash
 # View logs from all observability services
-npm run observability:logs
+pnpm run observability:logs
 
 # Stop observability stack
-npm run observability:stop
+pnpm run observability:stop
 
 # Restart everything
-npm run observability:stop && npm run observability:start
+pnpm run observability:stop && pnpm run observability:start
 ```
 
 ## 📈 Grafana Dashboards

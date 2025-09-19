@@ -72,13 +72,13 @@ A comprehensive stock trading agent that demonstrates all Exercise 1-6 skills in
 ### **1. Start Observability Stack**
 ```bash
 # Start PostgreSQL, Jaeger, Prometheus, Grafana
-npm run observability:start
+pnpm run observability:start
 ```
 
 ### **2. Start Trading Agent**
 ```bash
-# Option A: Using npm script
-npm run start:trading
+# Option A: Using pnpm script
+pnpm run start:trading
 
 # Option B: Direct execution
 cd apps/trading-agent
@@ -88,7 +88,7 @@ cd apps/trading-agent
 ### **3. Run Complete Demo**
 ```bash
 # Demonstrates all Exercise 1-6 skills
-npm run demo:trading
+pnpm run demo:trading
 ```
 
 ## 📊 **Key Endpoints**
@@ -303,8 +303,8 @@ After completing Exercise 5, you will have hands-on experience with:
 3. **Observability Stack Issues**
    ```bash
    # Restart observability services
-   npm run observability:stop
-   npm run observability:start
+   pnpm run observability:stop
+   pnpm run observability:start
    ```
 
 4. **Port Conflicts**
