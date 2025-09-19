@@ -195,18 +195,6 @@ pnpm run observability:stop
 Run demonstrations:
 
 ```bash
-# Demo all MonoRepo features
-pnpm run demo:trading
-
 # Demo MonoRepo with observability
 pnpm run monorepo:demo
 ```
-
-## 🎯 Recommended startup order:
-
-1.  Observability stack (wait ~10 seconds)
-2.  Trading agent server
-3.  Access [http://localhost:8001](http://localhost:8001) for the chat UI
-4.  Access [http://localhost:16686](http://localhost:16686) for Jaeger traces
-
-This gives you the complete MonoRepo trading agent with full observability! 🚀
