@@ -8,10 +8,10 @@ from typing import List, Dict, Any, Optional
 import asyncio
 
 import openai
-import chromadb
-from chromadb.config import Settings
+# ChromaDB imports removed - now using PostgreSQL + pgvector for documents
 
 from app.config import settings
+from app.database import get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -22,21 +22,10 @@ class RetrievalService:
         # Initialize OpenAI client
         self.openai_client = openai.OpenAI(api_key=settings.openai_api_key)
         
-        # Initialize ChromaDB client
-        self.chroma_client = chromadb.HttpClient(
-            host=settings.chromadb_host,
-            port=settings.chromadb_port,
-            settings=Settings(allow_reset=True)
-        )
-        
-        # Get collection
-        self.collection_name = "rag_documents"
-        try:
-            self.collection = self.chroma_client.get_collection(self.collection_name)
-            logger.info(f"Connected to ChromaDB collection: {self.collection_name}")
-        except Exception as e:
-            logger.warning(f"ChromaDB collection not found: {e}")
-            self.collection = None
+        # Initialize PostgreSQL Vector Service for document retrieval
+        from app.services.vector_service import PostgreSQLVectorService
+        self.vector_service = PostgreSQLVectorService()
+        logger.info("Retrieval service configured to use PostgreSQL + pgvector")
     
     async def search_documents(
         self, 
@@ -55,10 +44,6 @@ class RetrievalService:
         Returns:
             List of relevant document chunks with metadata
         """
-        if not self.collection:
-            logger.warning("ChromaDB collection not available")
-            return []
-        
         try:
             # Use configured defaults if not provided
             max_results = max_results or settings.max_chunks_per_query
@@ -66,44 +51,15 @@ class RetrievalService:
             
             logger.info(f"Searching for: '{query}' (max_results={max_results}, threshold={similarity_threshold})")
             
-            # Generate embedding for the query
-            query_embedding = await self._generate_query_embedding(query)
-            
-            # Search in ChromaDB
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=max_results,
-                include=['documents', 'metadatas', 'distances']
+            # Initialize vector service and search in PostgreSQL
+            await self.vector_service.initialize()
+            relevant_chunks = await self.vector_service.search_document_chunks(
+                query=query,
+                max_results=max_results,
+                similarity_threshold=similarity_threshold
             )
             
-            # Process and filter results
-            relevant_chunks = []
-            
-            if results['ids'] and results['ids'][0]:  # Check if we have results
-                for i, (chunk_id, document, metadata, distance) in enumerate(zip(
-                    results['ids'][0],
-                    results['documents'][0],
-                    results['metadatas'][0],
-                    results['distances'][0]
-                )):
-                    # Convert distance to similarity score (ChromaDB uses cosine distance)
-                    similarity_score = 1 - distance
-                    
-                    # Filter by similarity threshold
-                    if similarity_score >= similarity_threshold:
-                        chunk_info = {
-                            "chunk_id": chunk_id,
-                            "document_id": metadata.get("document_id"),
-                            "filename": metadata.get("filename"),
-                            "chunk_index": metadata.get("chunk_index"),
-                            "content": document,
-                            "similarity_score": round(similarity_score, 4),
-                            "chunk_length": len(document),
-                            "metadata": metadata
-                        }
-                        relevant_chunks.append(chunk_info)
-            
-            logger.info(f"Found {len(relevant_chunks)} relevant chunks (filtered from {len(results['ids'][0]) if results['ids'] else 0} total)")
+            logger.info(f"Found {len(relevant_chunks)} relevant chunks from PostgreSQL + pgvector")
             
             # Sort by similarity score (highest first)
             relevant_chunks.sort(key=lambda x: x['similarity_score'], reverse=True)
@@ -196,43 +152,32 @@ class RetrievalService:
             return []
     
     async def get_collection_info(self) -> Dict[str, Any]:
-        """Get information about the document collection"""
-        if not self.collection:
-            return {
-                "status": "unavailable",
-                "total_chunks": 0,
-                "collection_name": self.collection_name
-            }
-        
+        """Get information about the document collection from PostgreSQL"""
         try:
-            count = self.collection.count()
-            
-            # Get sample of documents to show variety
-            sample_results = self.collection.get(
-                limit=10,
-                include=['metadatas']
-            )
-            
-            unique_documents = set()
-            if sample_results['metadatas']:
-                for metadata in sample_results['metadatas']:
-                    if metadata.get('document_id'):
-                        unique_documents.add(metadata['document_id'])
-            
-            return {
-                "status": "available",
-                "total_chunks": count,
-                "collection_name": self.collection_name,
-                "sample_documents": len(unique_documents),
-                "embedding_model": settings.rag_embedding_model
-            }
-            
+            await self.vector_service.initialize()
+            conn = await get_connection()
+            try:
+                # Get document chunks count
+                count = await conn.fetchval("SELECT COUNT(*) FROM document_chunks")
+                
+                # Get unique documents count
+                doc_count = await conn.fetchval("SELECT COUNT(DISTINCT document_id) FROM document_chunks")
+                
+                return {
+                    "status": "available",
+                    "total_chunks": count,
+                    "database": "postgresql_pgvector",
+                    "sample_documents": doc_count,
+                    "embedding_model": settings.rag_embedding_model
+                }
+            finally:
+                await conn.close()
         except Exception as e:
-            logger.error(f"Error getting collection info: {e}")
             return {
                 "status": "error",
-                "error": str(e),
-                "collection_name": self.collection_name
+                "total_chunks": 0,
+                "database": "postgresql_pgvector",
+                "error": str(e)
             }
 
 # Global instance

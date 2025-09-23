@@ -16,10 +16,10 @@ from docx import Document
 import openai
 
 # Vector storage
-import chromadb
-from chromadb.config import Settings
+# ChromaDB imports removed - now using PostgreSQL + pgvector
 
 from app.config import settings
+from app.database import get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -34,24 +34,10 @@ class DocumentProcessor:
         self.chunk_size = settings.chunk_size
         self.chunk_overlap = settings.chunk_overlap
         
-        # Initialize ChromaDB client
-        self.chroma_client = chromadb.HttpClient(
-            host=settings.chromadb_host,
-            port=settings.chromadb_port,
-            settings=Settings(allow_reset=True)
-        )
-        
-        # Get or create collection
-        self.collection_name = "rag_documents"
-        try:
-            self.collection = self.chroma_client.get_collection(self.collection_name)
-            logger.info(f"Connected to existing ChromaDB collection: {self.collection_name}")
-        except Exception:
-            self.collection = self.chroma_client.create_collection(
-                name=self.collection_name,
-                metadata={"description": "RAG document embeddings"}
-            )
-            logger.info(f"Created new ChromaDB collection: {self.collection_name}")
+        # Initialize PostgreSQL Vector Service for document storage
+        from app.services.vector_service import PostgreSQLVectorService
+        self.vector_service = PostgreSQLVectorService()
+        logger.info("Document processor configured to use PostgreSQL + pgvector")
     
     async def process_document(self, file_path: str, filename: str, document_id: str) -> Dict[str, Any]:
         """
@@ -98,15 +84,23 @@ class DocumentProcessor:
                 }
                 chunk_metadatas.append(metadata)
             
-            # Add to ChromaDB
-            self.collection.add(
-                ids=chunk_ids,
-                embeddings=chunk_embeddings,
-                documents=chunks,
-                metadatas=chunk_metadatas
-            )
+            # Add to PostgreSQL + pgvector
+            await self.vector_service.initialize()
             
-            logger.info(f"Successfully stored {len(chunks)} chunks in ChromaDB")
+            # Prepare chunks for PostgreSQL storage
+            chunk_data = []
+            for i, (chunk, embedding, metadata) in enumerate(zip(chunks, chunk_embeddings, chunk_metadatas)):
+                chunk_data.append({
+                    "content": chunk,
+                    "embedding": embedding,
+                    "metadata": metadata,
+                    "token_count": len(chunk.split()),
+                    "chunk_index": i
+                })
+            
+            await self.vector_service.add_document_chunks(document_id, chunk_data)
+            
+            logger.info(f"Successfully stored {len(chunks)} chunks in PostgreSQL + pgvector")
             
             return {
                 "document_id": document_id,
@@ -269,16 +263,21 @@ class DocumentProcessor:
             return False
     
     async def get_collection_stats(self) -> Dict[str, Any]:
-        """Get statistics about the document collection"""
+        """Get statistics about the document collection from PostgreSQL"""
         try:
-            count = self.collection.count()
-            return {
-                "total_chunks": count,
-                "collection_name": self.collection_name
-            }
+            await self.vector_service.initialize()
+            conn = await get_connection()
+            try:
+                count = await conn.fetchval("SELECT COUNT(*) FROM document_chunks")
+                return {
+                    "total_chunks": count,
+                    "database": "postgresql_pgvector"
+                }
+            finally:
+                await conn.close()
         except Exception as e:
             logger.error(f"Error getting collection stats: {e}")
-            return {"total_chunks": 0, "collection_name": self.collection_name}
+            return {"total_chunks": 0, "database": "postgresql_pgvector"}
 
 # Global instance
 document_processor = DocumentProcessor()

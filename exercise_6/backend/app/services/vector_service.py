@@ -6,6 +6,7 @@ Handles document and Q&A embeddings using PostgreSQL + pgvector
 import logging
 import hashlib
 import uuid
+import json
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 import asyncio
@@ -79,12 +80,14 @@ class PostgreSQLVectorService:
                     # Generate embedding
                     embedding = await self._generate_embedding(content)
                     
-                    # Insert chunk with embedding
+                    # Insert chunk with embedding (convert to pgvector format)
+                    embedding_str = '[' + ','.join(map(str, embedding)) + ']'
+                    metadata_json = json.dumps(chunk.get('metadata', {}))
                     chunk_id = await conn.fetchval("""
                         INSERT INTO document_chunks (
                             document_id, chunk_index, content, content_hash,
                             token_count, char_count, embedding, metadata
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7::vector, $8::jsonb)
                         ON CONFLICT (document_id, chunk_index) 
                         DO UPDATE SET 
                             content = EXCLUDED.content,
@@ -95,13 +98,15 @@ class PostgreSQLVectorService:
                     """, 
                         document_id, i, content, content_hash,
                         chunk.get('token_count'), len(content), 
-                        embedding, chunk.get('metadata', {})
+                        embedding_str, metadata_json
                     )
                     
                     chunk_ids.append(str(chunk_id))
                 
                 logger.info(f"Added {len(chunk_ids)} document chunks with embeddings for document {document_id}")
                 return chunk_ids
+            finally:
+                await conn.close()
                 
         except Exception as e:
             logger.error(f"Failed to add document chunks: {e}")
@@ -121,7 +126,8 @@ class PostgreSQLVectorService:
             # Generate query embedding
             query_embedding = await self._generate_embedding(query)
             
-            # Build SQL query
+            # Build SQL query (convert query embedding to pgvector format)
+            query_embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
             sql = """
                 SELECT 
                     dc.id,
@@ -129,21 +135,20 @@ class PostgreSQLVectorService:
                     dc.content,
                     dc.chunk_index,
                     dc.metadata,
-                    d.filename,
-                    d.title,
-                    1 - (dc.embedding <=> $1) as similarity_score
+                    (dc.metadata->>'filename') as filename,
+                    (dc.metadata->>'title') as title,
+                    1 - (dc.embedding <=> $1::vector) as similarity_score
                 FROM document_chunks dc
-                JOIN documents d ON dc.document_id = d.id
-                WHERE 1 - (dc.embedding <=> $1) >= $2
+                WHERE 1 - (dc.embedding <=> $1::vector) >= $2
             """
             
-            params = [query_embedding, similarity_threshold]
+            params = [query_embedding_str, similarity_threshold]
             
             if knowledge_base_id:
-                sql += " AND d.knowledge_base_id = $3"
+                sql += " AND (dc.metadata->>'knowledge_base_id') = $3"
                 params.append(knowledge_base_id)
             
-            sql += " ORDER BY dc.embedding <=> $1 LIMIT $" + str(len(params) + 1)
+            sql += " ORDER BY dc.embedding <=> $1::vector LIMIT $" + str(len(params) + 1)
             params.append(max_results)
             
             conn = await get_connection()
@@ -165,6 +170,8 @@ class PostgreSQLVectorService:
                 
                 logger.info(f"Found {len(results)} document chunks for query: '{query[:50]}...'")
                 return results
+            finally:
+                await conn.close()
                 
         except Exception as e:
             logger.error(f"Failed to search document chunks: {e}")
@@ -211,6 +218,8 @@ class PostgreSQLVectorService:
                 
                 logger.info(f"Added Q&A pair with embeddings: {qa_id}")
                 return str(qa_id)
+            finally:
+                await conn.close()
                 
         except Exception as e:
             logger.error(f"Failed to add Q&A pair: {e}")
@@ -296,6 +305,8 @@ class PostgreSQLVectorService:
                 
                 logger.info(f"Found {len(results)} Q&A matches for query: '{query[:50]}...'")
                 return results
+            finally:
+                await conn.close()
                 
         except Exception as e:
             logger.error(f"Failed to search Q&A pairs: {e}")
@@ -339,6 +350,8 @@ class PostgreSQLVectorService:
                     })
                 
                 return results
+            finally:
+                await conn.close()
                 
         except Exception as e:
             logger.error(f"Failed to get Q&A pairs: {e}")
@@ -361,6 +374,8 @@ class PostgreSQLVectorService:
                     logger.info(f"Archived Q&A pair: {qa_id}")
                 
                 return success
+            finally:
+                await conn.close()
                 
         except Exception as e:
             logger.error(f"Failed to delete Q&A pair {qa_id}: {e}")
@@ -449,6 +464,8 @@ class PostgreSQLVectorService:
                     "qa_pairs": qa_pairs_count,
                     "knowledge_bases": kb_count
                 }
+            finally:
+                await conn.close()
                 
         except Exception as e:
             return {

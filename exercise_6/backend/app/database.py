@@ -144,11 +144,15 @@ async def get_db_session():
 
 
 async def get_connection() -> asyncpg.Connection:
-    """Get direct asyncpg connection from pool"""
-    if not connection_pool:
-        raise RuntimeError("Connection pool not initialized. Call init_database() first.")
-    
-    return await connection_pool.acquire()
+    """Get direct asyncpg connection from pool or create new connection"""
+    if connection_pool:
+        return await connection_pool.acquire()
+    else:
+        # Fallback: create direct connection if pool not available
+        logger.warning("Connection pool not available, creating direct connection")
+        # Convert SQLAlchemy URL to asyncpg format
+        asyncpg_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
+        return await asyncpg.connect(asyncpg_url)
 
 
 @asynccontextmanager
