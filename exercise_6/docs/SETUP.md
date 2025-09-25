@@ -34,12 +34,19 @@ nano .env
 ```
 
 ### 3. Run Setup Script
+**On macOS/Linux:**
 ```bash
 # Make script executable
 chmod +x scripts/setup.sh
 
 # Run complete setup
 ./scripts/setup.sh
+```
+
+**On Windows:**
+```bash
+# Run complete setup
+scripts\setup.bat
 ```
 
 ### 4. Access Applications
@@ -78,7 +85,7 @@ If you prefer manual setup or encounter issues with the automated script:
    docker-compose exec postgres-rag pg_isready -U rag_user -d rag_chatbot
    
    # Check ChromaDB
-   curl http://localhost:8000/api/v1/heartbeat
+   curl http://localhost:8000/api/v2/heartbeat
    
    # Check Redis
    docker-compose exec redis-rag redis-cli ping
@@ -261,14 +268,22 @@ ENABLE_API_DOCS=true
 ### Common Issues
 
 #### 1. Port Already in Use
+**On macOS/Linux:**
 ```bash
 # Find process using port
-lsof -i :5432  # or netstat -tulpn | grep 5432
+lsof -i :5432
 
 # Kill process
 sudo kill -9 <PID>
+```
 
-# Or change port in docker-compose.yml
+**On Windows:**
+```bash
+# Find process using port
+netstat -ano | findstr :5432
+
+# Kill process
+taskkill /PID <PID> /F
 ```
 
 #### 2. Docker Permission Issues
@@ -306,12 +321,27 @@ docker-compose logs chromadb
 ```
 
 #### 5. Frontend Build Failures
+**On macOS/Linux:**
 ```bash
 # Clear npm cache
 npm cache clean --force
 
 # Delete node_modules and reinstall
 rm -rf node_modules package-lock.json
+npm install
+
+# Check Node.js version
+node --version  # Should be 18+
+```
+
+**On Windows:**
+```bash
+# Clear npm cache
+npm cache clean --force
+
+# Delete node_modules and reinstall
+rd /s /q "node_modules"
+del package-lock.json
 npm install
 
 # Check Node.js version
