@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # DATABASE SETTINGS
     # =============================================================================
     database_url: str = Field(
-        default="postgresql+asyncpg://rag_user:rag_password@localhost:5433/rag_chatbot",
+        default="postgresql+asyncpg://rag_user:rag_password_2024@localhost:5433/rag_chatbot",
         env="DATABASE_URL"
     )
     db_pool_size: int = Field(default=10, env="DB_POOL_SIZE")
