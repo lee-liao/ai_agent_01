@@ -100,8 +100,8 @@ If you prefer manual setup or encounter issues with the automated script:
 
 2. **Create Virtual Environment**:
    ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   python3 -m venv .venv #On Windows: C:\Path\To\Python310\python.exe -m venv .venv
+   source .venv/bin/activate  # On Windows: .\.venv\Scripts\Activate.ps1
    ```
 
 3. **Install Dependencies**:
@@ -113,7 +113,8 @@ If you prefer manual setup or encounter issues with the automated script:
 4. **Start Backend**:
    ```bash
    # Option 1: Direct run
-   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   # uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   python -m uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload --log-level debug 
    
    # Option 2: Docker
    cd ..
