@@ -440,6 +440,37 @@ async def create_qa_pair(qa_data: dict):
         logger.error(f"Q&A creation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Creation failed: {str(e)}")
 
+@app.put("/api/v1/qa-pairs/{qa_id}", tags=["Q&A"])
+async def update_qa_pair(qa_id: str, qa_data: dict):
+    """Update a Q&A pair (mock implementation)"""
+    global mock_qa_pairs
+    
+    # Find and update Q&A pair
+    for i, qa in enumerate(mock_qa_pairs):
+        if qa["id"] == qa_id:
+            # Update fields if provided
+            if "question" in qa_data:
+                qa["question"] = qa_data["question"]
+            if "answer" in qa_data:
+                qa["answer"] = qa_data["answer"]
+            if "tags" in qa_data:
+                qa["tags"] = qa_data["tags"]
+            
+            qa["updated_at"] = datetime.now().isoformat()
+            mock_qa_pairs[i] = qa
+            
+            # Update in ChromaDB if RAG service is available
+            try:
+                if hasattr(qa_service, 'update_qa_pair'):
+                    await qa_service.update_qa_pair(qa_id, qa["question"], qa["answer"], qa.get("tags", []))
+                    logger.info(f"Updated Q&A pair {qa_id} in ChromaDB")
+            except Exception as e:
+                logger.warning(f"Failed to update Q&A pair in ChromaDB: {e}")
+            
+            return qa
+    
+    raise HTTPException(status_code=404, detail="Q&A pair not found")
+
 @app.delete("/api/v1/qa-pairs/{qa_id}", tags=["Q&A"])
 async def delete_qa_pair(qa_id: str):
     """Delete a Q&A pair (mock implementation)"""
@@ -565,6 +596,43 @@ async def chat(chat_data: dict):
             "data": fallback_response,
             "message": f"Chat processing failed: {str(e)}"
         }
+
+@app.get("/api/v1/chat/history/{session_id}", tags=["Chat"])
+async def get_chat_history(session_id: str):
+    """Get chat history for a session (mock implementation)"""
+    # Mock chat history - in a real implementation, this would come from a database
+    mock_history = [
+        {
+            "id": f"msg_{session_id}_1",
+            "type": "user",
+            "content": "What is RAG?",
+            "timestamp": "2024-01-01T10:00:00Z"
+        },
+        {
+            "id": f"msg_{session_id}_2", 
+            "type": "assistant",
+            "content": "RAG (Retrieval-Augmented Generation) is a technique that combines information retrieval with text generation...",
+            "timestamp": "2024-01-01T10:00:05Z",
+            "sources": {
+                "knowledge_base_hits": [
+                    {
+                        "id": "doc_1",
+                        "content": "RAG combines retrieval and generation...",
+                        "filename": "rag_overview.pdf",
+                        "similarity_score": 0.95
+                    }
+                ],
+                "qa_hits": []
+            }
+        }
+    ]
+    
+    return {
+        "status": "success",
+        "session_id": session_id,
+        "messages": mock_history,
+        "total_messages": len(mock_history)
+    }
 
 # =============================================================================
 # TEST ENDPOINTS

@@ -14,6 +14,34 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Global LLM service instance
+llm_service_instance = None
+
+async def init_llm_service() -> bool:
+    """Initialize the LLM service"""
+    global llm_service_instance
+    
+    try:
+        llm_service_instance = LLMService()
+        
+        # Test the connection
+        test_result = await llm_service_instance.check_api_connection()
+        
+        if test_result:
+            logger.info("✅ LLM service initialized successfully")
+            return True
+        else:
+            logger.error("❌ LLM service initialization failed: API connection test failed")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ LLM service initialization failed: {e}")
+        return False
+
+def get_llm_service() -> Optional['LLMService']:
+    """Get the global LLM service instance"""
+    return llm_service_instance
+
 class LLMService:
     """Handles LLM integration for response generation"""
     
