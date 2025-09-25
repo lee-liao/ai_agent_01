@@ -76,7 +76,7 @@ class DocumentProcessor:
                 chunk_ids.append(chunk_id)
                 
                 metadata = {
-                    "document_id": document_id,
+                    "document_id": str(document_id),
                     "filename": filename,
                     "chunk_index": i,
                     "chunk_text": chunk[:500],  # Store first 500 chars for preview

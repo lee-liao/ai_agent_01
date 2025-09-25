@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
   DocumentPlusIcon, 
@@ -24,6 +24,7 @@ export default function KnowledgeBasePage() {
     progress: 0,
     message: ''
   })
+  const [isPolling, setIsPolling] = useState(false)
 
   const queryClient = useQueryClient()
 
@@ -31,7 +32,21 @@ export default function KnowledgeBasePage() {
   const { data: documents, isLoading, error } = useQuery({
     queryKey: ['documents'],
     queryFn: api.getDocuments,
+    refetchInterval: isPolling ? 3000 : false, // Poll every 3 seconds if isPolling is true
+    onSuccess: (data) => {
+      const isProcessing = data.some((doc: any) => doc.status === 'processing');
+      if (!isProcessing) {
+        setIsPolling(false);
+      }
+    },
   })
+
+  // Start polling if there are documents being processed on initial load
+  useEffect(() => {
+    if (documents && documents.some((doc: any) => doc.status === 'processing')) {
+      setIsPolling(true);
+    }
+  }, [documents]);
 
   // Upload mutation
   const uploadMutation = useMutation({
@@ -47,9 +62,10 @@ export default function KnowledgeBasePage() {
       setUploadStatus({
         isUploading: false,
         progress: 100,
-        message: `Successfully uploaded: ${data.filename}`
+        message: `Upload initiated for: ${data.filename}`
       })
       queryClient.invalidateQueries({ queryKey: ['documents'] })
+      setIsPolling(true); // Start polling
       // Clear message after 3 seconds
       setTimeout(() => {
         setUploadStatus(prev => ({ ...prev, message: '' }))
@@ -213,7 +229,7 @@ export default function KnowledgeBasePage() {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Processing</p>
               <p className="text-2xl font-semibold text-gray-900">
-                {documents?.filter(doc => doc.status === 'processing').length || 0}
+                {documents?.filter((doc: any) => doc.status === 'processing').length || 0}
               </p>
             </div>
           </div>
@@ -227,7 +243,7 @@ export default function KnowledgeBasePage() {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Ready</p>
               <p className="text-2xl font-semibold text-gray-900">
-                {documents?.filter(doc => doc.status === 'processed').length || 0}
+                {documents?.filter((doc: any) => doc.status === 'processed').length || 0}
               </p>
             </div>
           </div>
