@@ -112,23 +112,24 @@ services:
         - action: rebuild
           path: ./backend/requirements.txt
 
-  # Admin Console Frontend
-  admin-frontend:
+  # Frontend (Unified Next.js App with Admin Console and Chat Interface)
+  frontend:
     build:
-      context: ./frontend/admin
+      context: ./frontend
       dockerfile: Dockerfile
       target: development
-    container_name: exercise6-admin
+    container_name: exercise6-frontend
     ports:
-      - "3002:3000"  # Admin console on port 3002
+      - "3002:3000"  # Frontend on port 3002
     environment:
-      - REACT_APP_API_BASE_URL=http://localhost:8002
-      - REACT_APP_ENVIRONMENT=development
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8002
+      - NODE_ENV=development
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
     volumes:
-      - ./frontend/admin:/app
+      - ./frontend:/app
       - /app/node_modules
+      - /app/.next
     networks:
       - rag_network
     depends_on:
@@ -137,44 +138,13 @@ services:
     develop:
       watch:
         - action: sync
-          path: ./frontend/admin
+          path: ./frontend
           target: /app
           ignore:
             - node_modules/
+            - .next/
         - action: rebuild
-          path: ./frontend/admin/package.json
-
-  # Chat Interface Frontend
-  chat-frontend:
-    build:
-      context: ./frontend/chat
-      dockerfile: Dockerfile
-      target: development
-    container_name: exercise6-chat
-    ports:
-      - "3003:3000"  # Chat interface on port 3003
-    environment:
-      - REACT_APP_API_BASE_URL=http://localhost:8002
-      - REACT_APP_ENVIRONMENT=development
-      - CHOKIDAR_USEPOLLING=true
-      - WATCHPACK_POLLING=true
-    volumes:
-      - ./frontend/chat:/app
-      - /app/node_modules
-    networks:
-      - rag_network
-    depends_on:
-      - backend
-    restart: unless-stopped
-    develop:
-      watch:
-        - action: sync
-          path: ./frontend/chat
-          target: /app
-          ignore:
-            - node_modules/
-        - action: rebuild
-          path: ./frontend/chat/package.json
+          path: ./frontend/package.json
 
   # Nginx reverse proxy (optional, for production)
   nginx:
