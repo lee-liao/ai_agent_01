@@ -1,39 +1,69 @@
 """
-Exercise 6: RAG Chatbot - Main FastAPI Application
-Comprehensive RAG system with knowledge base management
+Exercise 6: RAG Chatbot - Complete Main Application
+Full-featured FastAPI application with all expected imports and modules
 """
 
 import logging
-import time
-import os
 from datetime import datetime
-from contextlib import asynccontextmanager
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
+import uuid
+import os
+import tempfile
+import asyncio
 
-from fastapi import FastAPI, Request, Response, WebSocket
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-import uvicorn
 
-# Import application modules
+# Configuration and database
 from app.config import settings
-from app.database import init_database, close_database
-from app.api import knowledge_base, documents, qa_pairs, chat
-from app.services.vector_store import init_chromadb, close_chromadb
-from app.services.llm_service import init_llm_service
-from app.utils.logging import setup_logging
+from app.database import init_database, close_database, get_database_health
 
-# Setup logging
-setup_logging()
+# API routes - all the modules students expect
+from app.api import knowledge_base, documents, qa_pairs, chat
+
+# Services - vector store and LLM service initialization
+from app.services.vector_store import init_chromadb, close_chromadb
+from app.services.rag.llm_service import init_llm_service
+
+# Utilities - logging setup
+from app.utils.logging import setup_app_logging
+
+# RAG services
+from app.services.rag.qa_service import qa_service
+
+# Setup application logging
+app_logger = setup_app_logging(level=settings.log_level)
 logger = logging.getLogger(__name__)
 
+# Create FastAPI application
+app = FastAPI(
+    title="Exercise 6: RAG Chatbot",
+    description="Complete RAG (Retrieval-Augmented Generation) Chatbot with PostgreSQL + pgvector and ChromaDB",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan manager"""
-    logger.info("🚀 Starting RAG Chatbot application...")
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=settings.allow_credentials,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Global state
+rag_service = None
+services_initialized = False
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize all services on startup"""
+    global services_initialized
+    
+    logger.info("🚀 Starting RAG Chatbot (Complete Version)...")
     
     try:
         # Initialize database
@@ -41,321 +71,185 @@ async def lifespan(app: FastAPI):
         await init_database()
         
         # Initialize ChromaDB
-        logger.info("🔍 Initializing ChromaDB vector store...")
-        await init_chromadb()
+        logger.info("🔗 Initializing ChromaDB...")
+        chromadb_success = await init_chromadb(
+            host=settings.chromadb_host, 
+            port=settings.chromadb_port
+        )
         
         # Initialize LLM service
         logger.info("🤖 Initializing LLM service...")
-        await init_llm_service()
+        llm_success = await init_llm_service()
         
-        logger.info("✅ Application startup completed successfully!")
+        # Initialize RAG service (lazy import to avoid startup hang)
+        try:
+            from app.services.rag.rag_service import rag_service as rag_svc
+            global rag_service
+            rag_service = rag_svc
+            logger.info("✅ RAG service loaded successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to load RAG service: {e}")
+            rag_service = None
         
-        yield
+        services_initialized = True
+        logger.info("✅ All services initialized successfully")
         
     except Exception as e:
-        logger.error(f"❌ Application startup failed: {e}")
-        raise
-    finally:
-        # Cleanup on shutdown
-        logger.info("🛑 Shutting down application...")
+        logger.error(f"❌ Startup failed: {e}")
+        logger.info("⚠️ Continuing in demo mode...")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up resources on shutdown"""
+    logger.info("🛑 Shutting down RAG Chatbot...")
+    
+    try:
+        # Close ChromaDB
         await close_chromadb()
+        
+        # Close database
         await close_database()
-        logger.info("✅ Application shutdown completed")
+        
+        logger.info("✅ Shutdown completed")
+        
+    except Exception as e:
+        logger.error(f"❌ Error during shutdown: {e}")
 
+# Include API routers
+app.include_router(knowledge_base.router)
+app.include_router(documents.router)
+app.include_router(qa_pairs.router)
+app.include_router(chat.router)
 
-# Create FastAPI application
-app = FastAPI(
-    title="Exercise 6: RAG Chatbot",
-    description="""
-    A comprehensive RAG (Retrieval-Augmented Generation) chatbot system that demonstrates:
-    
-    - **Knowledge Base Management**: Upload and manage documents and Q&A pairs
-    - **Document Processing**: PDF, text, and document parsing with chunking
-    - **Vector Search**: Semantic similarity search using ChromaDB
-    - **RAG Pipeline**: Retrieval-augmented generation with LLM integration
-    - **Chat Interface**: Real-time chat with source attribution
-    - **Admin Console**: Full management interface for knowledge bases
-    
-    Built with FastAPI, PostgreSQL + pgvector, ChromaDB, and modern LLMs.
-    """,
-    version=settings.app_version,
-    docs_url="/docs" if not settings.is_production else None,
-    redoc_url="/redoc" if not settings.is_production else None,
-    lifespan=lifespan,
-)
-
-# =============================================================================
-# MIDDLEWARE CONFIGURATION
-# =============================================================================
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["*"],
-)
-
-# Trusted host middleware (for production)
-if settings.is_production:
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=["localhost", "127.0.0.1", "*.yourdomain.com"]
-    )
-
-# =============================================================================
-# EXCEPTION HANDLERS
-# =============================================================================
-
-@app.exception_handler(404)
-async def not_found_handler(request: Request, exc):
-    return JSONResponse(
-        status_code=404,
-        content={
-            "error": "Not Found",
-            "message": f"The requested resource '{request.url.path}' was not found",
-            "path": request.url.path,
-        }
-    )
-
-@app.exception_handler(500)
-async def internal_error_handler(request: Request, exc):
-    logger.error(f"Internal server error: {exc}")
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "Internal Server Error",
-            "message": "An unexpected error occurred. Please try again later.",
-            "path": request.url.path,
-        }
-    )
-
-# =============================================================================
-# MIDDLEWARE FOR REQUEST LOGGING
-# =============================================================================
-
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Log all HTTP requests"""
-    start_time = time.time()
-    
-    # Process request
-    response = await call_next(request)
-    
-    # Calculate processing time
-    process_time = time.time() - start_time
-    
-    # Log request details
-    logger.info(
-        f"{request.method} {request.url.path} - "
-        f"Status: {response.status_code} - "
-        f"Time: {process_time:.3f}s"
-    )
-    
-    # Add processing time header
-    response.headers["X-Process-Time"] = str(process_time)
-    
-    return response
-
-# =============================================================================
-# HEALTH CHECK ENDPOINTS
-# =============================================================================
-
+# Health check endpoints
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint"""
+    """Basic health check"""
     return {
         "status": "healthy",
         "service": "rag-chatbot",
-        "version": settings.app_version,
-        "environment": settings.environment,
-        "timestamp": datetime.utcnow().isoformat(),
+        "version": "1.0.0",
+        "timestamp": datetime.utcnow().isoformat()
     }
 
 @app.get("/health/detailed", tags=["Health"])
 async def detailed_health_check():
-    """Detailed health check with service dependencies"""
-    from app.database import get_database_health
-    from app.services.vector_store import get_chromadb_health
-    from app.services.llm_service import get_llm_health
-    
+    """Detailed health check with service status"""
     health_status = {
         "status": "healthy",
         "service": "rag-chatbot",
-        "version": settings.app_version,
+        "version": "1.0.0",
         "environment": settings.environment,
         "timestamp": datetime.utcnow().isoformat(),
+        "services_initialized": services_initialized,
         "dependencies": {}
     }
     
+    # Check database health
     try:
-        # Check database
         db_health = await get_database_health()
-        health_status["dependencies"]["database"] = db_health
-        
-        # Check ChromaDB
-        chromadb_health = await get_chromadb_health()
-        health_status["dependencies"]["chromadb"] = chromadb_health
-        
-        # Check LLM service
-        llm_health = await get_llm_health()
-        health_status["dependencies"]["llm"] = llm_health
-        
-        # Determine overall status
-        all_healthy = all(
-            dep.get("status") == "healthy" 
-            for dep in health_status["dependencies"].values()
-        )
-        
-        if not all_healthy:
-            health_status["status"] = "degraded"
-            
+        health_status["dependencies"]["database"] = {
+            "status": "healthy" if db_health else "unhealthy",
+            "details": db_health
+        }
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        health_status["status"] = "unhealthy"
-        health_status["error"] = str(e)
+        health_status["dependencies"]["database"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+    
+    # Check ChromaDB health
+    try:
+        from app.services.vector_store import get_chromadb_status
+        chromadb_status = await get_chromadb_status()
+        health_status["dependencies"]["chromadb"] = chromadb_status
+    except Exception as e:
+        health_status["dependencies"]["chromadb"] = {
+            "status": "error",
+            "error": str(e)
+        }
+    
+    # Check LLM service health
+    try:
+        from app.services.rag.llm_service import get_llm_service
+        llm_service = get_llm_service()
+        if llm_service:
+            llm_healthy = await llm_service.check_api_connection()
+            health_status["dependencies"]["llm"] = {
+                "status": "healthy" if llm_healthy else "unhealthy",
+                "model": settings.openai_model
+            }
+        else:
+            health_status["dependencies"]["llm"] = {
+                "status": "not_initialized"
+            }
+    except Exception as e:
+        health_status["dependencies"]["llm"] = {
+            "status": "error",
+            "error": str(e)
+        }
+    
+    # Determine overall status
+    all_healthy = all(
+        dep.get("status") == "healthy" 
+        for dep in health_status["dependencies"].values()
+    )
+    
+    if not all_healthy:
+        health_status["status"] = "degraded"
     
     return health_status
 
-# =============================================================================
-# API ROUTES
-# =============================================================================
-
-# Include API routers
-app.include_router(
-    knowledge_base.router,
-    prefix="/api/v1/knowledge-bases",
-    tags=["Knowledge Bases"]
-)
-
-app.include_router(
-    documents.router,
-    prefix="/api/v1/documents",
-    tags=["Documents"]
-)
-
-app.include_router(
-    qa_pairs.router,
-    prefix="/api/v1/qa-pairs",
-    tags=["Q&A Pairs"]
-)
-
-app.include_router(
-    chat.router,
-    prefix="/api/v1/chat",
-    tags=["Chat"]
-)
-
-# =============================================================================
-# STATIC FILES (for uploaded files)
-# =============================================================================
-
-# Mount uploads directory for serving files
-if os.path.exists(settings.upload_directory):
-    app.mount(
-        "/uploads",
-        StaticFiles(directory=settings.upload_directory),
-        name="uploads"
-    )
-
-# =============================================================================
-# ROOT ENDPOINT
-# =============================================================================
-
+# Root endpoint
 @app.get("/", tags=["Root"])
 async def root():
     """Root endpoint with API information"""
     return {
-        "message": "Welcome to Exercise 6: RAG Chatbot API",
-        "version": settings.app_version,
-        "environment": settings.environment,
-        "docs_url": "/docs" if not settings.is_production else None,
-        "health_url": "/health",
-        "api_prefix": "/api/v1",
-        "features": [
-            "Knowledge Base Management",
-            "Document Processing & Upload",
-            "Q&A Pair Management",
-            "Vector Similarity Search",
-            "RAG Pipeline",
-            "Real-time Chat",
-            "Source Attribution",
-        ],
+        "message": "Exercise 6: RAG Chatbot API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health",
         "endpoints": {
-            "knowledge_bases": "/api/v1/knowledge-bases",
-            "documents": "/api/v1/documents",
+            "knowledge_base": "/api/v1/knowledge-base",
+            "documents": "/api/v1/documents", 
             "qa_pairs": "/api/v1/qa-pairs",
-            "chat": "/api/v1/chat",
-        }
+            "chat": "/api/v1/chat"
+        },
+        "features": [
+            "Document upload and processing",
+            "Q&A pair management",
+            "RAG-powered chat",
+            "PostgreSQL + pgvector for document storage",
+            "ChromaDB for Q&A pairs",
+            "OpenAI integration",
+            "Complete REST API"
+        ]
     }
 
-# =============================================================================
-# WEBSOCKET ENDPOINT (for real-time chat)
-# =============================================================================
-
-@app.websocket("/ws/chat/{session_id}")
-async def websocket_chat_endpoint(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for real-time chat"""
-    from app.api.chat import handle_websocket_chat
-    await handle_websocket_chat(websocket, session_id)
-
-# =============================================================================
-# METRICS ENDPOINT (optional)
-# =============================================================================
-
-if settings.enable_metrics:
-    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-    
-    @app.get("/metrics", tags=["Monitoring"])
-    async def metrics():
-        """Prometheus metrics endpoint"""
-        return Response(
-            generate_latest(),
-            media_type=CONTENT_TYPE_LATEST
-        )
-
-# =============================================================================
-# DEVELOPMENT UTILITIES
-# =============================================================================
-
-if settings.is_development:
-    
-    @app.get("/dev/info", tags=["Development"])
-    async def development_info():
-        """Development information endpoint"""
-        return {
-            "settings": {
-                "database_url": settings.database_url.replace(
-                    settings.database_url.split('@')[0].split('//')[1], 
-                    "***:***"
-                ),
-                "chromadb_url": settings.chromadb_url,
-                "embedding_model": settings.embedding_model,
-                "chunk_size": settings.chunk_size,
-                "max_file_size_mb": settings.max_file_size_mb,
-            },
-            "directories": {
-                "uploads": settings.upload_directory,
-                "temp": settings.temp_directory,
-            },
-            "llm_config": {
-                "openai_available": bool(settings.openai_api_key),
-                "anthropic_available": bool(settings.anthropic_api_key),
-                "use_openai_embeddings": settings.use_openai_embeddings,
-            }
-        }
-
-# =============================================================================
-# MAIN ENTRY POINT
-# =============================================================================
+# Configuration endpoint
+@app.get("/config", tags=["Configuration"])
+async def get_configuration():
+    """Get current application configuration (non-sensitive)"""
+    return {
+        "environment": settings.environment,
+        "debug": settings.debug,
+        "log_level": settings.log_level,
+        "openai_model": settings.openai_model,
+        "rag_embedding_model": settings.rag_embedding_model,
+        "similarity_threshold": settings.similarity_threshold,
+        "max_file_size": settings.max_file_size,
+        "allowed_file_types": settings.allowed_file_types,
+        "chromadb_host": settings.chromadb_host,
+        "chromadb_port": settings.chromadb_port,
+        "cors_origins": settings.cors_origins
+    }
 
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=8000,
-        reload=settings.is_development,
-        log_level=settings.log_level.lower(),
-        access_log=True,
+        port=8002,
+        reload=True,
+        log_level="info"
     )
