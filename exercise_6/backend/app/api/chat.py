@@ -8,6 +8,8 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import uuid
 
+from app.services.rag.rag_service import rag_service
+
 router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
 
 # Mock conversation storage
@@ -18,61 +20,41 @@ mock_messages = []
 async def send_message(chat_data: Dict[str, Any]) -> Dict[str, Any]:
     """Send a message and get AI response"""
     message = chat_data.get("message", "")
-    session_id = chat_data.get("session_id", str(uuid.uuid4()))
+    session_id = chat_data.get("session_id") # Can be None for new sessions
     
     if not message:
         raise HTTPException(status_code=400, detail="Message is required")
     
-    # Create user message
-    user_message = {
-        "id": str(uuid.uuid4()),
-        "session_id": session_id,
-        "type": "user",
-        "content": message,
-        "timestamp": datetime.utcnow().isoformat()
-    }
+    # For now, we are not handling conversation history.
+    # A real implementation would fetch history from the database based on session_id.
+    conversation_history = []
+
+    # Get the RAG response
+    rag_response = await rag_service.chat_with_rag(
+        query=message,
+        conversation_history=conversation_history
+    )
+
+    # If no session_id is provided, create a new one
+    if not session_id:
+        session_id = str(uuid.uuid4())
+
+    # In a real app, you would store the user message and the AI response in the database
+    # For this exercise, we are focusing on the RAG response generation.
     
-    # Create AI response (mock)
-    ai_response = {
-        "id": str(uuid.uuid4()),
-        "session_id": session_id,
-        "type": "assistant",
-        "content": f"This is a mock response to: {message}",
-        "timestamp": datetime.utcnow().isoformat(),
-        "sources": {
-            "knowledge_base_hits": [],
-            "qa_hits": []
-        },
-        "processing_time_ms": 1500,
-        "model_used": "gpt-3.5-turbo"
-    }
-    
-    # Store messages
-    mock_messages.extend([user_message, ai_response])
-    
-    # Update conversation
-    if session_id not in mock_conversations:
-        mock_conversations[session_id] = {
-            "id": session_id,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
-            "message_count": 0
-        }
-    
-    mock_conversations[session_id]["message_count"] += 2
-    mock_conversations[session_id]["updated_at"] = datetime.utcnow().isoformat()
-    
+    # The rag_response already has a structure that is very close to what we need.
+    # We can adapt it slightly for the final API response.
     return {
         "status": "success",
         "data": {
-            "id": ai_response["id"],
+            "id": rag_response.get("id"),
             "message": message,
-            "response": ai_response["content"],
-            "sources": [],
-            "qa_matches": [],
-            "timestamp": ai_response["timestamp"],
-            "processing_time_ms": ai_response["processing_time_ms"],
-            "model_used": ai_response["model_used"],
+            "response": rag_response.get("response"),
+            "sources": rag_response.get("sources", []),
+            "qa_matches": rag_response.get("qa_matches", []),
+            "timestamp": rag_response.get("timestamp"),
+            "processing_time_ms": rag_response.get("processing_time_ms"),
+            "model_used": rag_response.get("model_used"),
             "session_id": session_id
         }
     }

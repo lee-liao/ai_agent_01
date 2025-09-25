@@ -78,7 +78,7 @@ class PostgreSQLVectorService:
                     content_hash = hashlib.sha256(content.encode()).hexdigest()
                     
                     # Generate embedding
-                    embedding = await self._generate_embedding(content)
+                    embedding = await self.generate_embedding(content)
                     
                     # Insert chunk with embedding (convert to pgvector format)
                     embedding_str = '[' + ','.join(map(str, embedding)) + ']'
@@ -124,7 +124,7 @@ class PostgreSQLVectorService:
         
         try:
             # Generate query embedding
-            query_embedding = await self._generate_embedding(query)
+            query_embedding = await self.generate_embedding(query)
             
             # Build SQL query (convert query embedding to pgvector format)
             query_embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
@@ -193,8 +193,8 @@ class PostgreSQLVectorService:
         
         try:
             # Generate embeddings for both question and answer
-            question_embedding = await self._generate_embedding(question)
-            answer_embedding = await self._generate_embedding(answer)
+            question_embedding = await self.generate_embedding(question)
+            answer_embedding = await self.generate_embedding(answer)
             
             conn = await get_connection()
             try:
@@ -237,7 +237,7 @@ class PostgreSQLVectorService:
         
         try:
             # Generate query embedding
-            query_embedding = await self._generate_embedding(query)
+            query_embedding = await self.generate_embedding(query)
             
             # Search both question and answer embeddings
             sql = """
@@ -385,7 +385,7 @@ class PostgreSQLVectorService:
     # UTILITY METHODS
     # =============================================================================
     
-    async def _generate_embedding(self, text: str) -> List[float]:
+    async def generate_embedding(self, text: str) -> List[float]:
         """Generate embedding for text using OpenAI"""
         try:
             # Run in executor to avoid blocking the event loop

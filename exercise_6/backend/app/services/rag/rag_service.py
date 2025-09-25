@@ -66,7 +66,6 @@ class RAGService:
     async def chat_with_rag(
         self,
         query: str,
-        qa_pairs: Optional[List[Dict[str, Any]]] = None,
         conversation_history: Optional[List[Dict[str, str]]] = None,
         max_chunks: Optional[int] = None,
         similarity_threshold: Optional[float] = None
@@ -76,7 +75,6 @@ class RAGService:
         
         Args:
             query: User's question
-            qa_pairs: Available Q&A pairs to search through
             conversation_history: Previous conversation messages
             max_chunks: Maximum number of document chunks to retrieve
             similarity_threshold: Minimum similarity score for retrieval
@@ -96,10 +94,8 @@ class RAGService:
                 similarity_threshold=similarity_threshold or settings.similarity_threshold
             )
             
-            # Step 2: Search through Q&A pairs if provided
-            qa_matches = []
-            if qa_pairs:
-                qa_matches = await self._search_qa_pairs(query, qa_pairs)
+            # Step 2: Search through Q&A pairs
+            qa_matches = await self._search_qa_pairs(query)
             
             # Step 3: Generate response using LLM with retrieved context
             llm_result = await self.llm_service.generate_response(
@@ -149,7 +145,7 @@ class RAGService:
                 "error": str(e)
             }
     
-    async def _search_qa_pairs(self, query: str, qa_pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _search_qa_pairs(self, query: str) -> List[Dict[str, Any]]:
         """Search through Q&A pairs using ChromaDB vector similarity"""
         try:
             # Use ChromaDB Q&A service for semantic search
