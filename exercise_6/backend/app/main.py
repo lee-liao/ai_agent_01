@@ -49,7 +49,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_credentials=settings.allow_credentials,
+    allow_credentials=False,  # Set to False for student class
     allow_methods=["*"],
     allow_headers=["*"],
 )
