@@ -3,14 +3,41 @@ Exercise 6: Documents API Routes
 Handles individual document operations and metadata
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import uuid
 
 router = APIRouter(prefix="/api/v1/documents", tags=["Documents"])
 
 # Mock data storage (will be replaced with database in production)
 mock_documents = []
+
+@router.post("/upload")
+async def upload_document(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """Upload a document to the knowledge base"""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+    
+    # Create mock document entry
+    document = {
+        "id": str(uuid.uuid4()),
+        "filename": file.filename,
+        "size": file.size or 0,
+        "content_type": file.content_type,
+        "status": "processed",
+        "chunks_count": 1,
+        "uploaded_at": datetime.utcnow().isoformat(),
+        "processed_at": datetime.utcnow().isoformat()
+    }
+    
+    mock_documents.append(document)
+    
+    return {
+        "status": "success",
+        "message": f"Document {file.filename} uploaded successfully",
+        "data": document
+    }
 
 @router.get("/")
 async def list_documents(
