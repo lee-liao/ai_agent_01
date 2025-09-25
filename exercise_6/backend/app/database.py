@@ -52,8 +52,9 @@ async def init_database():
         )
         
         # Create asyncpg connection pool for direct queries
+        asyncpg_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
         connection_pool = await asyncpg.create_pool(
-            settings.database_url,
+            asyncpg_url,
             min_size=5,
             max_size=settings.db_pool_size,
             command_timeout=settings.db_pool_timeout,
