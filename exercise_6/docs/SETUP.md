@@ -114,7 +114,7 @@ If you prefer manual setup or encounter issues with the automated script:
    ```bash
    # Option 1: Direct run
    # uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-   python -m uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload --log-level debug 
+   uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload --log-level debug 
    
    # Option 2: Docker
    cd ..
