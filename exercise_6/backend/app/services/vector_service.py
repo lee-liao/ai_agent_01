@@ -238,26 +238,27 @@ class PostgreSQLVectorService:
         try:
             # Generate query embedding
             query_embedding = await self.generate_embedding(query)
+            query_embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
             
             # Search both question and answer embeddings
             sql = """
                 WITH question_matches AS (
                     SELECT 
                         id, question, answer, tags, metadata, created_at,
-                        1 - (question_embedding <=> $1) as similarity_score,
+                        1 - (question_embedding <=> $1::vector) as similarity_score,
                         'question' as match_type
                     FROM qa_pairs
                     WHERE status = 'active' 
-                    AND 1 - (question_embedding <=> $1) >= $2
+                    AND 1 - (question_embedding <=> $1::vector) >= $2
                 ),
                 answer_matches AS (
                     SELECT 
                         id, question, answer, tags, metadata, created_at,
-                        1 - (answer_embedding <=> $1) as similarity_score,
+                        1 - (answer_embedding <=> $1::vector) as similarity_score,
                         'answer' as match_type
                     FROM qa_pairs
                     WHERE status = 'active' 
-                    AND 1 - (answer_embedding <=> $1) >= $2
+                    AND 1 - (answer_embedding <=> $1::vector) >= $2
                 ),
                 all_matches AS (
                     SELECT * FROM question_matches
@@ -270,7 +271,7 @@ class PostgreSQLVectorService:
                 FROM all_matches
             """
             
-            params = [query_embedding, similarity_threshold]
+            params = [query_embedding_str, similarity_threshold]
             
             if knowledge_base_id:
                 # Add knowledge base filter (need to join with knowledge_bases table)

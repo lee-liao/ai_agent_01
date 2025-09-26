@@ -131,7 +131,7 @@ async def list_documents(
     status: Optional[str] = None
 ) -> Dict[str, Any]:
     """List all documents with optional filtering"""
-    base_query = "SELECT id, filename, status, created_at, updated_at, file_size FROM documents"
+    base_query = "SELECT id, filename, original_filename, status, created_at, updated_at, file_size, file_type FROM documents"
     params = []
     where_clauses = []
 

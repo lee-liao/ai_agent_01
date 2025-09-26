@@ -24,14 +24,18 @@ async def add_embeddings_background(qa_id: str, question: str, answer: str):
         question_embedding = await vector_service.generate_embedding(question)
         answer_embedding = await vector_service.generate_embedding(answer)
 
+        # Convert embeddings to pgvector format (string representation)
+        question_embedding_str = '[' + ','.join(map(str, question_embedding)) + ']'
+        answer_embedding_str = '[' + ','.join(map(str, answer_embedding)) + ']'
+
         await execute_raw_command(
             """
             UPDATE qa_pairs
-            SET question_embedding = $1, answer_embedding = $2
+            SET question_embedding = $1::vector, answer_embedding = $2::vector
             WHERE id = $3
             """,
-            question_embedding,
-            answer_embedding,
+            question_embedding_str,
+            answer_embedding_str,
             qa_id,
         )
         logger.info(f"Successfully added embeddings to Q&A pair {qa_id}")
@@ -96,25 +100,50 @@ async def create_qa_pair(
 
     qa_id = uuid.uuid4()
 
-    query = """
-        INSERT INTO qa_pairs (id, knowledge_base_id, question, answer, tags, status)
-        VALUES ($1, (SELECT id FROM knowledge_bases WHERE name = 'Default Knowledge Base'), $2, $3, $4, 'active')
-        RETURNING id, question, answer, tags, created_at, updated_at;
-    """
-    
-    new_pair = await execute_raw_query(
-        query, qa_id, question, answer, tags
-    )
+    # Generate embeddings synchronously to ensure they're available immediately
+    try:
+        logger.info(f"Generating embeddings for new Q&A pair {qa_id}")
+        question_embedding = await vector_service.generate_embedding(question)
+        answer_embedding = await vector_service.generate_embedding(answer)
+        
+        query = """
+            INSERT INTO qa_pairs (id, knowledge_base_id, question, answer, tags, status, question_embedding, answer_embedding)
+            VALUES ($1, (SELECT id FROM knowledge_bases WHERE name = 'Default Knowledge Base'), $2, $3, $4, 'active', $5, $6)
+            RETURNING id, question, answer, tags, created_at, updated_at;
+        """
+        
+        # Convert embeddings to pgvector format (string representation)
+        question_embedding_str = '[' + ','.join(map(str, question_embedding)) + ']'
+        answer_embedding_str = '[' + ','.join(map(str, answer_embedding)) + ']'
+        
+        new_pair = await execute_raw_query(
+            query, qa_id, question, answer, tags, question_embedding_str, answer_embedding_str
+        )
+        
+        logger.info(f"Successfully created Q&A pair {qa_id} with embeddings")
+        
+    except Exception as e:
+        logger.error(f"Failed to generate embeddings for Q&A pair {qa_id}: {e}")
+        # Fallback: create without embeddings and generate in background
+        query = """
+            INSERT INTO qa_pairs (id, knowledge_base_id, question, answer, tags, status)
+            VALUES ($1, (SELECT id FROM knowledge_bases WHERE name = 'Default Knowledge Base'), $2, $3, $4, 'active')
+            RETURNING id, question, answer, tags, created_at, updated_at;
+        """
+        
+        new_pair = await execute_raw_query(
+            query, qa_id, question, answer, tags
+        )
+        
+        # Generate embeddings in background as fallback
+        background_tasks.add_task(add_embeddings_background, qa_id, question, answer)
 
     if not new_pair:
         raise HTTPException(status_code=500, detail="Failed to create Q&A pair")
 
-    # Generate and add embeddings in the background
-    background_tasks.add_task(add_embeddings_background, qa_id, question, answer)
-
     return {
         "status": "success",
-        "message": "Q&A pair created successfully. Embeddings are being generated in the background.",
+        "message": "Q&A pair created successfully with embeddings.",
         "data": new_pair[0],
     }
 

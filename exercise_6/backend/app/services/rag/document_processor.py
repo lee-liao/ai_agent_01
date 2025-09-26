@@ -243,20 +243,28 @@ class DocumentProcessor:
             raise
     
     async def delete_document(self, document_id: str) -> bool:
-        """Delete all chunks for a document from ChromaDB"""
+        """Delete all chunks for a document from PostgreSQL"""
         try:
-            # Get all chunk IDs for this document
-            results = self.collection.get(
-                where={"document_id": document_id}
-            )
-            
-            if results['ids']:
-                self.collection.delete(ids=results['ids'])
-                logger.info(f"Deleted {len(results['ids'])} chunks for document {document_id}")
-                return True
-            else:
-                logger.warning(f"No chunks found for document {document_id}")
-                return False
+            await self.vector_service.initialize()
+            conn = await get_connection()
+            try:
+                # Delete all chunks for this document
+                result = await conn.execute(
+                    "DELETE FROM document_chunks WHERE document_id = $1",
+                    document_id
+                )
+                
+                # result is a string like "DELETE 5" - extract the count
+                deleted_count = int(result.split()[-1]) if result.startswith("DELETE") else 0
+                
+                if deleted_count > 0:
+                    logger.info(f"Deleted {deleted_count} chunks for document {document_id}")
+                    return True
+                else:
+                    logger.warning(f"No chunks found for document {document_id}")
+                    return False
+            finally:
+                await conn.close()
                 
         except Exception as e:
             logger.error(f"Error deleting document {document_id}: {e}")
