@@ -5,7 +5,7 @@ Plan/Execute controller entrypoints, trace replay, prompt switching, cost report
 Students: fill controller logic and telemetry in app/agents/* modules.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from typing import Dict, Any
 from datetime import datetime
 import uuid
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/agents", tags=["Agents"])
 
 
 @router.post("/run")
-async def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
+async def run_agent(payload: Dict[str, Any], background: BackgroundTasks) -> Dict[str, Any]:
     """Kick off a plan-execute run. Returns a new trace_id.
 
     Expected payload: { "query": str, "session_id"?: str }
@@ -24,8 +24,14 @@ async def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="query is required")
 
     trace_id = str(uuid.uuid4())
-    # TODO: enqueue background task to run controller with this trace_id
-    # For scaffold, return immediately.
+    # execute controller in background and store trace
+    try:
+        from app.agents.tracing import trace_store
+        from app.agents.controller import run_plan
+        trace_store.new_trace(trace_id)
+        background.add_task(run_plan, trace_id, query)
+    except Exception:
+        pass
     return {"trace_id": trace_id, "status": "queued"}
 
 
@@ -34,29 +40,11 @@ async def get_trace(trace_id: str) -> Dict[str, Any]:
     """Return a mock trace with spans for UI development.
     Students will replace with real persisted trace data.
     """
-    now = datetime.utcnow().isoformat()
-    spans = [
-        {
-            "span_id": "root",
-            "parent_span_id": None,
-            "name": "plan_execute",
-            "start": now,
-            "end": now,
-            "attributes": {
-                "prompt_id": "prompt://agent/planner@v1",
-                "model": "gpt-4o-mini",
-                "input_tokens": 120,
-                "output_tokens": 45,
-                "cost_usd": 0.0009,
-                "latency_ms": 120,
-                "retry_count": 0,
-                "error_code": None,
-                "budget_usd": 0.05,
-                "over_budget": False,
-            },
-        }
-    ]
-    return {"trace": {"trace_id": trace_id}, "spans": spans}
+    try:
+        from app.agents.tracing import trace_store
+        return trace_store.get_trace(trace_id)
+    except Exception:
+        return {"trace": {"trace_id": trace_id}, "spans": []}
 
 
 @router.post("/replay/{trace_id}")

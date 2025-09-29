@@ -133,10 +133,28 @@ class Settings(BaseSettings):
     websocket_url: str = Field(default="ws://localhost:8002/ws", env="WEBSOCKET_URL")
     
     # =============================================================================
-    # MONITORING SETTINGS
+    # MONITORING & AGENT CONTROL SETTINGS (Exercise 7)
     # =============================================================================
     enable_metrics: bool = Field(default=False, env="ENABLE_METRICS")
     metrics_port: int = Field(default=9090, env="METRICS_PORT")
+
+    # Failure injection knobs
+    fail_rate: float = Field(default=0.35, env="FAIL_RATE")
+    inject_timeout_ms: int = Field(default=800, env="INJECT_TIMEOUT_MS")
+    cache_hit_rate: float = Field(default=0.7, env="CACHE_HIT_RATE")
+
+    # Budget & model
+    budget_usd: float = Field(default=0.05, env="BUDGET_USD")
+    model: str = Field(default="gpt-4o-mini", env="MODEL")
+
+    # Retry & circuit breaker
+    max_retries: int = Field(default=2, env="MAX_RETRIES")
+    circuit_failures_threshold: int = Field(default=3, env="CIRCUIT_FAILURES_THRESHOLD")
+    circuit_window_seconds: int = Field(default=60, env="CIRCUIT_WINDOW_SECONDS")
+    circuit_cooldown_seconds: int = Field(default=60, env="CIRCUIT_COOLDOWN_SECONDS")
+
+    # Prompt AB
+    prompt_ab_v2_percent: float = Field(default=0.10, env="PROMPT_AB_V2_PERCENT")
     
     # =============================================================================
     # VALIDATORS
