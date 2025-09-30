@@ -2,8 +2,9 @@ import asyncio
 from typing import Dict, Any, Tuple
 
 from app.config import settings
-from .router import route
+from .router import route, detect_stock_intent
 from .tools import SearchTool, PriceTool, CacheTool, ToolResult
+from .tools_trading import TradingQuoteTool, TradingRecommendTool, TradingTradeTool
 from .retry import execute_with_policies
 from .circuit_breaker import circuit_breaker
 from .idempotency import make_idempotency_key
@@ -15,6 +16,9 @@ TOOLS = {
     "SearchTool": SearchTool(),
     "PriceTool": PriceTool(),
     "CacheTool": CacheTool(),
+    "TradingQuoteTool": TradingQuoteTool(),
+    "TradingRecommendTool": TradingRecommendTool(),
+    "TradingTradeTool": TradingTradeTool(),
 }
 
 
@@ -24,12 +28,34 @@ async def react_recover(query: str, context: Dict[str, Any]) -> ToolResult:
     return await tool.invoke(query, context)
 
 
-async def run_plan(trace_id: str, query: str) -> Dict[str, Any]:
-    context: Dict[str, Any] = {}
+async def run_plan(trace_id: str, query: str, overrides: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    context: Dict[str, Any] = {"overrides": overrides or {}}
 
-    # Plan nodes: search -> price
+    # Intent & plan selection
+    intent, symbols, trade_action = detect_stock_intent(query)
+    if symbols:
+        context["symbols"] = symbols
+        if overrides is not None:
+            overrides.setdefault("symbols", symbols)
+
+    if intent == "quote":
+        plan_nodes = ["trading_quote"]
+    elif intent == "trade":
+        if overrides is not None and "action" not in overrides and trade_action:
+            overrides["action"] = trade_action
+        plan_nodes = ["trading_quote", "trading_recommend", "trading_trade"]
+    else:
+        plan_nodes = ["search", "price"]
     async def run_node(node: str, parent_span_id: str | None) -> Tuple[bool, str | None]:
-        tool_name = route(query, node)
+        # Map nodes to tools
+        if node == "trading_quote":
+            tool_name = "TradingQuoteTool"
+        elif node == "trading_recommend":
+            tool_name = "TradingRecommendTool"
+        elif node == "trading_trade":
+            tool_name = "TradingTradeTool"
+        else:
+            tool_name = route(query, node)
         # Circuit breaker selection
         if node == "price" and circuit_breaker.is_open("PriceTool"):
             tool_name = "CacheTool"
@@ -54,6 +80,8 @@ async def run_plan(trace_id: str, query: str) -> Dict[str, Any]:
                 if result.ok:
                     circuit_breaker.record_success(tool_name)
                     context[node] = result.value
+                    if node == "trading_quote":
+                        context["trading_quotes"] = result.value
                     # Rerank for search
                     if node == "search":
                         candidates = (result.value or {}).get("candidates", [])
@@ -79,16 +107,15 @@ async def run_plan(trace_id: str, query: str) -> Dict[str, Any]:
     # Root span
     with span(trace_id, "plan_execute", None, attributes={
         "prompt_id": "prompt://agent/planner@v1",
-        "model": settings.model,
-        "budget_usd": settings.budget_usd,
+        "model": (overrides or {}).get("model", settings.model),
+        "budget_usd": float((overrides or {}).get("budget_usd", settings.budget_usd)),
         "over_budget": False,
     }) as (root_span_id, _):
-        ok, s1 = await run_node("search", root_span_id)
-        if not ok:
-            return {"status": "error", "message": "search_failed", "context": context}
-        ok, s2 = await run_node("price", s1)
-        if not ok:
-            return {"status": "degraded", "message": "price_failed", "context": context}
+        parent_id = root_span_id
+        for node in plan_nodes:
+            ok, parent_id = await run_node(node, parent_id)
+            if not ok:
+                return {"status": "degraded", "message": f"{node}_failed", "context": context}
         return {"status": "success", "context": context}
 
 

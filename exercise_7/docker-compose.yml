@@ -4,7 +4,7 @@ services:
   # PostgreSQL with pgvector extension for RAG system
   postgres-rag:
     image: pgvector/pgvector:pg15
-    container_name: exercise6-postgres
+    container_name: exercise7-postgres
     ports:
       - "5433:5432"  # Using 5433 to avoid conflict with existing PostgreSQL on 5432
     environment:
@@ -28,7 +28,7 @@ services:
   # ChromaDB for vector similarity search
   chromadb:
     image: chromadb/chroma:latest
-    container_name: exercise6-chromadb
+    container_name: exercise7-chromadb
     ports:
       - "8000:8000"  # ChromaDB default port
     environment:
@@ -41,7 +41,7 @@ services:
     networks:
       - rag_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/heartbeat"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -50,7 +50,7 @@ services:
   # Redis for caching (optional but recommended for production)
   redis-rag:
     image: redis:7-alpine
-    container_name: exercise6-redis
+    container_name: exercise7-redis
     ports:
       - "6380:6379"  # Using 6380 to avoid conflict with existing Redis on 6379
     command: redis-server --appendonly yes --requirepass rag_redis_2024
@@ -70,11 +70,11 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: exercise6-backend
+    container_name: exercise7-backend
     ports:
       - "8002:8000"  # Using 8002 to avoid conflicts
     environment:
-      - DATABASE_URL=postgresql://rag_user:rag_password_2024@postgres-rag:5432/rag_chatbot
+      - DATABASE_URL=postgresql+asyncpg://rag_user:rag_password_2024@postgres-rag:5432/rag_chatbot
       - CHROMADB_HOST=chromadb
       - CHROMADB_PORT=8000
       - REDIS_URL=redis://rag_redis_2024@redis-rag:6379/0
@@ -83,6 +83,7 @@ services:
       - ENVIRONMENT=development
       - LOG_LEVEL=INFO
       - CORS_ORIGINS=http://localhost:3002,http://localhost:3003
+      - TRADING_AGENT_URL=http://host.docker.internal:8001
       - MAX_FILE_SIZE=50MB
       - CHUNK_SIZE=1000
       - CHUNK_OVERLAP=200
@@ -95,7 +96,7 @@ services:
       postgres-rag:
         condition: service_healthy
       chromadb:
-        condition: service_healthy
+        condition: service_started
       redis-rag:
         condition: service_healthy
     healthcheck:
@@ -118,7 +119,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       target: development
-    container_name: exercise6-frontend
+    container_name: exercise7-frontend
     ports:
       - "3002:3000"  # Frontend on port 3002
     environment:
@@ -149,7 +150,7 @@ services:
   # Nginx reverse proxy (optional, for production)
   nginx:
     image: nginx:alpine
-    container_name: exercise6-nginx
+    container_name: exercise7-nginx
     ports:
       - "80:80"
       - "443:443"
@@ -169,14 +170,14 @@ services:
 networks:
   rag_network:
     driver: bridge
-    name: exercise6_rag_network
+    name: exercise7_rag_network
 
 volumes:
   postgres_rag_data:
-    name: exercise6_postgres_data
+    name: exercise7_postgres_data
   chromadb_data:
-    name: exercise6_chromadb_data
+    name: exercise7_chromadb_data
   redis_rag_data:
-    name: exercise6_redis_data
+    name: exercise7_redis_data
   uploaded_files:
-    name: exercise6_uploaded_files
+    name: exercise7_uploaded_files

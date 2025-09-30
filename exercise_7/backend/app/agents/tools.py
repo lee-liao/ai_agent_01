@@ -47,13 +47,17 @@ class PriceTool(BaseTool):
     name = "PriceTool"
 
     async def invoke(self, query: str, context: Dict[str, Any]) -> ToolResult:
+        overrides = (context.get("overrides") or {}) if isinstance(context, dict) else {}
+        inject_timeout_ms = int(overrides.get("inject_timeout_ms", settings.inject_timeout_ms) or 0)
+        fail_rate = float(overrides.get("fail_rate", settings.fail_rate))
+
         # Inject timeout
-        if settings.inject_timeout_ms > 0 and random.random() < 0.05:
-            await asyncio.sleep(settings.inject_timeout_ms / 1000.0)
+        if inject_timeout_ms > 0 and random.random() < 0.05:
+            await asyncio.sleep(inject_timeout_ms / 1000.0)
             raise TimeoutErrorTool("simulated timeout")
 
         # Simulate rate limit
-        if random.random() < settings.fail_rate:
+        if random.random() < fail_rate:
             raise RateLimitError(retry_after=random.uniform(0.2, 1.0))
 
         await asyncio.sleep(0.08)
@@ -65,9 +69,11 @@ class CacheTool(BaseTool):
     name = "CacheTool"
 
     async def invoke(self, query: str, context: Dict[str, Any]) -> ToolResult:
+        overrides = (context.get("overrides") or {}) if isinstance(context, dict) else {}
+        cache_hit_rate = float(overrides.get("cache_hit_rate", settings.cache_hit_rate))
         await asyncio.sleep(0.01)
         # Simulate cache hit rate
-        if random.random() < settings.cache_hit_rate:
+        if random.random() < cache_hit_rate:
             return ToolResult(ok=True, value={"price": 42.0, "currency": "USD", "cache": True})
         return ToolResult(ok=False, error="cache_miss")
 

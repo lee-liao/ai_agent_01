@@ -32,20 +32,74 @@ async def send_message(chat_data: Dict[str, Any]) -> Dict[str, Any]:
         "timestamp": datetime.utcnow().isoformat()
     }
     
-    # Create AI response (mock)
-    ai_response = {
-        "id": str(uuid.uuid4()),
-        "session_id": session_id,
-        "type": "assistant",
-        "content": f"This is a mock response to: {message}",
-        "timestamp": datetime.utcnow().isoformat(),
-        "sources": {
-            "knowledge_base_hits": [],
-            "qa_hits": []
-        },
-        "processing_time_ms": 1500,
-        "model_used": "gpt-3.5-turbo"
-    }
+    # Try stock intent → route to trading agent for real quotes
+    from app.agents.router import detect_stock_intent  # local import to avoid heavy deps at module load
+    intent, symbols, trade_action = detect_stock_intent(message)
+    if intent == "quote" and symbols:
+        try:
+            from app.agents.tools_trading import TradingQuoteTool
+            quote_tool = TradingQuoteTool()
+            start = datetime.utcnow()
+            result = await quote_tool.invoke(message, {"symbols": symbols, "overrides": {"user_id": "chat_user"}})
+            took_ms = int((datetime.utcnow() - start).total_seconds() * 1000)
+            if result.ok:
+                quotes = result.value.get("quotes") if isinstance(result.value, dict) else result.value
+                # Format a concise response
+                parts: List[str] = []
+                if isinstance(quotes, list):
+                    for q in quotes:
+                        sym = q.get("symbol") or symbols[0]
+                        price = q.get("price") or q.get("last") or q.get("close")
+                        if price is not None:
+                            parts.append(f"{sym}: ${price}")
+                content = ", ".join(parts) if parts else f"Got quotes for {', '.join(symbols)}"
+                ai_response = {
+                    "id": str(uuid.uuid4()),
+                    "session_id": session_id,
+                    "type": "assistant",
+                    "content": content or "(no quote data)",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "sources": {"knowledge_base_hits": [], "qa_hits": []},
+                    "processing_time_ms": took_ms,
+                    "model_used": "trading-agent"
+                }
+            else:
+                ai_response = {
+                    "id": str(uuid.uuid4()),
+                    "session_id": session_id,
+                    "type": "assistant",
+                    "content": f"Failed to fetch quotes for {', '.join(symbols)} (error: {result.error})",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "sources": {"knowledge_base_hits": [], "qa_hits": []},
+                    "processing_time_ms": 800,
+                    "model_used": "trading-agent"
+                }
+        except Exception as e:
+            ai_response = {
+                "id": str(uuid.uuid4()),
+                "session_id": session_id,
+                "type": "assistant",
+                "content": f"Stock intent detected but quote retrieval failed: {e}",
+                "timestamp": datetime.utcnow().isoformat(),
+                "sources": {"knowledge_base_hits": [], "qa_hits": []},
+                "processing_time_ms": 800,
+                "model_used": "trading-agent"
+            }
+    else:
+        # Default: mock response
+        ai_response = {
+            "id": str(uuid.uuid4()),
+            "session_id": session_id,
+            "type": "assistant",
+            "content": f"This is a mock response to: {message}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "sources": {
+                "knowledge_base_hits": [],
+                "qa_hits": []
+            },
+            "processing_time_ms": 1500,
+            "model_used": "gpt-3.5-turbo"
+        }
     
     # Store messages
     mock_messages.extend([user_message, ai_response])

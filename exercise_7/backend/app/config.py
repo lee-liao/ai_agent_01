@@ -155,6 +155,9 @@ class Settings(BaseSettings):
 
     # Prompt AB
     prompt_ab_v2_percent: float = Field(default=0.10, env="PROMPT_AB_V2_PERCENT")
+
+    # Trading agent integration
+    trading_agent_url: str = Field(default="http://localhost:8001", env="TRADING_AGENT_URL")
     
     # =============================================================================
     # VALIDATORS

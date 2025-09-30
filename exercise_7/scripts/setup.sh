@@ -74,6 +74,31 @@ mkdir -p uploads temp logs data/samples backend/logs
 echo "✅ Directories created"
 
 # =============================================================================
+# OPTIONAL: START TRADING AGENT (HOST PROCESS)
+# =============================================================================
+
+if [ -d "$PROJECT_DIR/../../monorepo/apps/trading-agent" ]; then
+  echo "🟢 Starting trading-agent (port 8001) if not already running..."
+  pushd "$PROJECT_DIR/../../monorepo/apps/trading-agent" >/dev/null
+  if ! nc -z localhost 8001; then
+    if [ -f "venv/bin/activate" ]; then
+      source venv/bin/activate || true
+    fi
+    if [ -f requirements.txt ]; then
+      pip install -q -r requirements.txt || true
+    fi
+    nohup python app.py > trading-agent.log 2>&1 &
+    echo $! > trading-agent.pid
+    echo "✅ trading-agent started (PID $(cat trading-agent.pid))"
+  else
+    echo "ℹ️  trading-agent already listening on 8001"
+  fi
+  popd >/dev/null
+else
+  echo "ℹ️  monorepo trading-agent not found; skipping host start"
+fi
+
+# =============================================================================
 # DOCKER SERVICES SETUP
 # =============================================================================
 
@@ -86,7 +111,7 @@ docker-compose down --remove-orphans 2>/dev/null || true
 
 # Pull required images
 echo "📦 Pulling Docker images..."
-docker-compose pull
+docker-compose pull || true
 
 # Start infrastructure services first (database, chromadb, redis)
 echo "🚀 Starting infrastructure services..."
@@ -108,7 +133,7 @@ else
 fi
 
 # Check ChromaDB
-if curl -s http://localhost:8000/api/v1/heartbeat > /dev/null; then
+if curl -s http://localhost:8000/api/v2/heartbeat > /dev/null; then
     echo "✅ ChromaDB is ready"
 else
     echo "⚠️  ChromaDB might still be starting..."
@@ -159,31 +184,7 @@ echo ""
 echo "🎨 Setting up Frontend..."
 echo "------------------------"
 
-# Setup Admin Console
-if [ -d "$PROJECT_DIR/frontend/admin" ]; then
-    echo "📱 Setting up Admin Console..."
-    cd "$PROJECT_DIR/frontend/admin"
-    
-    if [ -f "package.json" ]; then
-        npm install
-        echo "✅ Admin Console dependencies installed"
-    else
-        echo "⚠️  Admin Console package.json not found"
-    fi
-fi
-
-# Setup Chat Interface
-if [ -d "$PROJECT_DIR/frontend/chat" ]; then
-    echo "💬 Setting up Chat Interface..."
-    cd "$PROJECT_DIR/frontend/chat"
-    
-    if [ -f "package.json" ]; then
-        npm install
-        echo "✅ Chat Interface dependencies installed"
-    else
-        echo "⚠️  Chat Interface package.json not found"
-    fi
-fi
+# (monorepo admin/chat not used here)
 
 echo ""
 
@@ -196,37 +197,13 @@ echo "---------------------------"
 
 cd "$PROJECT_DIR"
 
-# The database should already be initialized by the init.sql script
-# Let's verify the tables exist
+# Verify database tables
 echo "🔍 Verifying database tables..."
 
 if docker-compose exec -T postgres-rag psql -U rag_user -d rag_chatbot -c "\dt" > /dev/null 2>&1; then
     echo "✅ Database tables verified"
 else
     echo "⚠️  Database tables verification failed"
-fi
-
-echo ""
-
-# =============================================================================
-# SAMPLE DATA LOADING (Optional)
-# =============================================================================
-
-echo "📄 Loading Sample Data..."
-echo "------------------------"
-
-# Check if sample data should be loaded
-if [ "${LOAD_SAMPLE_DATA:-true}" = "true" ]; then
-    if [ -f "$PROJECT_DIR/data/samples/load_samples.py" ]; then
-        cd "$PROJECT_DIR/backend"
-        source venv/bin/activate
-        python "$PROJECT_DIR/data/samples/load_samples.py"
-        echo "✅ Sample data loaded"
-    else
-        echo "⚠️  Sample data script not found"
-    fi
-else
-    echo "⏭️  Skipping sample data loading"
 fi
 
 echo ""
@@ -253,50 +230,21 @@ else
     echo "⚠️  Backend might still be starting..."
 fi
 
-# Check frontend services
+# Check frontend service
 if curl -s http://localhost:3002 > /dev/null; then
-    echo "✅ Admin Console is accessible"
+    echo "✅ Frontend is accessible"
 else
-    echo "⚠️  Admin Console might still be starting..."
-fi
-
-if curl -s http://localhost:3003 > /dev/null; then
-    echo "✅ Chat Interface is accessible"
-else
-    echo "⚠️  Chat Interface might still be starting..."
+    echo "⚠️  Frontend might still be starting..."
 fi
 
 echo ""
-
-# =============================================================================
-# SUCCESS MESSAGE
-# =============================================================================
 
 echo "🎉 Setup Completed Successfully!"
 echo "================================"
 echo ""
+
 echo "🌐 Access URLs:"
-echo "  • Admin Console:     http://localhost:3002"
-echo "  • Chat Interface:    http://localhost:3003"
+echo "  • Agent Console:     http://localhost:3002/agent-console"
 echo "  • Backend API:       http://localhost:8002"
-echo "  • API Documentation: http://localhost:8002/docs"
-echo "  • ChromaDB:          http://localhost:8000"
+echo "  • Trading Agent API: http://localhost:8001"
 echo ""
-echo "📊 Database Access:"
-echo "  • Host: localhost"
-echo "  • Port: 5433"
-echo "  • Database: rag_chatbot"
-echo "  • User: rag_user"
-echo "  • Password: rag_password_2024"
-echo ""
-echo "🚀 Next Steps:"
-echo "  1. Open http://localhost:3002 to access the Admin Console"
-echo "  2. Upload some documents to create your knowledge base"
-echo "  3. Add Q&A pairs for direct question matching"
-echo "  4. Test the chat interface at http://localhost:3003"
-echo "  5. Explore the API documentation at http://localhost:8002/docs"
-echo ""
-echo "🛑 To stop all services: docker-compose down"
-echo "🔄 To restart services: docker-compose up -d"
-echo ""
-echo "Happy chatting! 🤖"

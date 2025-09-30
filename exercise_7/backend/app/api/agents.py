@@ -29,7 +29,8 @@ async def run_agent(payload: Dict[str, Any], background: BackgroundTasks) -> Dic
         from app.agents.tracing import trace_store
         from app.agents.controller import run_plan
         trace_store.new_trace(trace_id)
-        background.add_task(run_plan, trace_id, query)
+        overrides = payload.get("overrides") or {}
+        background.add_task(run_plan, trace_id, query, overrides)
     except Exception:
         pass
     return {"trace_id": trace_id, "status": "queued"}

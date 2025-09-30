@@ -22,6 +22,7 @@ from app.database import init_database, close_database, get_database_health
 # API routes - all the modules students expect
 from app.api import knowledge_base, documents, qa_pairs, chat
 from app.api import agents as agents_module
+from app.api import prompts as prompts_module
 
 # Services - vector store and LLM service initialization
 from app.services.vector_store import init_chromadb, close_chromadb
@@ -121,6 +122,7 @@ app.include_router(knowledge_base.router)
 app.include_router(documents.router)
 app.include_router(qa_pairs.router)
 app.include_router(chat.router)
+app.include_router(prompts_module.router)
 if getattr(agents_module, "agents_router", None):
     app.include_router(agents_module.agents_router)
 else:
