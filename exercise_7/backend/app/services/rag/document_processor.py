@@ -67,14 +67,9 @@ class DocumentProcessor:
             # Generate embeddings for chunks
             chunk_embeddings = await self._generate_embeddings(chunks)
             
-            # Store chunks and embeddings in ChromaDB
-            chunk_ids = []
-            chunk_metadatas = []
-            
+            # Prepare chunks for PostgreSQL storage
+            chunk_data = []
             for i, (chunk, embedding) in enumerate(zip(chunks, chunk_embeddings)):
-                chunk_id = f"{document_id}_chunk_{i}"
-                chunk_ids.append(chunk_id)
-                
                 metadata = {
                     "document_id": document_id,
                     "filename": filename,
@@ -82,14 +77,7 @@ class DocumentProcessor:
                     "chunk_text": chunk[:500],  # Store first 500 chars for preview
                     "chunk_length": len(chunk)
                 }
-                chunk_metadatas.append(metadata)
-            
-            # Add to PostgreSQL + pgvector
-            await self.vector_service.initialize()
-            
-            # Prepare chunks for PostgreSQL storage
-            chunk_data = []
-            for i, (chunk, embedding, metadata) in enumerate(zip(chunks, chunk_embeddings, chunk_metadatas)):
+                
                 chunk_data.append({
                     "content": chunk,
                     "embedding": embedding,
@@ -97,6 +85,9 @@ class DocumentProcessor:
                     "token_count": len(chunk.split()),
                     "chunk_index": i
                 })
+            
+            await self.vector_service.initialize()
+            await self.vector_service.add_document_chunks(document_id, chunk_data)
             
             await self.vector_service.add_document_chunks(document_id, chunk_data)
             
@@ -107,8 +98,7 @@ class DocumentProcessor:
                 "filename": filename,
                 "chunks_count": len(chunks),
                 "total_characters": len(text_content),
-                "processing_status": "completed",
-                "chunk_ids": chunk_ids
+                "status": "completed"
             }
             
         except Exception as e:
@@ -116,7 +106,7 @@ class DocumentProcessor:
             return {
                 "document_id": document_id,
                 "filename": filename,
-                "processing_status": "failed",
+                "status": "failed",
                 "error": str(e)
             }
     
@@ -132,6 +122,8 @@ class DocumentProcessor:
                 return await self._extract_docx_text(file_path)
             elif file_extension == '.txt':
                 return await self._extract_txt_text(file_path)
+            elif file_extension == '.md':
+                return await self._extract_md_text(file_path)
             else:
                 raise ValueError(f"Unsupported file format: {file_extension}")
                 
@@ -245,14 +237,10 @@ class DocumentProcessor:
     async def delete_document(self, document_id: str) -> bool:
         """Delete all chunks for a document from ChromaDB"""
         try:
-            # Get all chunk IDs for this document
-            results = self.collection.get(
-                where={"document_id": document_id}
-            )
-            
-            if results['ids']:
-                self.collection.delete(ids=results['ids'])
-                logger.info(f"Deleted {len(results['ids'])} chunks for document {document_id}")
+            await self.vector_service.initialize()
+            success = await self.vector_service.delete_document_chunks(document_id)
+            if success:
+                logger.info(f"Deleted chunks for document {document_id}")
                 return True
             else:
                 logger.warning(f"No chunks found for document {document_id}")

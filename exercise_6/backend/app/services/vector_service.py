@@ -153,6 +153,7 @@ class PostgreSQLVectorService:
             
             conn = await get_connection()
             try:
+                logger.info(f"search document chunks SQL {sql} and params {params}")
                 rows = await conn.fetch(sql, *params)
                 
                 results = []
