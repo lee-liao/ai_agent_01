@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
   DocumentPlusIcon, 
@@ -25,18 +25,47 @@ export default function KnowledgeBasePage() {
     message: ''
   })
 
+  const [uploadedDocs, setUploadedDocs] = useState<Set<string>>(new Set())
+
   const queryClient = useQueryClient()
 
   // Fetch documents
   const { data: documents, isLoading, error } = useQuery({
     queryKey: ['documents'],
     queryFn: api.getDocuments,
-    refetchInterval: (query) => {
-      const docs = query.state.data?.data || []
-      const hasProcessingDocs = docs.some((doc: any) => doc.status === 'processing')
-      return hasProcessingDocs ? 5000 : false // Poll every 5 seconds if there are processing docs
-    },
+    refetchInterval: 3000, // Always refetch every 3 seconds
   })
+
+  // Effect to check if uploaded documents have completed processing
+  useEffect(() => {
+    if (documents && documents.length > 0) {
+      let allCompleted = true
+      
+      uploadedDocs.forEach(docId => {
+        const doc = documents.find((d: any) => d.id === docId)
+        if (doc && doc.status === 'processing') {
+          allCompleted = false
+        }
+      })
+      
+      // If all uploaded documents are completed, clear the set
+      if (allCompleted && uploadedDocs.size > 0) {
+        // Show a message that processing is complete
+        setUploadStatus(prev => ({
+          ...prev,
+          message: 'Document processing completed!'
+        }))
+        
+        // Clear the uploaded docs tracking and message after delay
+        const timer = setTimeout(() => {
+          setUploadedDocs(new Set())
+          setUploadStatus(prev => ({ ...prev, message: '' }))
+        }, 3000)
+        
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [documents, uploadedDocs])
 
   // Upload mutation
   const uploadMutation = useMutation({
@@ -52,13 +81,13 @@ export default function KnowledgeBasePage() {
       setUploadStatus({
         isUploading: false,
         progress: 100,
-        message: `Successfully uploaded: ${data.filename}`
+        message: `Successfully uploaded: ${data.filename}. Processing document...`
       })
+      
+      // Add the uploaded document ID to the tracking set
+      setUploadedDocs(prev => new Set(prev).add(data.id))
+      
       queryClient.invalidateQueries({ queryKey: ['documents'] })
-      // Clear message after 3 seconds
-      setTimeout(() => {
-        setUploadStatus(prev => ({ ...prev, message: '' }))
-      }, 3000)
     },
     onError: (error: any) => {
       setUploadStatus({
@@ -86,6 +115,12 @@ export default function KnowledgeBasePage() {
   const handleDeleteDocument = (id: string) => {
     if (confirm('Are you sure you want to delete this document?')) {
       deleteMutation.mutate(id)
+      // Remove from uploadedDocs tracking if present
+      setUploadedDocs(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(id)
+        return newSet
+      })
     }
   }
 
