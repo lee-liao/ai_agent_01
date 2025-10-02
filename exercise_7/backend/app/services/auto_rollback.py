@@ -53,7 +53,14 @@ async def get_failure_rate(version_id: int, since: datetime) -> float:
            WHERE prompt_version_id = $1 AND created_at >= $2""",
         version_id, since
     )
-    return result[0][0] if result and result[0] else 0.0
+    # The result is a list of dictionaries, not a list of lists
+    if result and result[0]:
+        # Get the first column's value, which is the calculated rate
+        row = result[0]
+        # The key will be the expression name, which might be '?column?' in PostgreSQL
+        key = list(row.keys())[0] if row.keys() else None
+        return float(row[key]) if key and row[key] is not None else 0.0
+    return 0.0
 
 async def background_rollback_task():
     """Runs the rollback check periodically."""
