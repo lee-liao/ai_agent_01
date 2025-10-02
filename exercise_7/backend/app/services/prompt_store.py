@@ -1,4 +1,5 @@
 import asyncio
+import json
 from typing import Any, Dict, List, Optional, Tuple
 import random
 
@@ -6,7 +7,7 @@ from app.database import execute_raw_command, execute_raw_query, check_table_exi
 
 
 PROMPT_SEED = {
-    "agent/planner": [
+    "agent_planner": [
         {
             "version": 1,
             "template": "System: You are a pragmatic planner. Inputs: {goal} {constraints}",
@@ -66,25 +67,37 @@ async def ensure_schema() -> None:
             );
             """
         )
+    if not await check_table_exists("prompt_call_logs"):
+        await execute_raw_command(
+            """
+            CREATE TABLE IF NOT EXISTS prompt_call_logs (
+              id BIGSERIAL PRIMARY KEY,
+              prompt_version_id BIGINT REFERENCES prompt_versions(id),
+              success BOOLEAN,
+              cost DECIMAL(10, 6),
+              created_at TIMESTAMP DEFAULT now()
+            );
+            """
+        )
 
     # seed minimal planner prompts if not present
     existing = await execute_raw_query(
-        "SELECT COUNT(*) AS c FROM prompt_versions WHERE prompt_id = $1", "agent/planner"
+        "SELECT COUNT(*) AS c FROM prompt_versions WHERE prompt_id = $1", "agent_planner"
     )
     count = (existing[0]["c"] if existing else 0) or 0
     if count == 0:
-        await execute_raw_command("INSERT INTO prompts(id) VALUES($1) ON CONFLICT DO NOTHING", "agent/planner")
-        for row in PROMPT_SEED["agent/planner"]:
+        await execute_raw_command("INSERT INTO prompts(id) VALUES($1) ON CONFLICT DO NOTHING", "agent_planner")
+        for row in PROMPT_SEED["agent_planner"]:
             await execute_raw_command(
                 """
                 INSERT INTO prompt_versions(prompt_id, version, template, metadata, changelog, created_by)
                 VALUES($1,$2,$3,$4::jsonb,$5,$6)
                 ON CONFLICT (prompt_id, version) DO NOTHING
                 """,
-                "agent/planner",
+                "agent_planner",
                 row["version"],
                 row["template"],
-                row["metadata"],
+                json.dumps(row["metadata"]),
                 row["changelog"],
                 row["created_by"],
             )
@@ -96,7 +109,7 @@ async def ensure_schema() -> None:
             ON CONFLICT (env, prompt_id) DO NOTHING
             """,
             "development",
-            "agent/planner",
+            "agent_planner",
             "fixed",
             1,
             None,
@@ -105,6 +118,9 @@ async def ensure_schema() -> None:
 
 
 async def list_versions(prompt_id: str) -> List[Dict[str, Any]]:
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"list_versions called with prompt_id: {prompt_id}")
     await ensure_schema()
     rows = await execute_raw_query(
         """
@@ -132,11 +148,24 @@ async def create_version(prompt_id: str, template: str, metadata: Dict[str, Any]
         prompt_id,
         next_version,
         template,
-        metadata,
+        json.dumps(metadata),
         changelog,
         created_by,
     )
     return {"prompt_id": prompt_id, "version": next_version}
+
+
+async def get_version(prompt_id: str, version: int) -> Optional[Dict[str, Any]]:
+    await ensure_schema()
+    rows = await execute_raw_query(
+        """
+        SELECT version, template, metadata, changelog, created_by, created_at
+        FROM prompt_versions WHERE prompt_id=$1 AND version=$2
+        """,
+        prompt_id,
+        version,
+    )
+    return rows[0] if rows else None
 
 
 async def set_deploy(env: str, prompt_id: str, strategy: str, active_version: int, ab_alt_version: Optional[int], traffic_split: Optional[int]) -> Dict[str, Any]:
@@ -187,13 +216,55 @@ async def resolve_prompt(prompt_uri: str, env: str, user_key: Optional[str] = No
             version = d["active_version"]
 
     row = await execute_raw_query(
-        "SELECT version, template, metadata FROM prompt_versions WHERE prompt_id=$1 AND version=$2",
+        "SELECT id, version, template, metadata FROM prompt_versions WHERE prompt_id=$1 AND version=$2",
         prompt_id,
         version,
     )
     if not row:
         return {"prompt_id": prompt_id, "version": version, "template": "", "metadata": {}}
     r = row[0]
-    return {"prompt_id": prompt_id, "version": r["version"], "template": r["template"], "metadata": r["metadata"]}
+    return {"prompt_id": prompt_id, "version": r["version"], "template": r["template"], "metadata": r["metadata"], "prompt_version_id": r["id"]}
 
 
+async def log_prompt_call(prompt_version_id: int, success: bool, cost: float) -> None:
+    await ensure_schema()
+    await execute_raw_command(
+        """
+        INSERT INTO prompt_call_logs(prompt_version_id, success, cost)
+        VALUES($1, $2, $3)
+        """,
+        prompt_version_id,
+        success,
+        cost,
+    )
+
+
+async def get_version_stats(prompt_id: str) -> List[Dict[str, Any]]:
+    await ensure_schema()
+    rows = await execute_raw_query(
+        """
+        SELECT
+            v.version,
+            v.id AS prompt_version_id,
+            COUNT(l.id) AS total_calls,
+            SUM(CASE WHEN l.success THEN 1 ELSE 0 END) AS successful_calls,
+            AVG(l.cost) AS avg_cost
+        FROM prompt_versions v
+        LEFT JOIN prompt_call_logs l ON v.id = l.prompt_version_id
+        WHERE v.prompt_id = $1
+        GROUP BY v.id, v.version
+        ORDER BY v.version DESC
+        """,
+        prompt_id,
+    )
+    return [
+        {
+            "version": r["version"],
+            "prompt_version_id": r["prompt_version_id"],
+            "total_calls": r["total_calls"],
+            "successful_calls": r["successful_calls"],
+            "success_rate": r["successful_calls"] / r["total_calls"] if r["total_calls"] > 0 else 0,
+            "avg_cost": r["avg_cost"] or 0,
+        }
+        for r in rows
+    ]

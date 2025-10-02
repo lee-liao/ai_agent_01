@@ -71,6 +71,14 @@ async def startup_event():
         # Initialize database
         logger.info("📊 Initializing database connection...")
         await init_database()
+
+        # Ensure prompt store schema is created
+        try:
+            from app.services.prompt_store import ensure_schema
+            await ensure_schema()
+            logger.info("✅ Prompt store schema initialized")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize prompt store schema: {e}")
         
         # Initialize ChromaDB
         logger.info("🔗 Initializing ChromaDB...")
@@ -95,6 +103,13 @@ async def startup_event():
         
         services_initialized = True
         logger.info("✅ All services initialized successfully")
+
+        # Start background services
+        try:
+            from app.services.auto_rollback import start_rollback_service
+            start_rollback_service()
+        except ImportError:
+            logger.warning("Auto-rollback service not found, skipping.")
         
     except Exception as e:
         logger.error(f"❌ Startup failed: {e}")

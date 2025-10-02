@@ -14,7 +14,7 @@ from datetime import datetime
 from app.database import execute_raw_command, execute_raw_query
 from app.services.rag.document_processor import document_processor
 
-router = APIRouter(prefix="/api/v1/documents", tags=["Documents"])
+router = APIRouter(tags=["Documents"])
 logger = logging.getLogger(__name__)
 
 # Define the upload directory relative to the project root
@@ -63,7 +63,7 @@ async def process_document_background(document_id: str, file_path: str, filename
         )
 
 
-@router.get("/")
+@router.get("/api/v1/documents")
 async def list_documents(
     limit: Optional[int] = 100,
     offset: Optional[int] = 0,
@@ -118,7 +118,7 @@ async def list_documents(
         raise HTTPException(status_code=500, detail="Failed to retrieve documents")
 
 
-@router.post("/upload")
+@router.post("/api/v1/documents/upload")
 async def upload_document(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = BackgroundTasks()
@@ -169,7 +169,7 @@ async def upload_document(
             unique_filename,  # Saved filename
             file.filename,    # Original filename
             str(file_path),   # Full path
-            file_size,        # File size
+            file_size,        # File type
             file_extension,   # File type
             file.content_type or "",  # MIME type
             "processing"        # Status
@@ -197,7 +197,7 @@ async def upload_document(
         raise HTTPException(status_code=500, detail="Failed to upload document")
 
 
-@router.delete("/{document_id}")
+@router.delete("/api/v1/documents/{document_id}")
 async def delete_document(document_id: str) -> Dict[str, Any]:
     """Delete a document"""
     try:

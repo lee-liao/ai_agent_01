@@ -11,7 +11,7 @@ import logging
 from app.database import execute_raw_query, execute_raw_command
 from app.services.vector_service import vector_service
 
-router = APIRouter(prefix="/api/v1/qa-pairs", tags=["Q&A Pairs"])
+router = APIRouter(tags=["Q&A Pairs"])
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +45,7 @@ async def add_embeddings_background(qa_id: str, question: str, answer: str):
         # Don't raise exception as this is a background task
 
 
-@router.get("/")
+@router.get("/api/v1/qa-pairs")
 async def list_qa_pairs(
     limit: Optional[int] = 100,
     offset: Optional[int] = 0
@@ -85,7 +85,7 @@ async def list_qa_pairs(
         raise HTTPException(status_code=500, detail="Failed to retrieve Q&A pairs")
 
 
-@router.post("/")
+@router.post("/api/v1/qa-pairs")
 async def create_qa_pair(
     qa_data: Dict[str, Any],
     background_tasks: BackgroundTasks
@@ -132,7 +132,7 @@ async def create_qa_pair(
         raise HTTPException(status_code=500, detail="Failed to create Q&A pair")
 
 
-@router.put("/{qa_id}")
+@router.put("/api/v1/qa-pairs/{qa_id}")
 async def update_qa_pair(
     qa_id: str,
     qa_data: Dict[str, Any],
@@ -196,7 +196,7 @@ async def update_qa_pair(
         raise HTTPException(status_code=500, detail="Failed to update Q&A pair")
 
 
-@router.delete("/{qa_id}")
+@router.delete("/api/v1/qa-pairs/{qa_id}")
 async def delete_qa_pair(qa_id: str) -> Dict[str, Any]:
     """Delete a Q&A pair"""
     try:

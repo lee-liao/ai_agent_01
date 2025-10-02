@@ -10,9 +10,9 @@ import uuid
 
 from app.services.rag.rag_service import rag_service
 
-router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
+router = APIRouter(tags=["Chat"])
 
-@router.post("/")
+@router.post("/api/v1/chat")
 async def send_message(chat_data: Dict[str, Any]) -> Dict[str, Any]:
     """Send a message and get AI response"""
     message = chat_data.get("message", "")
@@ -55,7 +55,7 @@ async def send_message(chat_data: Dict[str, Any]) -> Dict[str, Any]:
         }
     }
 
-@router.get("/history/{session_id}")
+@router.get("/api/v1/chat/history/{session_id}")
 async def get_chat_history(
     session_id: str,
     limit: Optional[int] = 50,
@@ -72,7 +72,7 @@ async def get_chat_history(
         "offset": offset
     }
 
-@router.get("/sessions")
+@router.get("/api/v1/chat/sessions")
 async def list_chat_sessions(
     limit: Optional[int] = 20,
     offset: Optional[int] = 0
@@ -88,7 +88,7 @@ async def list_chat_sessions(
         "offset": offset
     }
 
-@router.delete("/sessions/{session_id}")
+@router.delete("/api/v1/chat/sessions/{session_id}")
 async def delete_chat_session(session_id: str) -> Dict[str, Any]:
     """Delete a chat session and all its messages"""
     # For now, return success as we're not storing sessions in database
@@ -98,7 +98,7 @@ async def delete_chat_session(session_id: str) -> Dict[str, Any]:
         "message": f"Session {session_id} deleted successfully"
     }
 
-@router.post("/feedback")
+@router.post("/api/v1/chat/feedback")
 async def submit_chat_feedback(feedback_data: Dict[str, Any]) -> Dict[str, Any]:
     """Submit feedback for a chat response"""
     message_id = feedback_data.get("message_id")

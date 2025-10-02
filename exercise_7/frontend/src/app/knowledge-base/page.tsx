@@ -31,6 +31,11 @@ export default function KnowledgeBasePage() {
   const { data: documents, isLoading, error } = useQuery({
     queryKey: ['documents'],
     queryFn: api.getDocuments,
+    refetchInterval: (query) => {
+      const docs = query.state.data?.data || []
+      const hasProcessingDocs = docs.some((doc: any) => doc.status === 'processing')
+      return hasProcessingDocs ? 5000 : false // Poll every 5 seconds if there are processing docs
+    },
   })
 
   // Upload mutation
