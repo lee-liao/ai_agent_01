@@ -139,7 +139,7 @@ export default function PromptsPage() {
   async function createVersion() {
     setLoading(true)
     try {
-      await api.createPromptVersion(promptId, { template, changelog, created_by: 'instructor' })
+      await api.createPromptVersion(promptId, { template, changelog, metadata: { created_by: 'instructor' } })
       setTemplate('')
       setChangelog('')
       await refresh()
@@ -179,7 +179,7 @@ export default function PromptsPage() {
         await api.createPromptVersion(promptId, { 
           template: editTemplate, 
           changelog: editChangelog, 
-          created_by: 'instructor' 
+          metadata: { created_by: 'instructor' }
         })
       } else if (editMode === 'edit' && editingVersion) {
         await api.updatePromptVersion(promptId, editingVersion.version, {
@@ -444,12 +444,21 @@ export default function PromptsPage() {
   async function compareVersions() {
     if (selectedVersions.length !== 2) return
     const [v1, v2] = selectedVersions.sort((a, b) => a - b)
-    const diffResult = await api.getPromptDiff(promptId, v1, v2)
+    
+    // Find versions in existing data instead of making separate API calls
+    const version1 = versions.find(v => v.version === v1)
+    const version2 = versions.find(v => v.version === v2)
+    
+    if (!version1 || !version2) {
+      console.error('Could not find selected versions')
+      return
+    }
+    
     const patch = `--- a/v${v1}.txt
 +++ b/v${v2}.txt
 @@ -1,1 +1,1 @@
-- ${diffResult.v1.template || ''}
-+ ${diffResult.v2.template || ''}`
+- ${version1.template || ''}
++ ${version2.template || ''}`
     const files = parseDiff(patch)
     setDiff(files)
     setDiffInfo({v1, v2})
