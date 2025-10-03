@@ -107,6 +107,16 @@ async def delete_prompt_version(prompt_id: str, version: int):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/{prompt_id}/current-deployment")
+async def get_current_deployment_endpoint(prompt_id: str, env: str = "development"):
+    """Get current deployment information for a prompt"""
+    from app.services.prompt_store import get_current_deployment
+    deployment = await get_current_deployment(env, prompt_id)
+    if not deployment:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+    return deployment
+
+
 # General routes last
 @router.get("/{prompt_id}")
 async def get_prompt_endpoint(prompt_id: str):

@@ -27,6 +27,8 @@ export default function PromptsPage() {
   const [editTemplate, setEditTemplate] = useState('')
   const [editChangelog, setEditChangelog] = useState('')
   const [editMode, setEditMode] = useState<'create' | 'edit' | null>(null)
+  // State for current deployment information
+  const [currentDeployment, setCurrentDeployment] = useState<any>(null)
 
   useEffect(() => {
     if (strategy === 'fixed') {
@@ -62,6 +64,19 @@ export default function PromptsPage() {
     } catch (e) {
       // Prompt not found, set empty variables
       setVariablesJson(JSON.stringify([], null, 2))
+    }
+    
+    // Get current deployment
+    try {
+      const deployment = await api.getCurrentDeployment(promptId, 'development')
+      setCurrentDeployment(deployment)
+      setStrategy(deployment.strategy as 'fixed' | 'ab')
+      setActiveVersion(deployment.active_version)
+      setAbAltVersion(deployment.ab_alt_version || undefined)
+      setTrafficSplit(deployment.traffic_split || 0)
+    } catch (e) {
+      // No deployment found
+      setCurrentDeployment(null)
     }
   }
 
@@ -209,6 +224,8 @@ export default function PromptsPage() {
       }
       await api.deployPrompt(promptId, data)
       alert('Deploy updated')
+      // Refresh deployment information
+      await refresh()
     } finally {
       setLoading(false)
     }
@@ -287,7 +304,7 @@ export default function PromptsPage() {
               ))}
             </select>
           </label>
-          <button onClick={refresh} className="px-3 py-2 bg-black text-white rounded">Refresh</button>
+          <button onClick={refresh} className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Refresh</button>
         </div>
 
         {/* Variables Editor */}
@@ -295,15 +312,12 @@ export default function PromptsPage() {
           <label className="flex-1">
             <span className="text-sm text-black">Prompt Variables</span>
             <div className="relative">
-              <pre className="bg-gray-100 p-4 rounded overflow-auto text-sm text-gray-800 max-h-32 overflow-y-auto min-h-[128px] whitespace-pre-wrap break-words">
+              <pre 
+                onClick={() => setEditingVariables(true)}
+                className="bg-blue-50 p-4 rounded overflow-auto text-sm text-gray-800 max-h-32 overflow-y-auto min-h-[128px] whitespace-pre-wrap break-words cursor-pointer hover:bg-blue-100 border border-blue-200"
+              >
                 {variablesJson}
               </pre>
-              <button 
-                onClick={() => setEditingVariables(true)}
-                className="absolute top-2 right-2 px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600 z-10"
-              >
-                Edit
-              </button>
             </div>
           </label>
         </div>
@@ -316,14 +330,14 @@ export default function PromptsPage() {
             <div className="flex gap-2">
               <button 
                 onClick={openCreateModal}
-                className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
               >
                 New
               </button>
               <button 
                 onClick={compareVersions} 
                 disabled={selectedVersions.length !== 2} 
-                className="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+                className="px-3 py-1 bg-blue-500 text-white rounded disabled:opacity-50 hover:bg-blue-600"
               >
                 Compare ({selectedVersions.length}/2)
               </button>
@@ -376,7 +390,7 @@ export default function PromptsPage() {
                         </button>
                         <button 
                           onClick={() => deleteVersion(v.version)}
-                          className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600"
+                          className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
                         >
                           Delete
                         </button>
@@ -403,13 +417,13 @@ export default function PromptsPage() {
             <div className="flex justify-end gap-2 mt-4">
               <button 
                 onClick={() => setEditingVariables(false)}
-                className="px-4 py-2 bg-gray-300 text-black rounded"
+                className="px-4 py-2 bg-gray-300 text-black rounded hover:bg-gray-400"
               >
                 Cancel
               </button>
               <button 
                 onClick={updateVariables}
-                className="px-4 py-2 bg-black text-white rounded"
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
               >
                 Save
               </button>
@@ -423,7 +437,7 @@ export default function PromptsPage() {
           <div className="bg-white p-4 rounded-lg shadow-xl w-full max-w-2xl border border-gray-300">
             <h2 className="text-xl font-bold mb-2 text-gray-800">Prompt Template</h2>
             <pre className="bg-gray-100 p-4 rounded overflow-auto text-sm text-gray-800 border border-gray-200">{viewTemplate}</pre>
-            <button onClick={() => setViewTemplate(null)} className="mt-4 px-4 py-2 bg-black text-white rounded self-end">Close</button>
+            <button onClick={() => setViewTemplate(null)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded self-end hover:bg-blue-600">Close</button>
           </div>
         </div>
       )}
@@ -435,7 +449,7 @@ export default function PromptsPage() {
             <div className="flex-grow overflow-auto">
               {diff.map(renderFile)}
             </div>
-            <button onClick={() => setDiff(null)} className="mt-4 px-4 py-2 bg-black text-white rounded self-end">Close</button>
+            <button onClick={() => setDiff(null)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded self-end hover:bg-blue-600">Close</button>
           </div>
         </div>
       )}
@@ -469,14 +483,14 @@ export default function PromptsPage() {
                   setEditMode(null)
                   setEditingVersion(null)
                 }}
-                className="px-4 py-2 bg-gray-300 text-black rounded"
+                className="px-4 py-2 bg-gray-300 text-black rounded hover:bg-gray-400"
               >
                 Cancel
               </button>
               <button 
                 disabled={loading || !editTemplate}
                 onClick={saveVersion}
-                className="px-4 py-2 bg-black text-white rounded disabled:opacity-50"
+                className="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50 hover:bg-blue-600"
               >
                 {loading ? 'Saving...' : 'Save Version'}
               </button>
@@ -486,7 +500,39 @@ export default function PromptsPage() {
       ) : null}
 
       <div className="p-4 border border-black rounded bg-white space-y-3">
-        <h2 className="font-medium text-black">Deploy</h2>
+        <h2 className="font-medium text-black">Deployment</h2>
+        {currentDeployment && (
+          <div className="bg-blue-50 p-3 rounded border border-blue-200">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-sm">
+              <div>
+                <span className="text-gray-600">Strategy:</span>
+                <span className="ml-2 font-medium">{currentDeployment.strategy}</span>
+              </div>
+              <div>
+                <span className="text-gray-600">Active Version:</span>
+                <span className="ml-2 font-medium">{currentDeployment.active_version}</span>
+              </div>
+              {currentDeployment.strategy === 'ab' && (
+                <>
+                  <div>
+                    <span className="text-gray-600">Alt Version:</span>
+                    <span className="ml-2 font-medium">{currentDeployment.ab_alt_version}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Traffic Split:</span>
+                    <span className="ml-2 font-medium">{currentDeployment.traffic_split}%</span>
+                  </div>
+                </>
+              )}
+              <div>
+                <span className="text-gray-600">Last Updated:</span>
+                <span className="ml-2 font-medium">
+                  {new Date(currentDeployment.updated_at).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <label className="block">
             <span className="text-sm text-black">Strategy</span>
@@ -512,7 +558,7 @@ export default function PromptsPage() {
             </>
           )}
         </div>
-        <button disabled={loading} onClick={deploy} className="px-4 py-2 bg-black text-white rounded disabled:opacity-50">Update Deploy</button>
+        <button disabled={loading} onClick={deploy} className="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50 hover:bg-blue-600">Update Deploy</button>
       </div>
     </div>
   )

@@ -429,3 +429,18 @@ async def update_version(prompt_id: str, version: int, template: str, changelog:
     )
     
     return {"status": "success", "message": f"Version {version} of prompt '{prompt_id}' updated successfully"}
+
+
+async def get_current_deployment(env: str, prompt_id: str) -> Optional[Dict[str, Any]]:
+    """Get the current deployment information for a prompt"""
+    await ensure_schema()
+    rows = await execute_raw_query(
+        """
+        SELECT strategy, active_version, ab_alt_version, traffic_split, updated_at
+        FROM prompt_deploys 
+        WHERE env=$1 AND prompt_id=$2
+        """,
+        env,
+        prompt_id,
+    )
+    return rows[0] if rows else None
