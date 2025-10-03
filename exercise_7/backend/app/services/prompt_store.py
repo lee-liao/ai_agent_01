@@ -304,6 +304,63 @@ async def get_version_stats(prompt_id: str) -> List[Dict[str, Any]]:
     ]
 
 
+async def get_version_stats_limited(prompt_id: str) -> List[Dict[str, Any]]:
+    """Get version stats based on the latest 10 calls for each version"""
+    await ensure_schema()
+    rows = await execute_raw_query(
+        """
+        SELECT
+            v.version,
+            v.id AS prompt_version_id,
+            (
+                SELECT COUNT(*) 
+                FROM (
+                    SELECT id 
+                    FROM prompt_call_logs 
+                    WHERE prompt_version_id = v.id 
+                    ORDER BY created_at DESC 
+                    LIMIT 10
+                ) AS latest_calls
+            ) AS total_calls,
+            (
+                SELECT COUNT(*) 
+                FROM (
+                    SELECT id 
+                    FROM prompt_call_logs 
+                    WHERE prompt_version_id = v.id AND success = true
+                    ORDER BY created_at DESC 
+                    LIMIT 10
+                ) AS latest_success_calls
+            ) AS successful_calls,
+            (
+                SELECT AVG(cost) 
+                FROM (
+                    SELECT cost 
+                    FROM prompt_call_logs 
+                    WHERE prompt_version_id = v.id 
+                    ORDER BY created_at DESC 
+                    LIMIT 10
+                ) AS latest_costs
+            ) AS avg_cost
+        FROM prompt_versions v
+        WHERE v.prompt_id = $1
+        ORDER BY v.version DESC
+        """,
+        prompt_id,
+    )
+    return [
+        {
+            "version": r["version"],
+            "prompt_version_id": r["prompt_version_id"],
+            "total_calls": r["total_calls"],
+            "successful_calls": r["successful_calls"],
+            "success_rate": r["successful_calls"] / r["total_calls"] if r["total_calls"] > 0 else 0,
+            "avg_cost": r["avg_cost"] or 0,
+        }
+        for r in rows
+    ]
+
+
 async def list_prompts() -> List[Dict[str, Any]]:
     """Get all available prompts with their variables"""
     await ensure_schema()

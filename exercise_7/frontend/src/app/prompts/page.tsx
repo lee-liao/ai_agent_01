@@ -6,8 +6,8 @@ import { parseDiff, Diff, Hunk } from 'react-diff-view'
 import 'react-diff-view/style/index.css'
 
 export default function PromptsPage() {
-  const [prompts, setPrompts] = useState<{id: string, variables: any}[]>([])
   const [promptId, setPromptId] = useState('agent_planner')
+  const [prompts, setPrompts] = useState<{id: string, variables: any}[]>([])
   const [versions, setVersions] = useState<PromptVersion[]>([])
   const [template, setTemplate] = useState('')
   const [changelog, setChangelog] = useState('')
@@ -22,6 +22,7 @@ export default function PromptsPage() {
   const [viewTemplate, setViewTemplate] = useState<string | null>(null)
   const [editingVariables, setEditingVariables] = useState(false)
   const [variablesJson, setVariablesJson] = useState('')
+
   // State variables for prompt template editing
   const [editingVersion, setEditingVersion] = useState<PromptVersion | null>(null)
   const [editTemplate, setEditTemplate] = useState('')
@@ -29,6 +30,14 @@ export default function PromptsPage() {
   const [editMode, setEditMode] = useState<'create' | 'edit' | null>(null)
   // State for current deployment information
   const [currentDeployment, setCurrentDeployment] = useState<any>(null)
+  // State for test prompts tab
+  const [activeTab, setActiveTab] = useState<'versions' | 'deploy' | 'test'>('versions')
+  const [promptVariables, setPromptVariables] = useState<any[]>([])
+  const [variableInputs, setVariableInputs] = useState<Record<string, string>>({})
+  const [callCount, setCallCount] = useState(0)
+  const [responses, setResponses] = useState<any[]>([])
+  const [testLoading, setTestLoading] = useState(false)
+  const [warning, setWarning] = useState<string | null>(null)
 
   useEffect(() => {
     if (strategy === 'fixed') {
@@ -38,32 +47,78 @@ export default function PromptsPage() {
   }, [strategy])
 
   useEffect(() => {
-    refreshPrompts().catch(() => {})
-  }, [])
+    refreshPrompts().then(() => {
+      refresh().catch(() => {})
+    }).catch(() => {})
+  }, []);
+
+  useEffect(() => {
+    refresh().catch(error => {
+      console.error('Failed to refresh data for prompt:', promptId, error);
+    });
+  }, [promptId]);
 
   async function refreshPrompts() {
     const res = await api.listPrompts()
     setPrompts(res.prompts || [])
     
-    // Set default variables JSON if prompt exists
+    // Only set default variables JSON if prompt exists and variablesJson is empty
     const currentPrompt = res.prompts?.find((p: any) => p.id === promptId)
-    if (currentPrompt) {
+    if (currentPrompt && !variablesJson) {
       setVariablesJson(JSON.stringify(currentPrompt.variables ?? [], null, 2))
     }
   }
 
   async function refresh() {
     if (!promptId) return
-    const res = await api.listPromptVersions(promptId)
-    setVersions(res.versions || [])
+    
+    // Get prompt versions
+    let versionsData = []
+    try {
+      const res = await api.listPromptVersions(promptId)
+      versionsData = res.versions || []
+      setVersions(versionsData)
+    } catch (e) {
+      console.error('Error getting prompt versions:', e);
+      setVersions([])
+    }
+    
+    // Get prompt stats
+    try {
+      const statsRes = await api.getPromptStats(promptId)
+      const statsMap = {}
+      if (statsRes.stats) {
+        statsRes.stats.forEach(stat => {
+          statsMap[stat.version] = stat
+        })
+      }
+      
+      // Merge stats with versions
+      const versionsWithStats = versionsData.map(version => ({
+        ...version,
+        stats: statsMap[version.version] || null
+      }))
+      
+      setVersions(versionsWithStats)
+    } catch (e) {
+      console.error('Error getting prompt stats:', e);
+    }
     
     // Get prompt variables
     try {
       const promptRes = await api.getPrompt(promptId)
       setVariablesJson(JSON.stringify(promptRes.variables ?? [], null, 2))
+      setPromptVariables(promptRes.variables ?? [])
+      // Initialize variable inputs with empty values
+      const initialInputs: Record<string, string> = {};
+      (promptRes.variables ?? []).forEach((variable: any) => {
+        initialInputs[variable.name] = ''
+      })
+      setVariableInputs(initialInputs)
     } catch (e) {
-      // Prompt not found, set empty variables
-      setVariablesJson(JSON.stringify([], null, 2))
+      console.error('Error getting prompt variables:', e);
+      // Only set to empty array if it's a 404 error
+      // For other errors, keep the previous value
     }
     
     // Get current deployment
@@ -75,14 +130,11 @@ export default function PromptsPage() {
       setAbAltVersion(deployment.ab_alt_version || undefined)
       setTrafficSplit(deployment.traffic_split || 0)
     } catch (e) {
+      console.error('Error getting deployment:', e);
       // No deployment found
       setCurrentDeployment(null)
     }
   }
-
-  useEffect(() => {
-    refresh().catch(() => {})
-  }, [promptId])
 
   async function createVersion() {
     setLoading(true)
@@ -99,7 +151,6 @@ export default function PromptsPage() {
 
   // Function to open the edit modal for creating a new version
   function openCreateModal() {
-    console.log('openCreateModal called');
     setEditMode('create')
     setEditingVersion(null)
     setEditTemplate('')
@@ -108,7 +159,6 @@ export default function PromptsPage() {
 
   // Function to open the edit modal for editing an existing version
   function openEditModal(version: PromptVersion) {
-    console.log('openEditModal called with version:', version);
     setEditMode('edit')
     setEditingVersion(version)
     setEditTemplate(version.template)
@@ -117,7 +167,6 @@ export default function PromptsPage() {
 
   // Function to save the edited or new version
   async function saveVersion() {
-    console.log('Save function called with state:', { editMode, editingVersion, editTemplate, editChangelog });
     
     if (!editTemplate) {
       alert('Template is required')
@@ -127,32 +176,17 @@ export default function PromptsPage() {
     setLoading(true)
     try {
       if (editMode === 'create') {
-        console.log('Creating new version with data:', { 
-          promptId, 
-          template: editTemplate, 
-          changelog: editChangelog,
-          created_by: 'instructor' 
-        });
-        
         await api.createPromptVersion(promptId, { 
           template: editTemplate, 
           changelog: editChangelog, 
           created_by: 'instructor' 
         })
       } else if (editMode === 'edit' && editingVersion) {
-        console.log('Updating existing version with data:', { 
-          promptId, 
-          version: editingVersion.version,
-          template: editTemplate,
-          changelog: editChangelog
-        });
-        
         await api.updatePromptVersion(promptId, editingVersion.version, {
           template: editTemplate,
           changelog: editChangelog
         })
       } else {
-        console.log('Unexpected state - neither creating nor editing');
         alert('Unexpected state - neither creating nor editing')
         return
       }
@@ -228,6 +262,149 @@ export default function PromptsPage() {
       await refresh()
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Function to handle prompt testing
+  async function handleTestSubmit() {
+    // Validate required variables
+    const missingRequired = promptVariables.filter(
+      variable => variable.required && (!variableInputs[variable.name] || variableInputs[variable.name].trim() === '')
+    );
+    
+    if (missingRequired.length > 0) {
+      alert(`Please fill in the required variables: ${missingRequired.map(v => v.name).join(', ')}`);
+      return;
+    }
+
+    setTestLoading(true);
+    
+    try {
+      // Get current deployment
+      const deployment = await api.getCurrentDeployment(promptId, 'development');
+      
+      // For A/B testing, we need to call both versions
+      let versionsToTest = [];
+      
+      if (deployment.strategy === 'ab') {
+        versionsToTest = [deployment.active_version, deployment.ab_alt_version];
+      } else {
+        versionsToTest = [deployment.active_version];
+      }
+      
+      // Get versions details
+      const versionsRes = await api.listPromptVersions(promptId);
+      const versionDetails = versionsRes.versions;
+      
+      // Track responses
+      const newResponses = [];
+      
+      // Process each version
+      for (const versionNum of versionsToTest) {
+        const version = versionDetails.find(v => v.version === versionNum);
+        if (!version) continue;
+        
+        // Parse template to extract system and inputs parts
+        const template = version.template;
+        const systemMatch = template.match(/System:\s*(.+?)(?=\s*Inputs:|$)/i);
+        const inputsMatch = template.match(/Inputs:\s*(.+)/i);
+        
+        const systemPrompt = systemMatch ? systemMatch[1].trim() : '';
+        let userPrompt = inputsMatch ? inputsMatch[1].trim() : '';
+        
+        // Replace variables in user prompt
+        Object.entries(variableInputs).forEach(([key, value]) => {
+          userPrompt = userPrompt.replace(new RegExp(`{${key}}`, 'g'), value);
+        });
+        
+        // Actually call the LLM endpoint
+        try {
+          const response = await api.executePrompt({
+            prompt_id: promptId,
+            env: 'development',
+            variables: variableInputs,
+            version: versionNum  // Specify the version to test
+          });
+          
+          newResponses.push({
+            callId: callCount + newResponses.length + 1,
+            version: versionNum,
+            content: response.response,
+            cost: response.cost
+          });
+        } catch (error) {
+          console.error('Error calling LLM:', error);
+          // Fallback to simulated response in case of error
+          const simulatedResponse = {
+            role: 'assistant',
+            content: `This is a simulated response for version ${versionNum} with system prompt: "${systemPrompt}" and user input: "${userPrompt}". In a real implementation, this would be the actual LLM response.`
+          };
+          
+          const simulatedCost = Math.random() * 0.0001;
+          
+          newResponses.push({
+            callId: callCount + newResponses.length + 1,
+            version: versionNum,
+            content: simulatedResponse.content,
+            cost: simulatedCost
+          });
+        }
+        
+        // Commented out the previous simulation code
+        // // For now, we'll simulate the LLM call since there's no direct endpoint
+        // // In a real implementation, this would call an LLM API endpoint
+        // const simulatedResponse = {
+        //   role: 'assistant',
+        //   content: `This is a simulated response for version ${versionNum} with system prompt: "${systemPrompt}" and user input: "${userPrompt}". In a real implementation, this would be the actual LLM response.`
+        // };
+        // 
+        // // Simulate cost (in a real implementation, this would come from the LLM API)
+        // const simulatedCost = Math.random() * 0.0001;
+        // 
+        // // Log the call
+        // // Note: We would need an endpoint to actually call the LLM and log the results
+        // // For now, we'll just simulate this process
+        // 
+        // newResponses.push({
+        //   callId: callCount + newResponses.length + 1,
+        //   version: versionNum,
+        //   content: simulatedResponse.content,
+        //   cost: simulatedCost
+        // });
+        // 
+        // // Log to database (in a real implementation)
+        // // await api.logPromptCall({
+        // //   prompt_version_id: version.id,
+        // //   success: true,
+        // //   cost: simulatedCost
+        // // });
+      }
+      
+      // Update state
+      setResponses(prev => [...newResponses, ...prev]);
+      setCallCount(prev => prev + newResponses.length);
+      
+      // Check for pricing warning in A/B testing
+      if (deployment.strategy === 'ab' && versionDetails.length >= 2) {
+        const activeVersionDetail = versionDetails.find(v => v.version === deployment.active_version);
+        const altVersionDetail = versionDetails.find(v => v.version === deployment.ab_alt_version);
+        
+        if (activeVersionDetail?.stats && altVersionDetail?.stats) {
+          const activeCost = activeVersionDetail.stats.avg_cost;
+          const altCost = altVersionDetail.stats.avg_cost;
+          
+          if (altCost > activeCost * 1.05) {
+            setWarning('The deployed prompt version will be rolled back to strategy \'fix\'');
+          } else {
+            setWarning(null);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error testing prompt:', error);
+      alert('Error testing prompt. Check console for details.');
+    } finally {
+      setTestLoading(false);
     }
   }
 
@@ -323,86 +500,287 @@ export default function PromptsPage() {
         </div>
       </div>
 
-      <div className="p-4 border border-black rounded bg-white space-y-3">
-        <div>
-          <div className="flex justify-between items-center mb-2">
-            <h2 className="font-medium text-black">Versions</h2>
-            <div className="flex gap-2">
-              <button 
-                onClick={openCreateModal}
-                className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-              >
-                New
-              </button>
-              <button 
-                onClick={compareVersions} 
-                disabled={selectedVersions.length !== 2} 
-                className="px-3 py-1 bg-blue-500 text-white rounded disabled:opacity-50 hover:bg-blue-600"
-              >
-                Compare ({selectedVersions.length}/2)
-              </button>
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'versions'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+            onClick={() => setActiveTab('versions')}
+          >
+            Versions
+          </button>
+          <button
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'deploy'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+            onClick={() => setActiveTab('deploy')}
+          >
+            Deployment
+          </button>
+          <button
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'test'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+            onClick={() => setActiveTab('test')}
+          >
+            Test Prompts
+          </button>
+        </nav>
+      </div>
+
+      {/* Versions Tab */}
+      {activeTab === 'versions' && (
+        <div className="p-4 border border-black rounded bg-white space-y-3">
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <h2 className="font-medium text-black">Versions</h2>
+              <div className="flex gap-2">
+                <button 
+                  onClick={openCreateModal}
+                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                >
+                  New
+                </button>
+                <button 
+                  onClick={compareVersions} 
+                  disabled={selectedVersions.length !== 2} 
+                  className="px-3 py-1 bg-blue-500 text-white rounded disabled:opacity-50 hover:bg-blue-600"
+                >
+                  Compare ({selectedVersions.length}/2)
+                </button>
+              </div>
+            </div>
+            <div className="max-h-72 overflow-auto border border-black rounded">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-white border-b border-black">
+                  <tr>
+                    <th className="p-2 text-black"></th>
+                    <th className="p-2 text-black">Version</th>
+                    <th className="p-2 text-black">Success Rate</th>
+                    <th className="p-2 text-black">Avg Cost</th>
+                    <th className="p-2 text-black">Template</th>
+                    <th className="p-2 text-black">Created</th>
+                    <th className="p-2 text-black">Changelog</th>
+                    <th className="p-2 text-black">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {versions.map(v => (
+                    <tr key={v.version} className="border-t border-black">
+                      <td className="p-2 text-black">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedVersions.includes(v.version)} 
+                          onChange={() => handleVersionSelect(v.version)} 
+                        />
+                      </td>
+                      <td className="p-2 text-black">{v.version}</td>
+                      <td className="p-2 text-black">{v.stats ? `${(v.stats.success_rate * 100).toFixed(1)}%` : 'N/A'}</td>
+                      <td className="p-2 text-black">{v.stats ? `${v.stats.avg_cost.toFixed(6)}` : 'N/A'}</td>
+                      <td className="p-2 text-black">
+                        <button 
+                          onClick={() => setViewTemplate(v.template)} 
+                          className="text-blue-600 hover:underline"
+                        >
+                          View
+                        </button>
+                      </td>
+                      <td className="p-2 text-black">{v.created_at}</td>
+                      <td className="p-2 text-black">{v.changelog}</td>
+                      <td className="p-2 text-black">
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => openEditModal(v)}
+                            className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
+                          >
+                            Edit
+                          </button>
+                          <button 
+                            onClick={() => deleteVersion(v.version)}
+                            className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
-          <div className="max-h-72 overflow-auto border border-black rounded">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-white border-b border-black">
-                <tr>
-                  <th className="p-2 text-black"></th>
-                  <th className="p-2 text-black">Version</th>
-                  <th className="p-2 text-black">Success Rate</th>
-                  <th className="p-2 text-black">Avg Cost</th>
-                  <th className="p-2 text-black">Template</th>
-                  <th className="p-2 text-black">Created</th>
-                  <th className="p-2 text-black">Changelog</th>
-                  <th className="p-2 text-black">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {versions.map(v => (
-                  <tr key={v.version} className="border-t border-black">
-                    <td className="p-2 text-black">
-                      <input 
-                        type="checkbox" 
-                        checked={selectedVersions.includes(v.version)} 
-                        onChange={() => handleVersionSelect(v.version)} 
-                      />
-                    </td>
-                    <td className="p-2 text-black">{v.version}</td>
-                    <td className="p-2 text-black">{v.stats ? `${(v.stats.success_rate * 100).toFixed(1)}%` : 'N/A'}</td>
-                    <td className="p-2 text-black">{v.stats ? `${v.stats.avg_cost.toFixed(6)}` : 'N/A'}</td>
-                    <td className="p-2 text-black">
-                      <button 
-                        onClick={() => setViewTemplate(v.template)} 
-                        className="text-blue-600 hover:underline"
-                      >
-                        View
-                      </button>
-                    </td>
-                    <td className="p-2 text-black">{v.created_at}</td>
-                    <td className="p-2 text-black">{v.changelog}</td>
-                    <td className="p-2 text-black">
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => openEditModal(v)}
-                          className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
-                        >
-                          Edit
-                        </button>
-                        <button 
-                          onClick={() => deleteVersion(v.version)}
-                          className="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
-      </div>
+      )}
+
+      {/* Deployment Tab */}
+      {activeTab === 'deploy' && (
+        <div className="p-4 border border-black rounded bg-white space-y-3">
+          <h2 className="font-medium text-black">Deployment</h2>
+          {currentDeployment && (
+            <div className="bg-blue-50 p-3 rounded border border-blue-200">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-sm">
+                <div>
+                  <span className="text-gray-600">Strategy:</span>
+                  <span className="ml-2 font-medium">{currentDeployment.strategy}</span>
+                </div>
+                <div>
+                  <span className="text-gray-600">Active Version:</span>
+                  <span className="ml-2 font-medium">{currentDeployment.active_version}</span>
+                </div>
+                {currentDeployment.strategy === 'ab' && (
+                  <>
+                    <div>
+                      <span className="text-gray-600">Alt Version:</span>
+                      <span className="ml-2 font-medium">{currentDeployment.ab_alt_version}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Traffic Split:</span>
+                      <span className="ml-2 font-medium">{currentDeployment.traffic_split}%</span>
+                    </div>
+                  </>
+                )}
+                <div>
+                  <span className="text-gray-600">Last Updated:</span>
+                  <span className="ml-2 font-medium">
+                    {new Date(currentDeployment.updated_at).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <label className="block">
+              <span className="text-sm text-black">Strategy</span>
+              <select className="w-full border border-black rounded p-2 text-black" value={strategy} onChange={e => setStrategy(e.target.value as any)}>
+                <option value="fixed">fixed</option>
+                <option value="ab">ab</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-sm text-black">Active Version</span>
+              <input type="number" className="w-full border border-black rounded p-2 text-black" value={activeVersion ?? ''} onChange={e => setActiveVersion(e.target.value ? parseInt(e.target.value) : undefined)} />
+            </label>
+            {strategy === 'ab' && (
+              <>
+                <label className="block">
+                  <span className="text-sm text-black">Alt Version</span>
+                  <input type="number" className="w-full border border-black rounded p-2 text-black" value={abAltVersion ?? ''} onChange={e => setAbAltVersion(e.target.value ? parseInt(e.target.value) : undefined)} />
+                </label>
+                <label className="block">
+                  <span className="text-sm text-black">Traffic %</span>
+                  <input type="number" className="w-full border border-black rounded p-2 text-black" value={trafficSplit} onChange={e => setTrafficSplit(parseInt(e.target.value || '0'))} />
+                </label>
+              </>
+            )}
+          </div>
+          <button disabled={loading} onClick={deploy} className="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50 hover:bg-blue-600">Update Deploy</button>
+        </div>
+      )}
+
+      {/* Test Prompts Tab */}
+      {activeTab === 'test' && (
+        <div className="p-4 border border-black rounded bg-white space-y-6">
+          <h2 className="font-medium text-black">Test Prompts</h2>
+          
+          {warning && (
+            <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded relative" role="alert">
+              <strong className="font-bold">Warning: </strong>
+              <span className="block sm:inline">{warning}</span>
+            </div>
+          )}
+          
+          {/* Variable Inputs */}
+          <div className="space-y-4">
+            <h3 className="font-medium text-black">Prompt Variables</h3>
+            {promptVariables.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {promptVariables.map((variable) => (
+                  <div key={variable.name} className="space-y-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      {variable.name} {variable.required && <span className="text-red-500">*</span>}
+                      <span className="block text-xs font-normal text-gray-500">{variable.description}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={variableInputs[variable.name] || ''}
+                      onChange={(e) => setVariableInputs(prev => ({
+                        ...prev,
+                        [variable.name]: e.target.value
+                      }))}
+                      className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm ${
+                        variable.required ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder={variable.description}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">No variables defined for this prompt.</p>
+            )}
+          </div>
+          
+          {/* Submit Section */}
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-sm text-gray-600">
+                Calls made: {callCount}
+              </span>
+            </div>
+            <button
+              disabled={testLoading}
+              onClick={handleTestSubmit}
+              className="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-50 hover:bg-green-700 flex items-center"
+            >
+              {testLoading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Testing...
+                </>
+              ) : (
+                'Test Prompt'
+              )}
+            </button>
+          </div>
+          
+          {/* Responses */}
+          {responses.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="font-medium text-black">Responses</h3>
+              <div className="max-h-96 overflow-y-auto border border-gray-200 rounded">
+                {responses.map((response, index) => (
+                  <div key={index} className="border-b border-gray-200 p-4 hover:bg-gray-50">
+                    <div className="flex justify-between">
+                      <div className="font-medium text-gray-900">
+                        Call #{response.callId} - Version {response.version}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        Cost: ${response.cost.toFixed(6)}
+                      </div>
+                    </div>
+                    <div className="mt-2">
+                      <pre className="whitespace-pre-wrap text-sm text-gray-700 bg-gray-100 p-2 rounded">
+                        {response.content}
+                      </pre>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {editingVariables && (
         <div className="fixed inset-0 flex items-center justify-center z-50">
@@ -499,67 +877,6 @@ export default function PromptsPage() {
         </div>
       ) : null}
 
-      <div className="p-4 border border-black rounded bg-white space-y-3">
-        <h2 className="font-medium text-black">Deployment</h2>
-        {currentDeployment && (
-          <div className="bg-blue-50 p-3 rounded border border-blue-200">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-sm">
-              <div>
-                <span className="text-gray-600">Strategy:</span>
-                <span className="ml-2 font-medium">{currentDeployment.strategy}</span>
-              </div>
-              <div>
-                <span className="text-gray-600">Active Version:</span>
-                <span className="ml-2 font-medium">{currentDeployment.active_version}</span>
-              </div>
-              {currentDeployment.strategy === 'ab' && (
-                <>
-                  <div>
-                    <span className="text-gray-600">Alt Version:</span>
-                    <span className="ml-2 font-medium">{currentDeployment.ab_alt_version}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Traffic Split:</span>
-                    <span className="ml-2 font-medium">{currentDeployment.traffic_split}%</span>
-                  </div>
-                </>
-              )}
-              <div>
-                <span className="text-gray-600">Last Updated:</span>
-                <span className="ml-2 font-medium">
-                  {new Date(currentDeployment.updated_at).toLocaleString()}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <label className="block">
-            <span className="text-sm text-black">Strategy</span>
-            <select className="w-full border border-black rounded p-2 text-black" value={strategy} onChange={e => setStrategy(e.target.value as any)}>
-              <option value="fixed">fixed</option>
-              <option value="ab">ab</option>
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-sm text-black">Active Version</span>
-            <input type="number" className="w-full border border-black rounded p-2 text-black" value={activeVersion ?? ''} onChange={e => setActiveVersion(e.target.value ? parseInt(e.target.value) : undefined)} />
-          </label>
-          {strategy === 'ab' && (
-            <>
-              <label className="block">
-                <span className="text-sm text-black">Alt Version</span>
-                <input type="number" className="w-full border border-black rounded p-2 text-black" value={abAltVersion ?? ''} onChange={e => setAbAltVersion(e.target.value ? parseInt(e.target.value) : undefined)} />
-              </label>
-              <label className="block">
-                <span className="text-sm text-black">Traffic %</span>
-                <input type="number" className="w-full border border-black rounded p-2 text-black" value={trafficSplit} onChange={e => setTrafficSplit(parseInt(e.target.value || '0'))} />
-              </label>
-            </>
-          )}
-        </div>
-        <button disabled={loading} onClick={deploy} className="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50 hover:bg-blue-600">Update Deploy</button>
-      </div>
     </div>
   )
 }
