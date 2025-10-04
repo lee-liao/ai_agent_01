@@ -31,13 +31,20 @@ export default function PromptsPage() {
   // State for current deployment information
   const [currentDeployment, setCurrentDeployment] = useState<any>(null)
   // State for test prompts tab
-  const [activeTab, setActiveTab] = useState<'versions' | 'deploy' | 'test'>('versions')
+  const [activeTab, setActiveTab] = useState<'versions' | 'deploy' | 'test' | 'rollback'>('versions')
   const [promptVariables, setPromptVariables] = useState<any[]>([])
   const [variableInputs, setVariableInputs] = useState<Record<string, string>>({})
   const [callCount, setCallCount] = useState(0)
   const [responses, setResponses] = useState<any[]>([])
   const [testLoading, setTestLoading] = useState(false)
   const [warning, setWarning] = useState<string | null>(null)
+  
+  // State for auto rollback tab
+  const [rollbackData, setRollbackData] = useState<any[]>([])
+  const [isRollbackRunning, setIsRollbackRunning] = useState(false)
+  const [rollbackCompleted, setRollbackCompleted] = useState(false)
+  const [rollbackConclusion, setRollbackConclusion] = useState<string | null>(null)
+  const [rollbackSummary, setRollbackSummary] = useState<any>(null)
 
   useEffect(() => {
     if (strategy === 'fixed') {
@@ -470,6 +477,106 @@ export default function PromptsPage() {
     </Diff>
   );
 
+  // Function to handle auto rollback simulation
+  const startAutoRollback = async () => {
+    setIsRollbackRunning(true)
+    setRollbackCompleted(false)
+    setRollbackConclusion(null)
+    setRollbackSummary(null)
+    setRollbackData([])
+    
+    // Initialize counters for success rate calculation
+    const counters = {
+      version1: { total: 0, success: 0, cost: 0 },
+      version2: { total: 0, success: 0, cost: 0 }
+    }
+    
+    const startTime = Date.now()
+    
+    // Run 100 iterations
+    for (let i = 0; i < 100; i++) {
+      // Determine version based on 10% split (90% version 1, 10% version 2)
+      const version = Math.random() < 0.1 ? 2 : 1
+      
+      // Determine success based on version success rates
+      // Version 1: ~90% success rate
+      // Version 2: ~70% success rate
+      const isSuccess = version === 1 ? Math.random() < 0.9 : Math.random() < 0.7
+      
+      // Generate random cost between $0.000100 and $0.000999
+      const cost = Math.random() * 0.000899 + 0.000100
+      
+      // Update counters
+      if (version === 1) {
+        counters.version1.total++
+        counters.version1.cost += cost
+        if (isSuccess) counters.version1.success++
+      } else {
+        counters.version2.total++
+        counters.version2.cost += cost
+        if (isSuccess) counters.version2.success++
+      }
+      
+      // Calculate success rates and avg costs
+      const version1SuccessRate = counters.version1.total > 0 ? counters.version1.success / counters.version1.total : 0
+      const version2SuccessRate = counters.version2.total > 0 ? counters.version2.success / counters.version2.total : 0
+      const version1AvgCost = counters.version1.total > 0 ? counters.version1.cost / counters.version1.total : 0
+      const version2AvgCost = counters.version2.total > 0 ? counters.version2.cost / counters.version2.total : 0
+      
+      // Add data point
+      const newDataPoint = {
+        promptId: "agent_planner",
+        version,
+        success: isSuccess ? "Y" : "N",
+        successRate1: version1SuccessRate,
+        successRate2: version2SuccessRate,
+        cost,
+        avgCost1: version1AvgCost,
+        avgCost2: version2AvgCost,
+        timestamp: new Date().toISOString()
+      }
+      
+      setRollbackData(prev => [...prev, newDataPoint])
+      
+      // Wait to simulate 10 calls/second
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    
+    const endTime = Date.now()
+    const timeSpan = endTime - startTime
+    
+    // Calculate final success rates
+    const finalVersion1SuccessRate = counters.version1.total > 0 ? counters.version1.success / counters.version1.total : 0
+    const finalVersion2SuccessRate = counters.version2.total > 0 ? counters.version2.success / counters.version2.total : 0
+    const finalVersion1AvgCost = counters.version1.total > 0 ? counters.version1.cost / counters.version1.total : 0
+    const finalVersion2AvgCost = counters.version2.total > 0 ? counters.version2.cost / counters.version2.total : 0
+    
+    // Calculate success rate difference
+    const successRateDifference = finalVersion1SuccessRate - finalVersion2SuccessRate
+    
+    // Prepare summary data
+    const summary = {
+      version1Count: counters.version1.total,
+      version2Count: counters.version2.total,
+      timeSpan: timeSpan,
+      version1SuccessRate: finalVersion1SuccessRate,
+      version2SuccessRate: finalVersion2SuccessRate,
+      successRateDifference: successRateDifference,
+      version1AvgCost: finalVersion1AvgCost,
+      version2AvgCost: finalVersion2AvgCost
+    }
+    
+    setRollbackSummary(summary)
+    
+    // Check if rollback condition is met (>5% difference)
+    if (successRateDifference > 0.05) {
+      setRollbackConclusion(`Because the Alt Version is worse than Active Version by ${(successRateDifference * 100).toFixed(1)}+%, based on the system setting, the deployed prompt strategy is rolled back to "Fixed"`)
+    }
+    
+    setIsRollbackRunning(false)
+    setRollbackCompleted(true)
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-black">Prompt Management</h1>
@@ -541,6 +648,16 @@ export default function PromptsPage() {
             onClick={() => setActiveTab('test')}
           >
             Test Prompts
+          </button>
+          <button
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'rollback'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+            onClick={() => setActiveTab('rollback')}
+          >
+            Auto Rollback
           </button>
         </nav>
       </div>
@@ -787,6 +904,149 @@ export default function PromptsPage() {
                 ))}
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Auto Rollback Tab */}
+      {activeTab === 'rollback' && (
+        <div className="p-4 border border-black rounded bg-white space-y-6">
+          <h2 className="font-medium text-black">Auto Rollback Simulation</h2>
+          
+          {/* Current Deployment Strategy */}
+          {currentDeployment && (
+            <div className="bg-blue-50 p-3 rounded border border-blue-200">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-sm">
+                <div>
+                  <span className="text-gray-600">Strategy:</span>
+                  <span className="ml-2 font-medium">{currentDeployment.strategy}</span>
+                </div>
+                <div>
+                  <span className="text-gray-600">Active Version:</span>
+                  <span className="ml-2 font-medium">{currentDeployment.active_version}</span>
+                </div>
+                {currentDeployment.strategy === 'ab' && (
+                  <>
+                    <div>
+                      <span className="text-gray-600">Alt Version:</span>
+                      <span className="ml-2 font-medium">{currentDeployment.ab_alt_version}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Traffic Split:</span>
+                      <span className="ml-2 font-medium">{currentDeployment.traffic_split}%</span>
+                    </div>
+                  </>
+                )}
+                <div>
+                  <span className="text-gray-600">Last Updated:</span>
+                  <span className="ml-2 font-medium">
+                    {new Date(currentDeployment.updated_at).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-4">
+            <button
+              disabled={isRollbackRunning}
+              onClick={startAutoRollback}
+              className="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50 hover:bg-blue-600"
+            >
+              {isRollbackRunning ? 'Running...' : 'Start Simulation'}
+            </button>
+            
+            {isRollbackRunning && (
+              <div className="flex items-center">
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Running simulation...</span>
+              </div>
+            )}
+            
+            {rollbackCompleted && (
+              <span className="text-blue-600 font-medium">Simulation completed!</span>
+            )}
+          </div>
+          
+          {rollbackData.length > 0 && (
+            <>
+              <div className="max-h-96 overflow-y-auto border border-gray-200 rounded">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prompt ID</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Version</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Success</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Success Rate</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Cost</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {rollbackData.map((data, index) => (
+                      <tr key={index}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{data.promptId}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{data.version}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{data.success}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {data.version === 1 
+                            ? `${(data.successRate1 * 100).toFixed(1)}%` 
+                            : `${(data.successRate2 * 100).toFixed(1)}%`}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${data.cost.toFixed(6)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {data.version === 1 
+                            ? `$${data.avgCost1.toFixed(6)}` 
+                            : `$${data.avgCost2.toFixed(6)}`}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(data.timestamp).toLocaleTimeString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              
+              {rollbackConclusion && (
+                <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded relative" role="alert">
+                  <strong className="font-bold">Conclusion: </strong>
+                  <span className="block sm:inline">{rollbackConclusion}</span>
+                </div>
+              )}
+              
+              {rollbackSummary && (
+                <div className="bg-gray-50 p-4 rounded border border-gray-200">
+                  <h3 className="font-medium text-black mb-2">Summary</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="border border-gray-300 rounded p-3">
+                      <h4 className="font-medium text-gray-700">Call Counts</h4>
+                      <p>Version 1: {rollbackSummary.version1Count}</p>
+                      <p>Version 2: {rollbackSummary.version2Count}</p>
+                    </div>
+                    <div className="border border-gray-300 rounded p-3">
+                      <h4 className="font-medium text-gray-700">Success Rates</h4>
+                      <p>Version 1: {(rollbackSummary.version1SuccessRate * 100).toFixed(1)}%</p>
+                      <p>Version 2: {(rollbackSummary.version2SuccessRate * 100).toFixed(1)}%</p>
+                    </div>
+                    <div className="border border-gray-300 rounded p-3">
+                      <h4 className="font-medium text-gray-700">Avg Costs</h4>
+                      <p>Version 1: ${rollbackSummary.version1AvgCost.toFixed(6)}</p>
+                      <p>Version 2: ${rollbackSummary.version2AvgCost.toFixed(6)}</p>
+                    </div>
+                    <div className="border border-gray-300 rounded p-3">
+                      <h4 className="font-medium text-gray-700">Analysis</h4>
+                      <p>Time Span: {rollbackSummary.timeSpan}ms</p>
+                      <p>Difference: {(rollbackSummary.successRateDifference * 100).toFixed(1)}%</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
