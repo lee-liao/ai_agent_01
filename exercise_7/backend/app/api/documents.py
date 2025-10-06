@@ -13,6 +13,7 @@ from datetime import datetime
 
 from app.database import execute_raw_command, execute_raw_query
 from app.services.rag.document_processor import document_processor
+from app.config import settings
 
 router = APIRouter(tags=["Documents"])
 logger = logging.getLogger(__name__)
@@ -126,7 +127,7 @@ async def upload_document(
     """Upload a document for processing"""
     try:
         # Validate file type
-        allowed_types = ['pdf', 'txt', 'docx', 'md']
+        allowed_types = [ftype.strip().lstrip('.') for ftype in settings.allowed_file_types.split(',')] if settings.allowed_file_types else ['pdf', 'txt', 'docx', 'md']
         file_extension = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
         
         if file_extension not in allowed_types:

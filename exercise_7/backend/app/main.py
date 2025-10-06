@@ -34,6 +34,9 @@ from app.utils.logging import setup_app_logging
 # RAG services
 from app.services.rag.qa_service import qa_service
 
+# Observability
+from app.observability.otel import setup_observability
+
 # Setup application logging
 app_logger = setup_app_logging(level=settings.log_level)
 logger = logging.getLogger(__name__)
@@ -50,7 +53,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=[origin.strip() for origin in settings.cors_origins.split(",")] if settings.cors_origins != "*" else ["*"],
     allow_credentials=False,  # Set to False for student class
     allow_methods=["*"],
     allow_headers=["*"],
@@ -68,6 +71,14 @@ async def startup_event():
     logger.info("🚀 Starting RAG Chatbot (Complete Version)...")
     
     try:
+        # Initialize OpenTelemetry observability
+        try:
+            from app.observability.otel import setup_observability
+            setup_observability()
+            logger.info("✅ OpenTelemetry observability initialized")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize OpenTelemetry observability: {e}")
+        
         # Initialize database
         logger.info("📊 Initializing database connection...")
         await init_database()
@@ -99,8 +110,7 @@ async def startup_event():
             logger.info("✅ RAG service loaded successfully")
         except Exception as e:
             logger.error(f"❌ Failed to load RAG service: {e}")
-            rag_service = None
-        
+
         services_initialized = True
         logger.info("✅ All services initialized successfully")
 
@@ -252,6 +262,18 @@ async def root():
             "Complete REST API"
         ]
     }
+
+# Prometheus metrics endpoint
+@app.get("/metrics", tags=["Monitoring"])
+async def metrics():
+    """Prometheus metrics endpoint"""
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    from fastapi.responses import Response
+    
+    return Response(
+        generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
 
 # Configuration endpoint
 @app.get("/config", tags=["Configuration"])

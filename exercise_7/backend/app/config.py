@@ -4,6 +4,7 @@ Handles environment variables and application settings
 """
 
 import os
+import json
 from typing import List, Optional, Any, Dict
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
@@ -75,8 +76,8 @@ class Settings(BaseSettings):
     # FILE UPLOAD SETTINGS
     # =============================================================================
     max_file_size: str = Field(default="50MB", env="MAX_FILE_SIZE")
-    allowed_file_types: List[str] = Field(
-        default=["pdf", "txt", "docx", "md"],
+    allowed_file_types: str = Field(
+        default="pdf,txt,docx,md",
         env="ALLOWED_FILE_TYPES"
     )
     upload_directory: str = Field(default="./uploads", env="UPLOAD_DIRECTORY")
@@ -115,8 +116,8 @@ class Settings(BaseSettings):
     # =============================================================================
     # CORS SETTINGS
     # =============================================================================
-    cors_origins: List[str] = Field(
-        default=["*"],  # Allow all origins for student class
+    cors_origins: str = Field(
+        default="*",  # Allow all origins for student class
         env="CORS_ORIGINS"
     )
     
@@ -165,14 +166,20 @@ class Settings(BaseSettings):
     
     @field_validator('cors_origins', mode='before')
     def parse_cors_origins(cls, v):
+        # Handle None or empty values
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return "*"
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(',')]
+            return v  # Return the string as-is
         return v
     
     @field_validator('allowed_file_types', mode='before')
     def parse_allowed_file_types(cls, v):
+        # Handle None or empty values
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return ""
         if isinstance(v, str):
-            return [file_type.strip() for file_type in v.split(',')]
+            return v  # Return the string as-is
         return v
     
     @field_validator('max_file_size')

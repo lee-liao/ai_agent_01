@@ -59,7 +59,7 @@ CREATE TABLE document_chunks (
     content TEXT NOT NULL,
     content_hash VARCHAR(64) NOT NULL, -- SHA-256 hash for deduplication
     token_count INTEGER,
-    char_count INTEGER DEFAULT LENGTH(content),
+    char_count INTEGER,
     embedding vector(1536), -- OpenAI text-embedding-3-small dimension
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -287,13 +287,12 @@ GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public TO rag_user;
 -- COMPLETION MESSAGE
 -- =============================================================================
 
+-- Initialization completion message
 DO $$
 BEGIN
     RAISE NOTICE 'Exercise 6 RAG Chatbot database initialized successfully!';
     RAISE NOTICE 'Database: rag_chatbot';
     RAISE NOTICE 'User: rag_user';
     RAISE NOTICE 'Extensions enabled: uuid-ossp, pgcrypto, vector';
-    RAISE NOTICE 'Tables created: %, %, %, %, %, %', 
-        (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'),
-        'knowledge_bases', 'documents', 'document_chunks', 'qa_pairs', 'chat_sessions', 'chat_messages';
+    RAISE NOTICE 'Tables created: %', (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public');
 END $$;
