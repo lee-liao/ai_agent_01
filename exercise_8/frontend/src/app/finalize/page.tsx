@@ -286,7 +286,7 @@ export default function FinalizePage() {
                 </div>
                 <div className="text-center">
                   <p className="text-gray-600 text-xs">Time</p>
-                  <p className="text-gray-700">
+                  <p className="text-gray-700" suppressHydrationWarning>
                     {new Date(review.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>

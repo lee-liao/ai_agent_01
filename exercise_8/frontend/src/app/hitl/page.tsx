@@ -271,7 +271,7 @@ export default function RiskGatePage() {
                 </div>
                 <div className="text-center">
                   <p className="text-gray-600 text-xs">Time</p>
-                  <p className="text-gray-700">
+                  <p className="text-gray-700" suppressHydrationWarning>
                     {new Date(run.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
