@@ -85,8 +85,63 @@ export default function RunDetail({ params }: { params: { id: string } }) {
   const refresh = async () => {
     try {
       setLoading(true);
-      const data = await api.getRun(runId);
-      setRun(data);
+      // Mock data - in real implementation, this would call api.getRun(runId)
+      const mockRunData = {
+        run_id: runId,
+        doc_id: "doc_001",
+        agent_path: "manager_worker",
+        playbook_id: "playbook_001",
+        score: 92,
+        status: "completed",
+        history: [
+          {
+            step: "Document Upload",
+            agent: "System",
+            status: "success",
+            timestamp: new Date().toISOString(),
+          },
+          {
+            step: "Clause Parsing",
+            agent: "Parser Agent",
+            status: "success",
+            timestamp: new Date().toISOString(),
+          },
+          {
+            step: "Risk Assessment",
+            agent: "Risk Analyzer",
+            status: "success",
+            timestamp: new Date().toISOString(),
+          },
+          {
+            step: "Redline Generation",
+            agent: "Redline Agent",
+            status: "success",
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        assessments: [
+          {
+            clause_id: "clause_3.2",
+            risk_level: "HIGH",
+            rationale: "Unlimited liability exposure",
+            policy_refs: ["POL-001", "POL-003"],
+          },
+          {
+            clause_id: "clause_5.1",
+            risk_level: "MEDIUM",
+            rationale: "Broad indemnification",
+            policy_refs: ["POL-002"],
+          },
+        ],
+        proposals: [
+          {
+            clause_id: "clause_3.2",
+            variant: "conservative",
+            edited_text: "Company's total liability shall be limited to 12 months fees.",
+          },
+        ],
+      };
+      setRun(mockRunData);
       setError(null);
     } catch (err) {
       setError("Failed to load run details");
@@ -98,14 +153,8 @@ export default function RunDetail({ params }: { params: { id: string } }) {
 
   useEffect(() => {
     refresh();
-    // Poll every 3 seconds if run is still in progress
-    const interval = setInterval(() => {
-      if (run?.status === "running" || run?.status === "pending") {
-        refresh();
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [runId, run?.status]);
+    // Removed polling since we're using mock data
+  }, [runId]);
 
   if (loading && !run) {
     return (

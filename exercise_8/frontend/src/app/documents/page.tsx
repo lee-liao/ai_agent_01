@@ -19,8 +19,28 @@ export default function DocumentsPage() {
 
   const refresh = async () => {
     try {
-      const list = await api.listDocs();
-      setDocs(list);
+      // Mock data - in real implementation, this would call api.listDocs()
+      const mockDocs = [
+        {
+          doc_id: "doc_001",
+          name: "SaaS_MSA_v2.pdf",
+          uploaded_at: "2025-10-06T10:00:00Z",
+          size: 245678,
+        },
+        {
+          doc_id: "doc_002",
+          name: "NDA_Template.docx",
+          uploaded_at: "2025-10-06T09:30:00Z",
+          size: 123456,
+        },
+        {
+          doc_id: "doc_003",
+          name: "DPA_GDPR.pdf",
+          uploaded_at: "2025-10-06T08:45:00Z",
+          size: 345678,
+        },
+      ];
+      setDocs(mockDocs);
       setError(null);
     } catch (err) {
       setError("Failed to load documents");
@@ -39,10 +59,19 @@ export default function DocumentsPage() {
     setError(null);
     
     try {
-      for (const file of acceptedFiles) {
-        await api.uploadDoc(file);
-      }
-      await refresh();
+      // Mock upload - in real implementation, this would call api.uploadDoc(file)
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate upload delay
+      
+      // Add mock uploaded files to the list
+      const newDocs = acceptedFiles.map((file, index) => ({
+        doc_id: `doc_${Date.now()}_${index}`,
+        name: file.name,
+        uploaded_at: new Date().toISOString(),
+        size: file.size,
+      }));
+      
+      setDocs(prevDocs => [...newDocs, ...prevDocs]);
+      setError(null);
     } catch (err) {
       setError("Failed to upload document");
       console.error(err);

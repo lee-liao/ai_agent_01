@@ -32,8 +32,8 @@ export default function PlaybooksPage() {
 
   const refresh = async () => {
     try {
-      const list = await api.listPlaybooks();
-      setPlaybooks(list);
+      // Mock data - in real implementation, this would call api.listPlaybooks()
+      // Keep existing playbooks in state
       setError(null);
     } catch (err) {
       setError("Failed to load playbooks");
@@ -53,7 +53,15 @@ export default function PlaybooksPage() {
 
     try {
       const rules = JSON.parse(rulesText);
-      await api.createPlaybook(name, rules);
+      // Mock create - in real implementation, this would call api.createPlaybook(name, rules)
+      const newPlaybook = {
+        playbook_id: `playbook_${Date.now()}`,
+        name: name,
+        rules: rules,
+        created_at: new Date().toISOString(),
+      };
+      
+      setPlaybooks(prevPlaybooks => [newPlaybook, ...prevPlaybooks]);
       setName("");
       setRulesText(
         JSON.stringify(
@@ -69,7 +77,6 @@ export default function PlaybooksPage() {
       );
       setCreating(false);
       setError(null);
-      await refresh();
     } catch (err) {
       setError("Invalid JSON or failed to create playbook");
       console.error(err);
@@ -80,8 +87,8 @@ export default function PlaybooksPage() {
     if (!confirm("Are you sure you want to delete this playbook?")) return;
 
     try {
-      await api.deletePlaybook(playbookId);
-      await refresh();
+      // Mock delete - in real implementation, this would call api.deletePlaybook(playbookId)
+      setPlaybooks(prevPlaybooks => prevPlaybooks.filter(p => p.playbook_id !== playbookId));
       setError(null);
     } catch (err) {
       setError("Failed to delete playbook");
