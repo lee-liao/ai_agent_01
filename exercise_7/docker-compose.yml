@@ -82,7 +82,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ENVIRONMENT=development
       - LOG_LEVEL=INFO
-      - CORS_ORIGINS=http://localhost:3002,http://localhost:3003
+      - CORS_ORIGINS=["*"]
       - TRADING_AGENT_URL=http://host.docker.internal:8001
       - MAX_FILE_SIZE=50MB
       - CHUNK_SIZE=1000
