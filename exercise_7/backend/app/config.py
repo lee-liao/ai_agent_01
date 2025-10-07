@@ -161,6 +161,14 @@ class Settings(BaseSettings):
     trading_agent_url: str = Field(default="http://localhost:8001", env="TRADING_AGENT_URL")
     
     # =============================================================================
+    # OBSERVABILITY SETTINGS
+    # =============================================================================
+    jaeger_endpoint: Optional[str] = Field(default=None, env="JAEGER_ENDPOINT")
+    otel_service_name: str = Field(default="exercise7-backend", env="OTEL_SERVICE_NAME")
+    otel_service_version: str = Field(default="1.0.0", env="OTEL_SERVICE_VERSION")
+    otel_console_export: bool = Field(default=True, env="OTEL_CONSOLE_EXPORT")
+    
+    # =============================================================================
     # VALIDATORS
     # =============================================================================
     

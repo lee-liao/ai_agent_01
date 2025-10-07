@@ -74,7 +74,7 @@ async def startup_event():
         # Initialize OpenTelemetry observability
         try:
             from app.observability.otel import setup_observability
-            setup_observability()
+            setup_observability()  # Now reads config from environment variables
             logger.info("✅ OpenTelemetry observability initialized")
         except Exception as e:
             logger.error(f"❌ Failed to initialize OpenTelemetry observability: {e}")
