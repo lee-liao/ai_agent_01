@@ -29,7 +29,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Keep frontend src/lib (API client)
+!frontend/src/lib/
 lib64/
 parts/
 sdist/
@@ -482,6 +483,8 @@ data/raw/
 data/processed/
 *.csv
 *.json
+!frontend/package.json
+!frontend/package-lock.json
 *.parquet
 
 # Embeddings cache
