@@ -176,7 +176,7 @@ export default function FinalizePage() {
     // In real implementation, this would call: api.getBlackboard(runId)
     setRedlineDetails(mockRedlineDetails);
     // Auto-approve all by default
-    const allProposalIds = new Set(
+    const allProposalIds = new Set<string>(
       mockRedlineDetails.proposals.map((p: any) => p.proposal_id)
     );
     setApprovedProposals(allProposalIds);
@@ -401,7 +401,7 @@ export default function FinalizePage() {
               <div className="flex space-x-2">
                 <button
                   onClick={() => {
-                    const allIds = new Set(
+                    const allIds = new Set<string>(
                       redlineDetails.proposals.map((p: any) => p.proposal_id)
                     );
                     setApprovedProposals(allIds);
@@ -414,7 +414,7 @@ export default function FinalizePage() {
                 </button>
                 <button
                   onClick={() => {
-                    const allIds = new Set(
+                    const allIds = new Set<string>(
                       redlineDetails.proposals.map((p: any) => p.proposal_id)
                     );
                     setRejectedProposals(allIds);

@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { api } from "../../lib/api";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { FileText, Upload, Trash2, Eye, Calendar, FileType } from "lucide-react";
 
 interface Document {
@@ -75,7 +78,8 @@ export default function DocumentsPage() {
     } catch (err) {
       setError("Failed to upload document");
       console.error(err);
-    } finally {
+    }
+    finally {
       setUploading(false);
     }
   }, []);
@@ -112,12 +116,10 @@ export default function DocumentsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Documents</h1>
-        <p className="text-gray-600">
-          Upload legal contracts for review. Supported formats: PDF, DOCX, DOC, MD, TXT
-        </p>
-      </div>
+      <PageHeader
+        title="Documents"
+        description="Upload legal contracts for review. Supported formats: PDF, DOCX, DOC, MD, TXT"
+      />
 
       {error && (
         <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
@@ -127,9 +129,9 @@ export default function DocumentsPage() {
 
       {/* Upload Area */}
       <div className="mb-8">
-        <div
+        <Card
           {...getRootProps()}
-          className={`card border-2 border-dashed cursor-pointer transition-all ${
+          className={`border-2 border-dashed cursor-pointer transition-all ${
             isDragActive
               ? "border-primary-500 bg-primary-50"
               : "border-gray-300 hover:border-primary-400 hover:bg-gray-50"
@@ -159,7 +161,7 @@ export default function DocumentsPage() {
               </>
             )}
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Documents List */}
@@ -169,19 +171,19 @@ export default function DocumentsPage() {
         </h2>
         
         {docs.length === 0 ? (
-          <div className="card text-center py-12">
+          <Card className="text-center py-12">
             <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
             <p className="text-gray-600">No documents uploaded yet</p>
             <p className="text-sm text-gray-500 mt-2">
               Upload your first document to get started
             </p>
-          </div>
+          </Card>
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {docs.map((doc) => (
-              <div
+              <Card
                 key={doc.doc_id}
-                className="card hover:shadow-lg transition-shadow"
+                className="hover:shadow-lg transition-shadow"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-4 flex-1">
@@ -215,21 +217,23 @@ export default function DocumentsPage() {
                     </div>
                   </div>
                   <div className="flex items-center space-x-2 ml-4">
-                    <button
-                      className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       title="View document"
                     >
                       <Eye className="w-5 h-5" />
-                    </button>
-                    <button
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="icon"
                       title="Delete document"
                     >
                       <Trash2 className="w-5 h-5" />
-                    </button>
+                    </Button>
                   </div>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         )}
