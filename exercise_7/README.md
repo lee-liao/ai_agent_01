@@ -1,5 +1,7 @@
 # 🤖 Exercise 7: Planning & Control (built on Exercise 6)
 
+> Note: This exercise builds on Exercise 6 and adds Agents (plan/route/execute), prompt versioning, trading-agent integration, and new frontend pages (Agent Console, Prompts). See docker-compose for ports and env toggles.
+
 ## 🎯 **Learning Objectives**
 
 This exercise extends Exercise 6 (RAG chatbot) with agentic planning & control, observability, cost guardrails, and prompt versioning/A-B testing.
