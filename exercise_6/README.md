@@ -96,7 +96,8 @@ exercise_6/
 │   │
 │   ├── requirements.txt
 │   ├── Dockerfile
-│   └── run.sh
+│   ├── run.sh
+│   └── run.bat
 │
 ├── frontend/                  # React Frontend
 │   ├── admin/                # Admin Console
@@ -134,8 +135,11 @@ exercise_6/
 │
 └── scripts/                # Utility scripts
     ├── setup.sh
+    ├── setup.bat
     ├── start.sh
-    └── cleanup.sh
+    ├── start.bat
+    ├── cleanup.sh
+    └── cleanup.bat
 ```
 
 ## 🔧 **Technology Stack**

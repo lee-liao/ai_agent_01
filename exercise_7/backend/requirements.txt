@@ -28,12 +28,12 @@ scipy==1.11.4
 # =============================================================================
 # LLM INTEGRATION
 # =============================================================================
-openai==1.6.1
-anthropic==0.8.1
+openai>=1.6.1,<2.0.0
+anthropic >=0.8.0,<0.9.0
 langchain==0.0.340
 langchain-openai==0.0.2
 langchain-anthropic==0.0.1
-tiktoken==0.5.2
+tiktoken >=0.5.2,<0.6.0
 
 # =============================================================================
 # DOCUMENT PROCESSING
@@ -111,7 +111,7 @@ python-jose==3.3.0
 # FILE HANDLING
 # =============================================================================
 Pillow==10.1.0
-python-magic==0.4.27
+#magic==0.4.27
 watchdog==3.0.0
 
 # =============================================================================
@@ -120,3 +120,13 @@ watchdog==3.0.0
 orjson==3.9.10
 ujson==5.8.0
 msgpack==1.0.7
+
+# =============================================================================
+# OBSERVABILITY & MONITORING
+# =============================================================================
+opentelemetry-api==1.21.0
+opentelemetry-sdk==1.21.0
+opentelemetry-exporter-otlp==1.21.0
+opentelemetry-instrumentation-fastapi==0.42b0
+opentelemetry-instrumentation-sqlalchemy==0.42b0
+opentelemetry-instrumentation-httpx==0.42b0

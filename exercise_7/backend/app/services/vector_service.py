@@ -196,6 +196,10 @@ class PostgreSQLVectorService:
             question_embedding = await self._generate_embedding(question)
             answer_embedding = await self._generate_embedding(answer)
             
+            # Convert to pgvector string format
+            question_embedding_str = '[' + ','.join(map(str, question_embedding)) + ']'
+            answer_embedding_str = '[' + ','.join(map(str, answer_embedding)) + ']'
+
             conn = await get_connection()
             try:
                 # Get or create knowledge base
@@ -207,11 +211,11 @@ class PostgreSQLVectorService:
                         knowledge_base_id, question, answer, 
                         question_embedding, answer_embedding,
                         tags, metadata, status
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+                    ) VALUES ($1, $2, $3, $4::vector, $5::vector, $6, $7, 'active')
                     RETURNING id
                 """, 
                     kb_id, question, answer,
-                    question_embedding, answer_embedding,
+                    question_embedding_str, answer_embedding_str,
                     metadata.get('tags', []) if metadata else [],
                     metadata or {}
                 )
@@ -239,38 +243,45 @@ class PostgreSQLVectorService:
             # Generate query embedding
             query_embedding = await self._generate_embedding(query)
             
+            # Convert query embedding to pgvector format
+            query_embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
+
             # Search both question and answer embeddings
             sql = """
                 WITH question_matches AS (
                     SELECT 
                         id, question, answer, tags, metadata, created_at,
-                        1 - (question_embedding <=> $1) as similarity_score,
+                        1 - (question_embedding <=> $1::vector) as similarity_score,
                         'question' as match_type
                     FROM qa_pairs
                     WHERE status = 'active' 
-                    AND 1 - (question_embedding <=> $1) >= $2
+                    AND 1 - (question_embedding <=> $1::vector) >= $2
                 ),
                 answer_matches AS (
                     SELECT 
                         id, question, answer, tags, metadata, created_at,
-                        1 - (answer_embedding <=> $1) as similarity_score,
+                        1 - (answer_embedding <=> $1::vector) as similarity_score,
                         'answer' as match_type
                     FROM qa_pairs
                     WHERE status = 'active' 
-                    AND 1 - (answer_embedding <=> $1) >= $2
+                    AND 1 - (answer_embedding <=> $1::vector) >= $2
                 ),
                 all_matches AS (
                     SELECT * FROM question_matches
                     UNION ALL
                     SELECT * FROM answer_matches
+                ),
+                ranked_matches AS (
+                    SELECT DISTINCT ON (id)
+                        id, question, answer, tags, metadata, created_at,
+                        similarity_score, match_type
+                    FROM all_matches
+                    ORDER BY id, similarity_score DESC
                 )
-                SELECT DISTINCT ON (id)
-                    id, question, answer, tags, metadata, created_at,
-                    similarity_score, match_type
-                FROM all_matches
+                SELECT * FROM ranked_matches
             """
             
-            params = [query_embedding, similarity_threshold]
+            params = [query_embedding_str, similarity_threshold]
             
             if knowledge_base_id:
                 # Add knowledge base filter (need to join with knowledge_bases table)
@@ -283,7 +294,7 @@ class PostgreSQLVectorService:
                 )
                 params.append(knowledge_base_id)
             
-            sql += " ORDER BY id, similarity_score DESC LIMIT $" + str(len(params) + 1)
+            sql += " ORDER BY similarity_score DESC LIMIT $" + str(len(params) + 1)
             params.append(max_results)
             
             conn = await get_connection()

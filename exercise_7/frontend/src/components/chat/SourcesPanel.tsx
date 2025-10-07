@@ -82,7 +82,7 @@ export function SourcesPanel({ sources }: SourcesPanelProps) {
                 </h4>
                 <div className="space-y-3">
                   {sources.knowledge_base_hits.map((hit, index) => (
-                    <div key={hit.id} className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                    <div key={`${hit.id}-${index}`} className="bg-blue-50 rounded-lg p-3 border border-blue-200">
                       <div className="flex items-start justify-between mb-2">
                         <span className="text-xs font-medium text-blue-800">
                           {hit.filename}
@@ -107,7 +107,7 @@ export function SourcesPanel({ sources }: SourcesPanelProps) {
                 </h4>
                 <div className="space-y-3">
                   {sources.qa_hits.map((hit, index) => (
-                    <div key={hit.id} className="bg-green-50 rounded-lg p-3 border border-green-200">
+                    <div key={`${hit.id}-${index}`} className="bg-green-50 rounded-lg p-3 border border-green-200">
                       <div className="flex items-start justify-between mb-2">
                         <span className="text-xs font-medium text-green-800">
                           Q&A Match

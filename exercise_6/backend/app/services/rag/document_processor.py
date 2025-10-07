@@ -9,11 +9,15 @@ import uuid
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import asyncio
+import re
 
 # Document processing
 import PyPDF2
 from docx import Document
 import openai
+import markdown
+from markdown.treeprocessors import Treeprocessor
+from markdown.extensions import Extension
 
 # Vector storage
 # ChromaDB imports removed - now using PostgreSQL + pgvector
@@ -22,6 +26,39 @@ from app.config import settings
 from app.database import get_connection
 
 logger = logging.getLogger(__name__)
+
+class TextExtractor(Treeprocessor):
+    """Custom Markdown tree processor to extract plain text"""
+    def __init__(self):
+        self.text = ""
+    
+    def run(self, root):
+        self.text = ""
+        self._extract_text(root)
+        return root
+    
+    def _extract_text(self, element):
+        """Recursively extract text from Markdown elements"""
+        if element.text:
+            self.text += element.text
+        
+        for child in element:
+            self._extract_text(child)
+        
+        if element.tail:
+            self.text += element.tail
+
+class TextExtractExtension(Extension):
+    """Custom Markdown extension to extract plain text"""
+    def __init__(self, **kwargs):
+        self.text_extractor = TextExtractor()
+        super().__init__(**kwargs)
+    
+    def extendMarkdown(self, md):
+        md.treeprocessors.register(self.text_extractor, 'textextract', 0)
+    
+    def get_text(self):
+        return self.text_extractor.text
 
 class DocumentProcessor:
     """Handles document processing, chunking, and embedding generation"""
@@ -76,7 +113,7 @@ class DocumentProcessor:
                 chunk_ids.append(chunk_id)
                 
                 metadata = {
-                    "document_id": document_id,
+                    "document_id": str(document_id),
                     "filename": filename,
                     "chunk_index": i,
                     "chunk_text": chunk[:500],  # Store first 500 chars for preview
@@ -132,6 +169,8 @@ class DocumentProcessor:
                 return await self._extract_docx_text(file_path)
             elif file_extension == '.txt':
                 return await self._extract_txt_text(file_path)
+            elif file_extension == '.md':
+                return await self._extract_md_text(file_path)
             else:
                 raise ValueError(f"Unsupported file format: {file_extension}")
                 
@@ -180,6 +219,44 @@ class DocumentProcessor:
         def extract_sync():
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
                 return file.read()
+        
+        return await asyncio.get_event_loop().run_in_executor(None, extract_sync)
+    
+    async def _extract_md_text(self, file_path: str) -> str:
+        """Extract clean text from Markdown file"""
+        def extract_sync():
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                md_content = file.read()
+            
+            # Convert markdown to clean text
+            # Create custom markdown processor to extract clean text
+            md = markdown.Markdown()
+            text_ext = TextExtractExtension()
+            md.registerExtension(text_ext)
+            md.set_output_format('html')
+            md.convert(md_content)
+            clean_text = text_ext.get_text()
+            
+            # Alternative simpler approach - remove common markdown syntax
+            # Remove headers
+            clean_text = re.sub(r'^#{1,6}\s*', '', md_content, flags=re.MULTILINE)
+            # Remove emphasis
+            clean_text = re.sub(r'\*\*(.*?)\*\*', r'\1', clean_text)
+            clean_text = re.sub(r'\*(.*?)\*', r'\1', clean_text)
+            clean_text = re.sub(r'__(.*?)__', r'\1', clean_text)
+            clean_text = re.sub(r'_(.*?)_', r'\1', clean_text)
+            # Remove inline code
+            clean_text = re.sub(r'`(.*?)`', r'\1', clean_text)
+            # Remove links but keep text
+            clean_text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', clean_text)
+            # Remove images
+            clean_text = re.sub(r'!\[([^\]]*)\]\([^\)]+\)', '', clean_text)
+            # Remove blockquotes
+            clean_text = re.sub(r'^>\s*', '', clean_text, flags=re.MULTILINE)
+            # Clean up extra whitespace
+            clean_text = re.sub(r'\n{3,}', '\n\n', clean_text)
+            
+            return clean_text.strip()
         
         return await asyncio.get_event_loop().run_in_executor(None, extract_sync)
     
@@ -243,20 +320,28 @@ class DocumentProcessor:
             raise
     
     async def delete_document(self, document_id: str) -> bool:
-        """Delete all chunks for a document from ChromaDB"""
+        """Delete all chunks for a document from PostgreSQL"""
         try:
-            # Get all chunk IDs for this document
-            results = self.collection.get(
-                where={"document_id": document_id}
-            )
-            
-            if results['ids']:
-                self.collection.delete(ids=results['ids'])
-                logger.info(f"Deleted {len(results['ids'])} chunks for document {document_id}")
-                return True
-            else:
-                logger.warning(f"No chunks found for document {document_id}")
-                return False
+            await self.vector_service.initialize()
+            conn = await get_connection()
+            try:
+                # Delete all chunks for this document
+                result = await conn.execute(
+                    "DELETE FROM document_chunks WHERE document_id = $1",
+                    document_id
+                )
+                
+                # result is a string like "DELETE 5" - extract the count
+                deleted_count = int(result.split()[-1]) if result.startswith("DELETE") else 0
+                
+                if deleted_count > 0:
+                    logger.info(f"Deleted {deleted_count} chunks for document {document_id}")
+                    return True
+                else:
+                    logger.warning(f"No chunks found for document {document_id}")
+                    return False
+            finally:
+                await conn.close()
                 
         except Exception as e:
             logger.error(f"Error deleting document {document_id}: {e}")

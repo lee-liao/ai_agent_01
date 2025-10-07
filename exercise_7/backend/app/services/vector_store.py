@@ -7,6 +7,8 @@ import logging
 from typing import Optional, Dict, Any
 import httpx
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 # Global ChromaDB client
@@ -59,12 +61,12 @@ async def get_chromadb_status() -> Dict[str, Any]:
     
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get("http://localhost:8000/api/v2/heartbeat", timeout=5.0)
+            response = await client.get(f"http://{settings.chromadb_host}:{settings.chromadb_port}/api/v2/heartbeat", timeout=5.0)
             
             if response.status_code == 200:
                 return {
                     "status": "healthy",
-                    "url": "http://localhost:8000",
+                    "url": f"http://{settings.chromadb_host}:{settings.chromadb_port}",
                     "api_version": "v2"
                 }
             else:

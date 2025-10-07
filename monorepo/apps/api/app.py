@@ -53,6 +53,21 @@ http_fetcher = HTTPFetcher()
 db_query_tool = DBQueryTool()
 file_ops = FileOperations()
 
+# Add Prometheus metrics endpoint
+try:
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    from fastapi.responses import Response
+    
+    @app.get("/metrics")
+    async def metrics():
+        """Prometheus metrics endpoint"""
+        return Response(
+            generate_latest(),
+            media_type=CONTENT_TYPE_LATEST
+        )
+except ImportError:
+    logger.warning("prometheus-client not installed, /metrics endpoint not available")
+
 @app.get("/")
 async def root():
     """Health check endpoint"""

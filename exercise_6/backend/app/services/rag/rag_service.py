@@ -66,7 +66,6 @@ class RAGService:
     async def chat_with_rag(
         self,
         query: str,
-        qa_pairs: Optional[List[Dict[str, Any]]] = None,
         conversation_history: Optional[List[Dict[str, str]]] = None,
         max_chunks: Optional[int] = None,
         similarity_threshold: Optional[float] = None
@@ -76,7 +75,6 @@ class RAGService:
         
         Args:
             query: User's question
-            qa_pairs: Available Q&A pairs to search through
             conversation_history: Previous conversation messages
             max_chunks: Maximum number of document chunks to retrieve
             similarity_threshold: Minimum similarity score for retrieval
@@ -93,13 +91,16 @@ class RAGService:
             document_chunks = await self.retrieval_service.search_documents(
                 query=query,
                 max_results=max_chunks or settings.max_chunks_per_query,
-                similarity_threshold=similarity_threshold or settings.similarity_threshold
+                similarity_threshold=similarity_threshold or 0.1 # Lowered for broader search
             )
+            logger.info(f"Retrieved {len(document_chunks)} document chunks.")
+            for i, chunk in enumerate(document_chunks):
+                logger.info(f"Chunk {i+1} similarity: {chunk.get('similarity_score')}")
+                logger.info(f"Chunk {i+1} content: {chunk.get('content', '')[:200]}...")
             
-            # Step 2: Search through Q&A pairs if provided
-            qa_matches = []
-            if qa_pairs:
-                qa_matches = await self._search_qa_pairs(query, qa_pairs)
+            # Step 2: Search through Q&A pairs
+            qa_matches = await self._search_qa_pairs(query)
+            logger.info(f"Retrieved {len(qa_matches)} Q&A matches.")
             
             # Step 3: Generate response using LLM with retrieved context
             llm_result = await self.llm_service.generate_response(
@@ -149,22 +150,22 @@ class RAGService:
                 "error": str(e)
             }
     
-    async def _search_qa_pairs(self, query: str, qa_pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Search through Q&A pairs using ChromaDB vector similarity"""
+    async def _search_qa_pairs(self, query: str) -> List[Dict[str, Any]]:
+        """Search through Q&A pairs using PostgreSQL vector similarity"""
         try:
-            # Use ChromaDB Q&A service for semantic search
-            matches = await qa_service.search_qa_pairs(
+            # Use PostgreSQL vector service for semantic search
+            matches = await self.retrieval_service.vector_service.search_qa_pairs(
                 query=query,
                 max_results=3,
-                similarity_threshold=0.7  # Use higher threshold for embeddings
+                similarity_threshold=0.3  # Lowered threshold for better matching
             )
             
-            logger.info(f"Found {len(matches)} Q&A matches using ChromaDB for query: '{query[:50]}...'")
+            logger.info(f"Found {len(matches)} Q&A matches using PostgreSQL for query: '{query[:50]}...'")
             
             return matches
             
         except Exception as e:
-            logger.error(f"Error searching Q&A pairs with ChromaDB: {e}")
+            logger.error(f"Error searching Q&A pairs with PostgreSQL: {e}")
             # Fallback to empty list if embedding search fails
             return []
     

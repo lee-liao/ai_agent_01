@@ -1,5 +1,5 @@
 # Exercise 6 RAG Chatbot Backend Dockerfile
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \

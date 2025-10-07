@@ -89,63 +89,60 @@ class RetrievalService:
     
     async def get_document_chunks(self, document_id: str) -> List[Dict[str, Any]]:
         """Get all chunks for a specific document"""
-        if not self.collection:
-            return []
-        
         try:
-            results = self.collection.get(
-                where={"document_id": document_id},
-                include=['documents', 'metadatas']
-            )
-            
-            chunks = []
-            if results['ids']:
-                for chunk_id, document, metadata in zip(
-                    results['ids'],
-                    results['documents'],
-                    results['metadatas']
-                ):
+            conn = await get_connection()
+            try:
+                chunks = await conn.fetch("""
+                    SELECT id, chunk_index, content, token_count, char_count, metadata
+                    FROM document_chunks 
+                    WHERE document_id = $1 
+                    ORDER BY chunk_index
+                """, document_id)
+                
+                result_chunks = []
+                for row in chunks:
                     chunk_info = {
-                        "chunk_id": chunk_id,
+                        "chunk_id": str(row["id"]),
                         "document_id": document_id,
-                        "filename": metadata.get("filename"),
-                        "chunk_index": metadata.get("chunk_index"),
-                        "content": document,
-                        "chunk_length": len(document),
-                        "metadata": metadata
+                        "filename": row["metadata"].get("filename") if row["metadata"] else None,
+                        "chunk_index": row["chunk_index"],
+                        "content": row["content"],
+                        "chunk_length": row["char_count"],
+                        "token_count": row["token_count"],
+                        "metadata": row["metadata"] or {}
                     }
-                    chunks.append(chunk_info)
-            
-            # Sort by chunk index
-            chunks.sort(key=lambda x: x.get('chunk_index', 0))
-            return chunks
-            
+                    result_chunks.append(chunk_info)
+                
+                return result_chunks
+            finally:
+                await conn.close()
+                
         except Exception as e:
             logger.error(f"Error getting document chunks: {e}")
             return []
     
     async def search_similar_chunks(self, chunk_id: str, max_results: int = 5) -> List[Dict[str, Any]]:
         """Find chunks similar to a given chunk"""
-        if not self.collection:
-            return []
-        
         try:
-            # Get the chunk content
-            chunk_result = self.collection.get(
-                ids=[chunk_id],
-                include=['documents']
-            )
-            
-            if not chunk_result['documents']:
-                return []
-            
-            chunk_content = chunk_result['documents'][0]
-            
-            # Search for similar chunks
-            return await self.search_documents(
-                query=chunk_content,
-                max_results=max_results + 1  # +1 to exclude the original chunk
-            )
+            conn = await get_connection()
+            try:
+                # Get the chunk content
+                chunk_row = await conn.fetchrow("""
+                    SELECT content FROM document_chunks WHERE id = $1
+                """, chunk_id)
+                
+                if not chunk_row:
+                    return []
+                
+                chunk_content = chunk_row["content"]
+                
+                # Search for similar chunks using the content
+                return await self.search_documents(
+                    query=chunk_content,
+                    max_results=max_results + 1  # +1 to exclude the original chunk
+                )
+            finally:
+                await conn.close()
             
         except Exception as e:
             logger.error(f"Error finding similar chunks: {e}")
