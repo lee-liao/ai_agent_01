@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { api } from "../../../lib/api";
 import {
   Clock,
@@ -77,7 +77,7 @@ const getRiskColor = (riskLevel: string) => {
 };
 
 export default function RunDetail({ params }: { params: { id: string } }) {
-  const runId = params.id;
+  const runId = React.use(params).id; // Use React.use for Next.js 15.5.3 compatibility
   const [run, setRun] = useState<RunData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,63 +85,9 @@ export default function RunDetail({ params }: { params: { id: string } }) {
   const refresh = async () => {
     try {
       setLoading(true);
-      // Mock data - in real implementation, this would call api.getRun(runId)
-      const mockRunData = {
-        run_id: runId,
-        doc_id: "doc_001",
-        agent_path: "manager_worker",
-        playbook_id: "playbook_001",
-        score: 92,
-        status: "completed",
-        history: [
-          {
-            step: "Document Upload",
-            agent: "System",
-            status: "success",
-            timestamp: new Date().toISOString(),
-          },
-          {
-            step: "Clause Parsing",
-            agent: "Parser Agent",
-            status: "success",
-            timestamp: new Date().toISOString(),
-          },
-          {
-            step: "Risk Assessment",
-            agent: "Risk Analyzer",
-            status: "success",
-            timestamp: new Date().toISOString(),
-          },
-          {
-            step: "Redline Generation",
-            agent: "Redline Agent",
-            status: "success",
-            timestamp: new Date().toISOString(),
-          },
-        ],
-        assessments: [
-          {
-            clause_id: "clause_3.2",
-            risk_level: "HIGH",
-            rationale: "Unlimited liability exposure",
-            policy_refs: ["POL-001", "POL-003"],
-          },
-          {
-            clause_id: "clause_5.1",
-            risk_level: "MEDIUM",
-            rationale: "Broad indemnification",
-            policy_refs: ["POL-002"],
-          },
-        ],
-        proposals: [
-          {
-            clause_id: "clause_3.2",
-            variant: "conservative",
-            edited_text: "Company's total liability shall be limited to 12 months fees.",
-          },
-        ],
-      };
-      setRun(mockRunData);
+      // Fetch actual run data from API instead of using mock data
+      const runData = await api.getRun(runId);
+      setRun(runData);
       setError(null);
     } catch (err) {
       setError("Failed to load run details");

@@ -32,8 +32,9 @@ export default function PlaybooksPage() {
 
   const refresh = async () => {
     try {
-      // Mock data - in real implementation, this would call api.listPlaybooks()
-      // Keep existing playbooks in state
+      // Real API call
+      const playbooksData = await api.listPlaybooks();
+      setPlaybooks(playbooksData);
       setError(null);
     } catch (err) {
       setError("Failed to load playbooks");
@@ -52,10 +53,20 @@ export default function PlaybooksPage() {
     }
 
     try {
-      const rules = JSON.parse(rulesText);
-      // Mock create - in real implementation, this would call api.createPlaybook(name, rules)
+      // Validate JSON first before sending
+      let rules;
+      try {
+        rules = JSON.parse(rulesText);
+      } catch (parseError) {
+        setError("Invalid JSON format. Please check your syntax.");
+        console.error("JSON Parse Error:", parseError);
+        return;
+      }
+
+      // Real API call
+      const result = await api.createPlaybook(name, rules);
       const newPlaybook = {
-        playbook_id: `playbook_${Date.now()}`,
+        playbook_id: result.playbook_id,
         name: name,
         rules: rules,
         created_at: new Date().toISOString(),
@@ -78,8 +89,8 @@ export default function PlaybooksPage() {
       setCreating(false);
       setError(null);
     } catch (err) {
-      setError("Invalid JSON or failed to create playbook");
-      console.error(err);
+      setError("Failed to create playbook. Please check your input and try again.");
+      console.error("Playbook Creation Error:", err);
     }
   };
 
@@ -87,7 +98,8 @@ export default function PlaybooksPage() {
     if (!confirm("Are you sure you want to delete this playbook?")) return;
 
     try {
-      // Mock delete - in real implementation, this would call api.deletePlaybook(playbookId)
+      // Real API call
+      await api.deletePlaybook(playbookId);
       setPlaybooks(prevPlaybooks => prevPlaybooks.filter(p => p.playbook_id !== playbookId));
       setError(null);
     } catch (err) {

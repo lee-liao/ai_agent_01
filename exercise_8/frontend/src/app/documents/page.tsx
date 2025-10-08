@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useDropzone } from "react-dropzone";
 import { api } from "../../lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Dropzone } from "@/components/ui/Dropzone";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { FileText, Upload, Trash2, Eye, Calendar, FileType } from "lucide-react";
 
 interface Document {
@@ -22,28 +23,9 @@ export default function DocumentsPage() {
 
   const refresh = async () => {
     try {
-      // Mock data - in real implementation, this would call api.listDocs()
-      const mockDocs = [
-        {
-          doc_id: "doc_001",
-          name: "SaaS_MSA_v2.pdf",
-          uploaded_at: "2025-10-06T10:00:00Z",
-          size: 245678,
-        },
-        {
-          doc_id: "doc_002",
-          name: "NDA_Template.docx",
-          uploaded_at: "2025-10-06T09:30:00Z",
-          size: 123456,
-        },
-        {
-          doc_id: "doc_003",
-          name: "DPA_GDPR.pdf",
-          uploaded_at: "2025-10-06T08:45:00Z",
-          size: 345678,
-        },
-      ];
-      setDocs(mockDocs);
+      // Real API call
+      const docsData = await api.listDocs();
+      setDocs(docsData);
       setError(null);
     } catch (err) {
       setError("Failed to load documents");
@@ -55,24 +37,30 @@ export default function DocumentsPage() {
     refresh();
   }, []);
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+  const handleDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
     
     setUploading(true);
     setError(null);
     
     try {
-      // Mock upload - in real implementation, this would call api.uploadDoc(file)
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate upload delay
+      // Real API calls for each file
+      const uploadPromises = acceptedFiles.map(async (file) => {
+        try {
+          const result = await api.uploadDoc(file);
+          return {
+            doc_id: result.doc_id,
+            name: result.name,
+            uploaded_at: new Date().toISOString(),
+            size: file.size,
+          };
+        } catch (error) {
+          console.error(`Failed to upload ${file.name}:`, error);
+          throw error;
+        }
+      });
       
-      // Add mock uploaded files to the list
-      const newDocs = acceptedFiles.map((file, index) => ({
-        doc_id: `doc_${Date.now()}_${index}`,
-        name: file.name,
-        uploaded_at: new Date().toISOString(),
-        size: file.size,
-      }));
-      
+      const newDocs = await Promise.all(uploadPromises);
       setDocs(prevDocs => [...newDocs, ...prevDocs]);
       setError(null);
     } catch (err) {
@@ -83,18 +71,6 @@ export default function DocumentsPage() {
       setUploading(false);
     }
   }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'text/markdown': ['.md'],
-      'application/pdf': ['.pdf'],
-      'application/msword': ['.doc'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'text/plain': ['.txt'],
-    },
-    multiple: true,
-  });
 
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return "Unknown";
@@ -129,39 +105,30 @@ export default function DocumentsPage() {
 
       {/* Upload Area */}
       <div className="mb-8">
-        <Card
-          {...getRootProps()}
-          className={`border-2 border-dashed cursor-pointer transition-all ${
-            isDragActive
-              ? "border-primary-500 bg-primary-50"
-              : "border-gray-300 hover:border-primary-400 hover:bg-gray-50"
-          } ${uploading ? "opacity-50 cursor-not-allowed" : ""}`}
-        >
-          <input {...getInputProps()} disabled={uploading} />
-          <div className="text-center py-8">
-            <Upload
-              className={`mx-auto h-12 w-12 mb-4 ${
-                isDragActive ? "text-primary-600" : "text-gray-400"
-              }`}
-            />
-            {uploading ? (
-              <p className="text-lg text-gray-600">Uploading...</p>
-            ) : isDragActive ? (
-              <p className="text-lg text-primary-600 font-medium">
-                Drop the files here...
-              </p>
-            ) : (
-              <>
-                <p className="text-lg text-gray-700 mb-2">
-                  Drag & drop documents here, or click to select
-                </p>
-                <p className="text-sm text-gray-500">
-                  Supports PDF, DOCX, DOC, Markdown, and TXT files
-                </p>
-              </>
-            )}
+        <Dropzone
+          label="Drag & drop documents here, or click to select"
+          description="Supports PDF, DOCX, DOC, Markdown, and TXT files"
+          onDropCallback={(acceptedFiles, fileRejections) => {
+            if (fileRejections.length > 0) {
+              setError(`Some files were rejected: ${fileRejections.map(r => r.file.name).join(', ')}`);
+            }
+            handleDrop(acceptedFiles);
+          }}
+          accept={{
+            'text/markdown': ['.md'],
+            'application/pdf': ['.pdf'],
+            'application/msword': ['.doc'],
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+            'text/plain': ['.txt'],
+          }}
+          multiple={true}
+          disabled={uploading}
+        />
+        {uploading && (
+          <div className="mt-4 text-center">
+            <p className="text-lg text-gray-600">Uploading...</p>
           </div>
-        </Card>
+        )}
       </div>
 
       {/* Documents List */}
@@ -171,12 +138,12 @@ export default function DocumentsPage() {
         </h2>
         
         {docs.length === 0 ? (
-          <Card className="text-center py-12">
-            <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-            <p className="text-gray-600">No documents uploaded yet</p>
-            <p className="text-sm text-gray-500 mt-2">
-              Upload your first document to get started
-            </p>
+          <Card>
+            <EmptyState
+              title="No documents uploaded yet"
+              description="Upload your first document to get started"
+              icon={<FileText className="h-12 w-12 text-gray-400" />}
+            />
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-4">

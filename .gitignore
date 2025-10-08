@@ -31,3 +31,9 @@ node_modules/
 exercise_* copy/
 
 
+.github/
+.gemini/
+.wucai/
+exercise_8/backend/logs/
+gha-creds-*.json
+
