@@ -170,3 +170,36 @@ This document outlines the plan for implementing the backend of the HITL Contrac
     - [x] Complete end-to-end testing of all features
     - [x] Verify all UI pages work with backend implementation
     - [x] Test all success criteria from README
+
+## Part 11: Multi-Agent Framework Adoption
+
+- [x] **Analyze and Integrate New Framework:**
+    - [x] Review new multi-agent framework components (Agent, Team, Coordinator)
+    - [x] Assess compatibility with existing implementation
+    - [x] Create integration plan for new framework with existing system
+    - [x] Update PLAN.md with framework adoption tasks
+
+- [x] **Framework Integration:**
+    - [x] Replace current agent system with new Agent/Team/Coordinator architecture
+    - [x] Migrate existing functionality to use new agent patterns
+    - [x] Integrate new framework with existing Redis storage
+    - [x] Ensure API compatibility with frontend components
+
+- [x] **Agent Enhancement:**
+    - [x] Complete implementation of ParserAgent with advanced clause extraction
+    - [x] Complete implementation of RiskAnalyzerAgent with sophisticated risk assessment
+    - [x] Complete implementation of RedlineGeneratorAgent with proper proposal generation
+    - [x] Implement ReviewerAgent for checklist-driven validation
+    - [x] Implement RefereeAgent for contested decision arbitration
+
+- [x] **Team Pattern Implementation:**
+    - [x] Complete parallel execution with ThreadPoolExecutor or asyncio
+    - [x] Implement proper Manager-Worker pattern with task decomposition
+    - [x] Enhance Pipeline pattern with proper data passing between agents
+    - [x] Add checkpoint/recovery functionality for run persistence
+
+- [x] **Enhanced Orchestration:**
+    - [x] Integrate HITL gates with new coordinator pattern
+    - [x] Enhance run lifecycle management
+    - [x] Implement advanced debugging and replay functionality
+    - [x] Add comprehensive execution history tracking

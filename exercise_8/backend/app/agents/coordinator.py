@@ -126,6 +126,7 @@ class Coordinator:
             "assessments": [],
             "proposals": [],
             "history": [],
+            "checkpoints": [],  # Initialize checkpoints
             "created_at": datetime.now().isoformat()
         }
         
@@ -139,10 +140,98 @@ class Coordinator:
             "updated_at": datetime.now().isoformat()
         }
         
+        # Save initial checkpoint
+        self.save_checkpoint(run_id, "initial", self.blackboards[run_id])
+        
         # Execute the team asynchronously (in production, use background task)
         self._execute_run(run_id, agent_path)
         
         return run_id
+    
+    def save_checkpoint(self, run_id: str, step: str, state: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Save a checkpoint of the blackboard state.
+        
+        Args:
+            run_id: Run identifier
+            step: Step name for the checkpoint
+            state: Optional state to save (if None, saves current blackboard state)
+            
+        Returns:
+            True if checkpoint was saved successfully
+        """
+        blackboard = self.blackboards.get(run_id)
+        if not blackboard:
+            return False
+        
+        # Use provided state or current blackboard state
+        checkpoint_state = state if state is not None else blackboard.copy()
+        
+        # Create checkpoint entry
+        checkpoint = {
+            "step": step,
+            "timestamp": datetime.now().isoformat(),
+            "state": checkpoint_state
+        }
+        
+        # Initialize checkpoints list if not exists
+        if "checkpoints" not in blackboard:
+            blackboard["checkpoints"] = []
+        
+        # Add checkpoint
+        blackboard["checkpoints"].append(checkpoint)
+        
+        # Also update runs metadata
+        if "checkpoints" not in self.runs[run_id]:
+            self.runs[run_id]["checkpoints"] = []
+        self.runs[run_id]["checkpoints"].append({
+            "step": step,
+            "timestamp": checkpoint["timestamp"]
+        })
+        
+        return True
+    
+    def restore_checkpoint(self, run_id: str, checkpoint_index: int) -> bool:
+        """
+        Restore blackboard to a previous checkpoint.
+        
+        Args:
+            run_id: Run identifier
+            checkpoint_index: Index of checkpoint to restore (0 is oldest)
+            
+        Returns:
+            True if restoration was successful
+        """
+        blackboard = self.blackboards.get(run_id)
+        if not blackboard or "checkpoints" not in blackboard or checkpoint_index < 0:
+            return False
+        
+        checkpoints = blackboard["checkpoints"]
+        if checkpoint_index >= len(checkpoints):
+            return False
+        
+        # Restore the blackboard state
+        checkpoint = checkpoints[checkpoint_index]
+        state_to_restore = checkpoint["state"]
+        
+        # Update the blackboard with checkpointed state
+        self.blackboards[run_id] = state_to_restore
+        # Also update the run status to reflect restoration
+        self.runs[run_id]["status"] = RunStatus.RUNNING.value
+        self.runs[run_id]["updated_at"] = datetime.now().isoformat()
+        
+        # Add history entry for restoration
+        restored_state = self.blackboards[run_id]
+        if "history" not in restored_state:
+            restored_state["history"] = []
+        restored_state["history"].append({
+            "step": "checkpoint_restoration",
+            "status": "success",
+            "restored_from_step": checkpoint["step"],
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        return True
     
     def _execute_run(self, run_id: str, agent_path: str) -> None:
         """
@@ -170,7 +259,8 @@ class Coordinator:
                 "type": "review_document",
                 "document_text": blackboard["document_text"],
                 "document_id": blackboard["doc_id"],
-                "policy_rules": blackboard["policy_rules"]
+                "policy_rules": blackboard["policy_rules"],
+                "timestamp": datetime.now().isoformat()
             }
             
             # Execute team
