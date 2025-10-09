@@ -676,11 +676,7 @@ class RedlineGeneratorAgent(Agent):
         
         # If no specific modifications were made, return original with annotation
         if modified_text == original_text:
-            return f"[PROPOSED CHANGES NEEDED]
-ORIGINAL:
-{original_text}
-
-CHANGES: Address {risk_level} risk items identified in assessment."
+            return f"[PROPOSED CHANGES NEEDED]\\nORIGINAL:\\n{original_text}\\n\\nCHANGES: Address {risk_level} risk items identified in assessment."
         else:
             return modified_text
     

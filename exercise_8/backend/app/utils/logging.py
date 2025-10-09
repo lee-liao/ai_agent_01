@@ -68,9 +68,9 @@ def setup_app_logging(
     app_logger = logging.getLogger("app")
     
     # Log initialization
-    app_logger.info(f"✅ Logging initialized - Level: {level}")
+    app_logger.info(f"Logging initialized - Level: {level}")
     if log_file:
-        app_logger.info(f"📝 Log file: {log_file}")
+        app_logger.info(f"Log file: {log_file}")
     
     return app_logger
 
@@ -117,9 +117,9 @@ def log_error(logger: logging.Logger, error: Exception, context: Optional[str] =
         error: Exception instance
         context: Optional context information
     """
-    error_msg = f"❌ Error: {str(error)}"
+    error_msg = f"Error: {str(error)}"
     if context:
-        error_msg = f"❌ Error in {context}: {str(error)}"
+        error_msg = f"Error in {context}: {str(error)}"
     
     logger.error(error_msg, exc_info=True)
 
@@ -133,7 +133,7 @@ def log_performance(logger: logging.Logger, operation: str, duration_ms: float, 
         duration_ms: Duration in milliseconds
         details: Optional additional details
     """
-    msg = f"⏱️ {operation} completed in {duration_ms:.2f}ms"
+    msg = f"{operation} completed in {duration_ms:.2f}ms"
     
     if details:
         detail_str = ", ".join([f"{k}={v}" for k, v in details.items()])
