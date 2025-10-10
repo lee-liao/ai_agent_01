@@ -14,6 +14,7 @@ from datetime import datetime
 from enum import Enum
 from .team import Team
 from .agent import Agent
+from .team_store import TeamStore
 
 
 class RunStatus(str, Enum):
@@ -58,18 +59,21 @@ class Coordinator:
         state = coordinator.get_blackboard(run_id)
     """
     
-    def __init__(self):
+    def __init__(self, team_store: Optional[TeamStore] = None):
         """Initialize the Coordinator."""
         # Blackboard storage (in-memory for classroom, use DB in production)
         self.blackboards: Dict[str, Dict[str, Any]] = {}
         
         # Registered teams
         self.teams: Dict[str, Team] = {}
+
+        # Persistence for team definitions
+        self.team_store = team_store
         
         # Run metadata
         self.runs: Dict[str, Dict[str, Any]] = {}
     
-    def register_team(self, team: Team) -> None:
+    def register_team(self, team: Team, *, persist: bool = True) -> None:
         """
         Register a team with the coordinator.
         
@@ -77,6 +81,31 @@ class Coordinator:
             team: Team instance to register
         """
         self.teams[team.name] = team
+        if persist:
+            self.persist_teams()
+
+    def persist_teams(self) -> None:
+        """Persist registered teams using the configured team store."""
+        if self.team_store:
+            self.team_store.save_teams(self.teams)
+
+    def load_teams_from_store(self, replace_existing: bool = False) -> bool:
+        """Load teams from the persistence store."""
+        if not self.team_store:
+            return False
+
+        teams = self.team_store.load_teams()
+        if not teams:
+            return False
+
+        if replace_existing:
+            self.teams.clear()
+
+        for team in teams:
+            # Avoid re-persisting while loading
+            self.register_team(team, persist=False)
+
+        return True
     
     def get_team(self, team_name: str) -> Optional[Team]:
         """

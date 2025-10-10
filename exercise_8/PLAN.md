@@ -241,3 +241,21 @@ This document outlines the plan for implementing the backend of the HITL Contrac
 - [ ] **Manual Test Playbook (for HITL review):**
     - [ ] Document step-by-step verification instructions for operators (including UI checkpoints and expected metrics).
     - [ ] Include negative scenarios (missing teams, database outage, Redis miss) with rollback expectations.
+
+## Part 14: Parser Enhancements
+
+- [ ] **Hierarchical Clause Extraction:**
+    - [ ] Update `ParserAgent` to build clause texts using heading-aware parsing that respects nested numbering schemes.
+    - [ ] Preserve heading hierarchy metadata (section, subsection, etc.) for downstream agents.
+    - [ ] Ensure parsing logic remains configurable to handle diverse legal document formats.
+
+## Future Development
+
+- [ ] **Redis Clause Cache:**
+    - [ ] Persist parsed clause texts into Redis so all agents can access a shared cache during review workflows.
+    - [ ] Define cache invalidation and run-specific scoping to keep blackboard state aligned with Redis copies.
+    - [ ] Evaluate performance implications and fallback handling when Redis is unavailable.
+- [ ] **Persist Teams in Database:**
+    - [ ] Store team definitions in PostgreSQL for durability beyond JSON files.
+    - [ ] Provide migration scripts and admin APIs to manage team configurations centrally.
+    - [ ] Keep Redis/blackboard synchronization consistent when team records change.

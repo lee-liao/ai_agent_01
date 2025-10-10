@@ -360,6 +360,12 @@ GET    /api/replay/{run_id}        # Get replay data
 POST   /api/replay/{run_id}        # Replay with modifications
 ```
 
+### **Team Management**
+```
+GET    /api/teams                  # List registered teams and their capabilities
+GET    /api/teams/{team_name}      # Inspect a specific team definition
+```
+
 ---
 
 ## 🖥️ Frontend Pages

@@ -24,6 +24,7 @@ from app.utils import setup_app_logging
 from app.agents import Agent, Team, Coordinator
 from app.agents.agent import ParserAgent, RiskAnalyzerAgent, RedlineGeneratorAgent
 from app.agents.team import TeamPattern
+from app.agents.team_store import TeamStore
 
 # Import existing functionality to maintain compatibility
 from app.utils.analysis import analyze_risk_with_openai, parse_document_content
@@ -226,7 +227,7 @@ app.add_middleware(
 )
 
 # Initialize the Coordinator (manages all agents and blackboard)
-coordinator = Coordinator()
+coordinator = Coordinator(team_store=TeamStore())
 
 # In the startup event, we'll initialize our teams
 @app.on_event("startup")
@@ -238,6 +239,15 @@ async def setup_teams():
         print("Coordinator teams already initialized; skipping setup.")
         return
     print("Initializing multi-agent framework...")
+
+    # Attempt to restore persisted teams before creating defaults
+    try:
+        if coordinator.load_teams_from_store():
+            print("Loaded teams from persisted store")
+            print(f"Coordinator stats: {coordinator.get_stats()}")
+            return
+    except Exception as load_error:
+        print(f"Failed to load persisted teams: {load_error}")
     
     # Sequential Team: Parser -> Risk Analyzer -> Redline Generator
     sequential_team = Team(
