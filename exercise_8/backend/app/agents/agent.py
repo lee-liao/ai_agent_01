@@ -12,6 +12,8 @@ from typing import Dict, Any, Optional, List
 from enum import Enum
 from pydantic import BaseModel, Field
 
+from app.utils.analysis import parse_document_content
+
 
 class AgentStatus(str, Enum):
     """Agent execution status"""
@@ -236,89 +238,7 @@ class ParserAgent(Agent):
         """
         Advanced clause parsing using pattern recognition
         """
-        import re
-        
-        # Pattern to identify clause headings (numbered sections, Roman numerals, etc.)
-        clause_patterns = [
-            r'^(\\d+[\\.]?\\s+.*?)[\\r\\n]+((?:(?!\\d+[\\.]?\\s).*\\n?)*)',  # Matches "1. Heading" followed by content
-            r'^([IVX]+[\\.]?\\s+.*?)[\\r\\n]+((?:(?![IVX]+[\\.]?\\s).*\\n?)*)',  # Roman numerals
-            r'^([A-Z]\\d*[\\.]?\\s+.*?)[\\r\\n]+((?:(?![A-Z]\\d*[\\.]?\\s).*\\n?)*)',  # Letters
-            r'^([A-Z][a-z]+\\s.*?)[\\r\\n]+((?:(?![A-Z][a-z]+\\s).*\\n?)*)',  # Word headings
-        ]
-        
-        clauses = []
-        clause_counter = 1
-        lines = text.split('\\n')
-        
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            if not line:
-                i += 1
-                continue
-            
-            # Check if this line looks like a clause heading
-            is_clause_heading = any(
-                re.match(pattern.split('[')[0].rstrip() + r'\\s', line, re.IGNORECASE)
-                for pattern in [r'^\\d+[\\.]?\\s', r'^[IVX]+[\\.]?\\s', r'^[A-Z]\\d*[\\.]?\\s', r'^[A-Z][a-z]+\\s']
-            )
-            
-            if is_clause_heading:
-                heading = line
-                clause_text = line + "\\n"
-                
-                # Collect the rest of the clause content
-                i += 1
-                while i < len(lines):
-                    next_line = lines[i].strip()
-                    if not next_line:
-                        clause_text += "\\n"
-                        i += 1
-                        continue
-                    
-                    # Check if next line is a new clause heading
-                    is_next_clause = any(
-                        re.match(pattern.split('[')[0].rstrip() + r'\\s', next_line, re.IGNORECASE)
-                        for pattern in [r'^\\d+[\\.]?\\s', r'^[IVX]+[\\.]?\\s', r'^[A-Z]\\d*[\\.]?\\s', r'^[A-Z][a-z]+\\s']
-                    )
-                    
-                    if is_next_clause:
-                        break
-                    else:
-                        clause_text += next_line + "\\n"
-                        i += 1
-                
-                clauses.append({
-                    "clause_id": f"clause_{clause_counter}",
-                    "heading": heading.strip(),
-                    "text": clause_text.strip()
-                })
-                clause_counter += 1
-            else:
-                i += 1
-        
-        # If no clauses were found using advanced method, fall back to simple splitting
-        if not clauses:
-            # Try a different approach - split on common headings
-            sections = re.split(r'\\n\\s*\\n', text)
-            clauses = []
-            clause_counter = 1
-            for section in sections:
-                section = section.strip()
-                if section:
-                    # Try to extract heading (first line if it looks like a heading)
-                    lines = section.split('\\n', 1)
-                    if len(lines) > 0:
-                        heading = lines[0].strip() if len(lines[0].split()) <= 10 else f"Section {clause_counter}"  # If first line is very long, it's probably not a heading
-                        content = section if len(lines) == 1 else f"{lines[0].strip()}\\n{lines[1].strip() if len(lines) > 1 else ''}"
-                        clauses.append({
-                            "clause_id": f"clause_{clause_counter}",
-                            "heading": heading,
-                            "text": content
-                        })
-                        clause_counter += 1
-        
-        return clauses
+        return _extract_clauses_from_text(text)
 
 
 class RiskAnalyzerAgent(Agent):
@@ -694,3 +614,29 @@ class RedlineGeneratorAgent(Agent):
             "rationale": "Proposed change to mitigate risk",
             "variant": "conservative"
         }
+
+
+def _extract_clauses_from_text(text: str) -> List[Dict[str, Any]]:
+    parsed = parse_document_content(text, "document")
+    clauses: List[Dict[str, Any]] = []
+
+    for idx, clause in enumerate(parsed.get("clauses", []), start=1):
+        clause_id = clause.get("clause_id") or clause.get("id") or f"clause_{idx}"
+        heading = (clause.get("heading") or clause_id).strip()
+        clause_text = (clause.get("text") or "").strip()
+        clauses.append({
+            "clause_id": clause_id,
+            "heading": heading,
+            "text": clause_text,
+        })
+
+    if not clauses:
+        text_clean = text.strip()
+        if text_clean:
+            clauses.append({
+                "clause_id": "clause_1",
+                "heading": "Document",
+                "text": text_clean,
+            })
+
+    return clauses

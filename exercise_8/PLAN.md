@@ -204,11 +204,33 @@ This document outlines the plan for implementing the backend of the HITL Contrac
     - [x] Implement advanced debugging and replay functionality
     - [x] Add comprehensive execution history tracking
 
-## Part 12: Team & Run Persistence Enhancements
+## Part 12: Document Structuring & Clause Quality
 
-- [ ] **Persist Team Definitions to JSON:**
-    - [ ] Store configured teams in `exercise_8/data/team` as a JSON file that mirrors the coordinator’s registered teams.
-    - [ ] Load teams from the JSON file during startup to recreate coordinator state when Redis/DB is empty.
+- [x] **Integrate shared clause parsing:**
+    - [x] Delegate `ParserAgent` clause extraction to `parse_document_content` for consistent heading detection.
+    - [x] Normalize clause IDs, headings, and text content for downstream agents.
+
+- [ ] **Hierarchical Clause Extraction:**
+    - [ ] Update parsing pipeline to capture section/subsection hierarchy for nested numbering schemes.
+    - [ ] Preserve heading metadata needed by Reviewer/Risk agents.
+    - [ ] Keep parser configurable for diverse legal formats.
+
+## Part 13: HITL Risk Review Data Flow
+
+- [x] **Replace Risk Gate mocks with live data:**
+    - [x] Expose `/api/hitl/pending-runs` and `/api/hitl/runs/{run_id}/assessments` endpoints with enriched data.
+    - [x] Update frontend Risk Gate page to load pending runs/assessments and submit real approvals.
+    - [x] Add automated tests covering risk run summaries, assessments, and approval lifecycle.
+
+- [ ] **Operational Verification:**
+    - [ ] Perform manual HITL walkthroughs in staging to validate UX and edge cases.
+    - [ ] Capture follow-up issues and polish items from manual review.
+
+## Part 14: Team & Run Persistence Enhancements
+
+- [x] **Persist Team Definitions to JSON:**
+    - [x] Store configured teams in `exercise_8/data/team` as a JSON file that mirrors the coordinator’s registered teams.
+    - [x] Load teams from the JSON file during startup to recreate coordinator state when Redis/DB is empty.
 
 - [ ] **Run Execution Trace Persistence:**
     - [ ] Design PostgreSQL schema (`run_instances`, `run_events`, `run_artifacts`, optional `run_metrics`).
@@ -225,7 +247,7 @@ This document outlines the plan for implementing the backend of the HITL Contrac
     - [ ] Add automated tests around persistence and replay flows.
     - [ ] Emit structured logs/metrics for run and replay outcomes to aid debugging.
 
-## Part 13: Verification & End-to-End Testing
+## Part 15: Verification & End-to-End Testing
 
 - [ ] **Automated Verification Harness:**
     - [ ] Stand up pytest suites that spin up Redis/Postgres test instances and seed sample documents.
@@ -241,13 +263,6 @@ This document outlines the plan for implementing the backend of the HITL Contrac
 - [ ] **Manual Test Playbook (for HITL review):**
     - [ ] Document step-by-step verification instructions for operators (including UI checkpoints and expected metrics).
     - [ ] Include negative scenarios (missing teams, database outage, Redis miss) with rollback expectations.
-
-## Part 14: Parser Enhancements
-
-- [ ] **Hierarchical Clause Extraction:**
-    - [ ] Update `ParserAgent` to build clause texts using heading-aware parsing that respects nested numbering schemes.
-    - [ ] Preserve heading hierarchy metadata (section, subsection, etc.) for downstream agents.
-    - [ ] Ensure parsing logic remains configurable to handle diverse legal document formats.
 
 ## Future Development
 

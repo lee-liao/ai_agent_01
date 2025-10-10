@@ -8,7 +8,7 @@ Integrates the new multi-agent framework with existing exercise 8 functionality.
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Literal
 import uuid
 import time
 import json
@@ -25,6 +25,7 @@ from app.agents import Agent, Team, Coordinator
 from app.agents.agent import ParserAgent, RiskAnalyzerAgent, RedlineGeneratorAgent
 from app.agents.team import TeamPattern
 from app.agents.team_store import TeamStore
+from app.agents.coordinator import RunStatus
 
 # Import existing functionality to maintain compatibility
 from app.utils.analysis import analyze_risk_with_openai, parse_document_content
@@ -169,6 +170,49 @@ def set_run(run_id: str, data: Dict[str, Any]) -> None:
     set_to_redis(f"run:{run_id}", data)
 
 
+def _safe_get_doc_name(doc_id: Optional[str]) -> str:
+    if not doc_id:
+        return ""
+    try:
+        doc = get_doc(doc_id)
+        if doc and isinstance(doc, dict):
+            return doc.get("name") or doc.get("title") or doc_id
+    except Exception:
+        pass
+    return doc_id
+
+
+def _summarize_risk_counts(assessments: List[Dict[str, Any]]) -> Dict[str, int]:
+    counts = {"high": 0, "medium": 0, "low": 0}
+    for assessment in assessments or []:
+        level = (assessment.get("risk_level") or "").upper()
+        if level == "HIGH":
+            counts["high"] += 1
+        elif level == "MEDIUM":
+            counts["medium"] += 1
+        elif level == "LOW":
+            counts["low"] += 1
+    return counts
+
+
+def _default_recommendation(risk_level: str) -> Dict[str, str]:
+    level = (risk_level or "").upper()
+    if level == "HIGH":
+        return {
+            "recommended_action": "REJECT - requires mitigation or executive review",
+            "impact_assessment": "Critical: Potentially material legal or financial exposure",
+        }
+    if level == "MEDIUM":
+        return {
+            "recommended_action": "REQUEST MODIFICATION - adjust language before approval",
+            "impact_assessment": "Moderate: Address concerns to reduce downstream disputes",
+        }
+    return {
+        "recommended_action": "APPROVE - standard contractual language",
+        "impact_assessment": "Low: Consistent with policy baseline",
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown events"""
@@ -308,6 +352,7 @@ class RunRequest(BaseModel):
 
 class RiskApprovalItem(BaseModel):
     clause_id: str
+    decision: Literal["approve", "reject"] = "approve"
     risk_override: Optional[str] = None
     comments: Optional[str] = None
 
@@ -584,6 +629,96 @@ async def get_blackboard(run_id: str):
     return blackboard
 
 
+# ==================== HITL Utilities ====================
+
+@app.get("/api/hitl/pending-runs")
+async def list_pending_risk_runs():
+    """Return runs awaiting risk approval with risk counts."""
+    pending_runs = []
+    for run in coordinator.list_runs():
+        if run.get("status") != RunStatus.AWAITING_RISK_APPROVAL.value:
+            continue
+
+        run_id = run.get("run_id")
+        if not run_id:
+            continue
+
+        blackboard = coordinator.get_blackboard(run_id) or {}
+        assessments = blackboard.get("assessments", [])
+        counts = _summarize_risk_counts(assessments)
+        doc_id = blackboard.get("doc_id") or run.get("doc_id")
+
+        pending_runs.append({
+            "run_id": run_id,
+            "doc_id": doc_id,
+            "doc_name": _safe_get_doc_name(doc_id),
+            "agent_path": run.get("agent_path"),
+            "status": run.get("status"),
+            "created_at": run.get("created_at"),
+            "updated_at": run.get("updated_at"),
+            "high_risk_count": counts["high"],
+            "medium_risk_count": counts["medium"],
+            "low_risk_count": counts["low"],
+            "total_assessments": len(assessments),
+        })
+
+    # Sort by creation time descending for usability
+    pending_runs.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    return pending_runs
+
+
+@app.get("/api/hitl/runs/{run_id}/assessments")
+async def get_risk_assessments(run_id: str):
+    """Fetch enriched risk assessments for a run."""
+    run = coordinator.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    blackboard = coordinator.get_blackboard(run_id)
+    if not blackboard:
+        raise HTTPException(status_code=404, detail="Blackboard not found")
+
+    doc_id = blackboard.get("doc_id") or run.get("doc_id")
+    doc_name = _safe_get_doc_name(doc_id)
+
+    clauses = {}
+    clause_order = {}
+    for idx, clause in enumerate(blackboard.get("clauses", [])):
+        identifier = clause.get("clause_id") or clause.get("id")
+        if not identifier:
+            continue
+        clauses[identifier] = clause
+        clause_order[identifier] = idx
+
+    enriched_assessments = []
+    for assessment in blackboard.get("assessments", []):
+        clause_id = assessment.get("clause_id") or assessment.get("id")
+        if not clause_id:
+            continue
+        clause = clauses.get(clause_id, {})
+        defaults = _default_recommendation(assessment.get("risk_level"))
+        enriched_assessments.append({
+            "clause_id": clause_id,
+            "clause_heading": clause.get("heading") or clause_id,
+            "clause_text": clause.get("text") or "",
+            "risk_level": assessment.get("risk_level", "LOW"),
+            "rationale": assessment.get("rationale", ""),
+            "policy_refs": assessment.get("policy_refs", []),
+            "recommended_action": assessment.get("recommended_action", defaults["recommended_action"]),
+            "impact_assessment": assessment.get("impact_assessment", defaults["impact_assessment"]),
+        })
+
+    enriched_assessments.sort(key=lambda item: clause_order.get(item["clause_id"], 0))
+
+    return {
+        "run_id": run_id,
+        "doc_id": doc_id,
+        "doc_name": doc_name,
+        "agent_path": run.get("agent_path"),
+        "assessments": enriched_assessments,
+    }
+
+
 # ==================== HITL Gates ====================
 
 @app.post("/api/hitl/risk-approve")
@@ -593,22 +728,25 @@ async def risk_approve(body: RiskApprovalRequest):
     Uses the coordinator's approval mechanism.
     """
     # Prepare approval data
-    approved_clauses = []
-    rejected_clauses = []
-    comments = {}
-    
+    approved_clauses: List[str] = []
+    rejected_clauses: List[str] = []
+    comments: Dict[str, str] = {}
+
     for item in body.items:
-        # Determine approval based on risk override or other logic
-        if item.risk_override is not None:
-            # If risk override exists, use that to determine approval
-            if item.risk_override.lower() in ["low", "medium"]:
-                approved_clauses.append(item.clause_id)
-            else:
-                rejected_clauses.append(item.clause_id)
+        decision = (item.decision or "approve").lower()
+
+        if item.risk_override:
+            override = item.risk_override.lower()
+            if override in ["low", "medium"]:
+                decision = "approve"
+            elif override == "high":
+                decision = "reject"
+
+        if decision == "reject":
+            rejected_clauses.append(item.clause_id)
         else:
-            # Default to approve
             approved_clauses.append(item.clause_id)
-        
+
         if item.comments:
             comments[item.clause_id] = item.comments
     
