@@ -224,3 +224,20 @@ This document outlines the plan for implementing the backend of the HITL Contrac
 - [ ] **Testing & Observability:**
     - [ ] Add automated tests around persistence and replay flows.
     - [ ] Emit structured logs/metrics for run and replay outcomes to aid debugging.
+
+## Part 13: Verification & End-to-End Testing
+
+- [ ] **Automated Verification Harness:**
+    - [ ] Stand up pytest suites that spin up Redis/Postgres test instances and seed sample documents.
+    - [ ] Provide helper factories to create documents, playbooks, and run requests for reuse across tests.
+
+- [ ] **Core E2E Scenarios:**
+    - [ ] Upload document → start `sequential` run → verify assessments/proposals persisted and rendered via API.
+    - [ ] Execute `manager_worker` path with induced clause failures → ensure error events and failure reasons are stored.
+    - [ ] Walk through Risk Gate approval flow (approve/reject mix) and confirm status transitions + audit trail.
+    - [ ] Complete Final Approval and export workflow; confirm artifacts recorded and downloadable.
+    - [ ] Trigger replay with modified agent path/options, validate linkage to original run and compare outcomes.
+
+- [ ] **Manual Test Playbook (for HITL review):**
+    - [ ] Document step-by-step verification instructions for operators (including UI checkpoints and expected metrics).
+    - [ ] Include negative scenarios (missing teams, database outage, Redis miss) with rollback expectations.
