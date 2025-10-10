@@ -15,8 +15,11 @@ import os
 from .database import get_db
 from .models import User
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing - using pbkdf2_sha256 instead of bcrypt to avoid compatibility issues
+pwd_context = CryptContext(
+    schemes=["pbkdf2_sha256"],
+    deprecated="auto"
+)
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -57,11 +60,18 @@ class UserResponse(BaseModel):
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against a hash"""
+    # Truncate password to match what was hashed
+    password_bytes = plain_password.encode('utf-8')[:72]
+    plain_password = password_bytes.decode('utf-8', errors='ignore')
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
     """Hash a password"""
+    # Truncate password to 72 bytes for bcrypt
+    # Ensure we truncate at byte level, not character level
+    password_bytes = password.encode('utf-8')[:72]
+    password = password_bytes.decode('utf-8', errors='ignore')
     return pwd_context.hash(password)
 
 

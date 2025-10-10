@@ -52,22 +52,24 @@ def seed_database():
         
         print("🌱 Seeding database with fake data...")
         
-        # Create admin user
+        # Create admin user with truncated password for bcrypt
+        password_admin = "admin123"[:72]  # Bcrypt max 72 bytes
         admin_user = User(
             username="admin",
             email="admin@truckmonitor.com",
-            hashed_password=get_password_hash("admin123"),
+            hashed_password=get_password_hash(password_admin),
             full_name="System Administrator",
             is_active=True,
             is_admin=True
         )
         db.add(admin_user)
         
-        # Create regular user
+        # Create regular user with truncated password for bcrypt
+        password_user = "user123"[:72]  # Bcrypt max 72 bytes
         regular_user = User(
             username="user",
             email="user@truckmonitor.com",
-            hashed_password=get_password_hash("user123"),
+            hashed_password=get_password_hash(password_user),
             full_name="John Doe",
             is_active=True,
             is_admin=False

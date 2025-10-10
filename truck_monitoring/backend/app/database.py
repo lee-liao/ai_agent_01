@@ -11,16 +11,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Database URL from environment variable
+# Using SQLite for easier setup (no MySQL server needed)
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "mysql+pymysql://root:password@localhost:3306/truck_monitoring"
+    "sqlite:///./truck_monitoring.db"
 )
 
 # Create SQLAlchemy engine
 engine = create_engine(
     DATABASE_URL,
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
     pool_pre_ping=True,
-    pool_recycle=3600,
     echo=False  # Set to True for SQL query logging
 )
 

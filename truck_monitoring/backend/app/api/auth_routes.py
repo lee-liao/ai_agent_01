@@ -53,7 +53,9 @@ async def login(
     db: Session = Depends(get_db)
 ):
     """Login and get access token"""
+    print(f"🔍 Login attempt: username={form_data.username}, password={form_data.password}")
     user = authenticate_user(db, form_data.username, form_data.password)
+    print(f"🔍 Authentication result: {user}")
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -74,4 +76,29 @@ async def login(
 async def read_users_me(current_user: User = Depends(get_current_active_user)):
     """Get current user information"""
     return current_user
+
+
+# Debug endpoint - test login without OAuth2Form
+from pydantic import BaseModel as PydanticBaseModel
+
+class SimpleLogin(PydanticBaseModel):
+    username: str
+    password: str
+
+@router.post("/test-login", response_model=Token)
+async def test_login(credentials: SimpleLogin, db: Session = Depends(get_db)):
+    """Test login endpoint for debugging"""
+    user = authenticate_user(db, credentials.username, credentials.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password"
+        )
+    
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    
+    return {"access_token": access_token, "token_type": "bearer"}
 
