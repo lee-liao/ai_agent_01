@@ -172,7 +172,7 @@ def set_run(run_id: str, data: Dict[str, Any]) -> None:
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown events"""
     # Startup
-    print("🚀 Starting up application...")
+    print("Starting up application...")
     
     # Setup logging
     logger = setup_app_logging(
@@ -186,11 +186,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
         # Continue without database since we're using Redis for now
+
+    # Ensure multi-agent teams are registered even if startup events don't fire
+    if not coordinator.teams:
+        try:
+            await setup_teams()
+        except Exception as team_error:
+            logger.error(f"Failed to initialize teams during startup: {team_error}")
     
     yield
     
     # Shutdown
-    print("🛑 Shutting down application...")
+    print("Shutting down application...")
     try:
         await close_database()
     except Exception as e:
@@ -227,7 +234,10 @@ async def setup_teams():
     """
     Initialize demo teams for the multi-agent framework.
     """
-    print("🚀 Initializing multi-agent framework...")
+    if coordinator.teams:
+        print("Coordinator teams already initialized; skipping setup.")
+        return
+    print("Initializing multi-agent framework...")
     
     # Sequential Team: Parser -> Risk Analyzer -> Redline Generator
     sequential_team = Team(
@@ -273,8 +283,8 @@ async def setup_teams():
     reviewer_referee_team.add_agent(RefereeAgent())
     coordinator.register_team(reviewer_referee_team)
     
-    print("✅ Demo teams initialized successfully")
-    print(f"📊 Coordinator stats: {coordinator.get_stats()}")
+    print("Demo teams initialized successfully")
+    print(f"Coordinator stats: {coordinator.get_stats()}")
 
 
 # ==================== Pydantic Models ====================

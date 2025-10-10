@@ -258,7 +258,7 @@ class ExecutorAgent(Agent):
             # Find the clause text from the clauses in blackboard
             clause_text = ""
             for clause in blackboard.get("clauses", []):
-                if clause.get("id") == clause_id:
+                if clause.get("id") == clause_id or clause.get("clause_id") == clause_id:
                     clause_text = clause.get("text", "")
                     break
             

@@ -142,7 +142,7 @@ async def manager_worker_workflow(blackboard: Blackboard) -> Dict[str, Any]:
         task = {
             "task_id": f"task-{clause.get('id', 'unknown')}",
             "type": "risk_assessment",
-            "clause_id": clause.get("id"),
+            "clause_id": clause.get("id") or clause.get("clause_id"),
             "clause_text": clause.get("text", ""),
             "policy_rules": {}  # Will be populated from playbook if available
         }

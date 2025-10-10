@@ -203,3 +203,24 @@ This document outlines the plan for implementing the backend of the HITL Contrac
     - [x] Enhance run lifecycle management
     - [x] Implement advanced debugging and replay functionality
     - [x] Add comprehensive execution history tracking
+
+## Part 12: Team & Run Persistence Enhancements
+
+- [ ] **Persist Team Definitions to JSON:**
+    - [ ] Store configured teams in `exercise_8/data/team` as a JSON file that mirrors the coordinator’s registered teams.
+    - [ ] Load teams from the JSON file during startup to recreate coordinator state when Redis/DB is empty.
+
+- [ ] **Run Execution Trace Persistence:**
+    - [ ] Design PostgreSQL schema (`run_instances`, `run_events`, `run_artifacts`, optional `run_metrics`).
+    - [ ] Implement repository layer for inserting runs, appending events, storing artifacts, and querying timelines.
+    - [ ] Update coordinator lifecycle to persist run start/finish, agent steps, blackboard checkpoints, and failure reasons.
+    - [ ] Ensure Redis continues serving latest state while Postgres becomes source of truth for history.
+
+- [ ] **Replay Workflow:**
+    - [ ] Add API endpoint to clone a run with overrides, seeded from stored inputs/artifacts.
+    - [ ] Allow coordinator to bootstrap from persisted state and link replay runs back to their original.
+    - [ ] Expose APIs for fetching timelines, replay lineage, and comparisons for frontend consumption.
+
+- [ ] **Testing & Observability:**
+    - [ ] Add automated tests around persistence and replay flows.
+    - [ ] Emit structured logs/metrics for run and replay outcomes to aid debugging.

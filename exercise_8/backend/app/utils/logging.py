@@ -33,6 +33,15 @@ def setup_app_logging(
             "[%(filename)s:%(lineno)d] - %(message)s"
         )
     
+    # Attempt to ensure stdout/stderr can emit UTF-8 characters (e.g., Windows consoles)
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8")
+            except Exception:
+                pass
+
     # Convert string level to logging constant
     numeric_level = getattr(logging, level.upper(), logging.INFO)
     
@@ -59,7 +68,7 @@ def setup_app_logging(
         if log_dir and not os.path.exists(log_dir):
             os.makedirs(log_dir)
         
-        file_handler = logging.FileHandler(log_file)
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_handler.setLevel(numeric_level)
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)

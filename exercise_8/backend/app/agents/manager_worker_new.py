@@ -30,10 +30,11 @@ class ManagerAgent(Agent):
             tasks = []
             
             for clause in clauses:
+                clause_id = clause.get("id") or clause.get("clause_id")
                 task_item = {
-                    "task_id": f"task-{clause.get('id', 'unknown')}",
+                    "task_id": f"task-{clause_id or 'unknown'}",
                     "type": "risk_assessment",
-                    "clause_id": clause.get("id"),
+                    "clause_id": clause_id,
                     "clause_text": clause.get("text", ""),
                     "policy_rules": blackboard.get("policy_rules", {})
                 }
@@ -49,7 +50,7 @@ class ManagerAgent(Agent):
             for result in results:
                 if result.get("status") == "completed":
                     blackboard["assessments"].append({
-                        "clause_id": result.get("clause_id"),
+                    "clause_id": result.get("clause_id"),
                         "risk_level": result.get("risk_level"),
                         "rationale": result.get("rationale"),
                         "policy_refs": result.get("policy_refs")

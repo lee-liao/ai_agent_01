@@ -103,7 +103,18 @@ async def check_pgvector_extension():
             if result:
                 logger.info("✅ pgvector extension is available")
             else:
-                logger.warning("⚠️ pgvector extension not found - vector operations may not work")
+                logger.warning("⚠️ pgvector extension not found - attempting to install")
+                try:
+                    await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                    verify = await conn.fetchval(
+                        "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector')"
+                    )
+                    if verify:
+                        logger.info("✅ pgvector extension installed successfully")
+                    else:
+                        logger.warning("⚠️ pgvector extension still unavailable after install attempt")
+                except Exception as install_error:
+                    logger.error(f"❌ Failed to install pgvector extension: {install_error}")
                 
     except Exception as e:
         logger.error(f"❌ Error checking pgvector extension: {e}")

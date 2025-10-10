@@ -2,7 +2,7 @@
 Redline generation functionality for Exercise 8
 """
 import asyncio
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union
 from app.agents.base import Blackboard
 from app.main import analyze_risk_with_openai
 
@@ -10,15 +10,24 @@ from app.main import analyze_risk_with_openai
 class RedlineGenerator:
     """Generate redline proposals for risky clauses"""
     
-    def __init__(self, blackboard: Blackboard):
+    def __init__(self, blackboard: Union[Blackboard, Dict[str, Any]]):
         self.blackboard = blackboard
+
+    def _get_list(self, key: str) -> List[Dict[str, Any]]:
+        if isinstance(self.blackboard, dict):
+            return self.blackboard.get(key, [])
+        return getattr(self.blackboard, key, [])
+
+    def _iter_clauses(self) -> List[Dict[str, Any]]:
+        clauses = self._get_list("clauses")
+        return clauses if isinstance(clauses, list) else []
 
     async def generate_redlines(self) -> List[Dict[str, Any]]:
         """Generate redline proposals for high and medium risk clauses"""
         redline_proposals = []
         
         # Process each assessment to generate redline proposals
-        for assessment in self.blackboard.assessments:
+        for assessment in self._get_list("assessments"):
             risk_level = assessment.get("risk_level", "").lower()
             clause_id = assessment.get("clause_id")
             
@@ -36,8 +45,8 @@ class RedlineGenerator:
         
         # Find the original clause text
         original_clause = None
-        for clause in self.blackboard.clauses:
-            if clause.get("id") == clause_id:
+        for clause in self._iter_clauses():
+            if clause.get("id") == clause_id or clause.get("clause_id") == clause_id:
                 original_clause = clause
                 break
         
@@ -87,7 +96,10 @@ async def generate_redlines_for_run(blackboard: Blackboard) -> List[Dict[str, An
     proposals = await generator.generate_redlines()
     
     # Add proposals to the blackboard
-    for proposal in proposals:
-        blackboard.add_proposal(proposal)
+    if hasattr(blackboard, "add_proposal"):
+        for proposal in proposals:
+            blackboard.add_proposal(proposal)
+    elif isinstance(blackboard, dict):
+        blackboard.setdefault("proposals", []).extend(proposals)
     
     return proposals
