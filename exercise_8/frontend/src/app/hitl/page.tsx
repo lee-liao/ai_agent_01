@@ -672,7 +672,7 @@ export default function RiskGatePage() {
           </div>
           <div className="flex space-x-3">
             <Link
-              href={`/run/${selectedRun}`}
+              href={selectedRun ? `/finalize?run_id=${selectedRun}` : "/finalize"}
               className="btn-primary flex items-center"
             >
               <ArrowRight className="w-4 h-4 mr-2" />

@@ -2,6 +2,7 @@
 Manager-Worker agent pattern implementation
 """
 import asyncio
+from datetime import datetime
 from typing import Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
 from app.agents.base import BaseAgent, Blackboard
@@ -121,6 +122,22 @@ class WorkerAgent(BaseAgent):
                 "policy_refs": analysis_result["policy_refs"]
             }
             self.blackboard.add_assessment(assessment)
+
+            # Record prompt/history for replay tooling
+            self.blackboard.add_history({
+                "step": "risk_analysis_clause",
+                "step_id": task.get("clause_id") or task.get("task_id"),
+                "agent": self.agent_id,
+                "status": "completed",
+                "timestamp": task.get("timestamp", datetime.utcnow().isoformat()),
+                "prompt": analysis_result.get("prompt"),
+                "clause_id": task.get("clause_id"),
+                "output": {
+                    "risk_level": analysis_result["risk_level"],
+                    "rationale": analysis_result["rationale"],
+                    "policy_refs": analysis_result["policy_refs"],
+                },
+            })
             
             return result
         else:

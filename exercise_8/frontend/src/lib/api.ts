@@ -36,6 +36,8 @@ export const api = {
 	getRedlineDetails: (runId: string) => apiClient.get(`/api/hitl/runs/${runId}/redlines`).then(r => r.data),
 	finalApprove: (payload: { run_id: string; approved: string[]; rejected: string[]; note?: string }) => apiClient.post('/api/hitl/final-approve', payload).then(r => r.data),
 	exportRedline: (runId: string, format: 'md'|'docx'|'pdf'='md') => apiClient.post('/api/export/redline', null, { params: { run_id: runId, format } }).then(r => r.data),
-	replay: (runId: string) => apiClient.get(`/api/replay/${runId}`).then(r => r.data),
+	listRuns: () => apiClient.get('/api/runs').then(r => r.data),
+	replay: (runId: string, payload?: { step_id?: string; input_override?: string }) =>
+		apiClient.post(`/api/replay/${runId}`, payload ?? {}).then(r => r.data),
 	reportSLOs: () => apiClient.get('/api/report/slos').then(r => r.data),
 }

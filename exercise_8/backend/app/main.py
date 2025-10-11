@@ -1109,12 +1109,43 @@ async def report_cost():
 
 # ==================== Replay & Debug ====================
 
-@app.get("/api/replay/{run_id}")
-async def replay(run_id: str):
-    """
-    Replay a run from the beginning with the same parameters
-    """
-    run = get_run(run_id)
+class ReplayRequest(BaseModel):
+    step_id: Optional[str] = None
+    input_override: Optional[str] = None
+
+
+@app.get("/api/runs")
+async def list_runs():
+    runs = []
+    for run in coordinator.list_runs():
+        run_id = run.get("run_id")
+        if not run_id:
+            continue
+        doc_id = run.get("doc_id")
+        runs.append({
+            **run,
+            "doc_name": _safe_get_doc_name(doc_id),
+        })
+    runs.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    return runs
+
+
+@app.post("/api/replay/{run_id}")
+async def replay(run_id: str, body: ReplayRequest = ReplayRequest()):
+    """Replay a run using the coordinator state when available."""
+    run = coordinator.get_run(run_id)
+    blackboard_source = coordinator.get_blackboard(run_id)
+    if not run:
+        run = get_run(run_id)
+        if run:
+            coordinator.runs[run_id] = run
+            blackboard_source = blackboard_source or {
+                "history": run.get("history", []),
+                "assessments": run.get("assessments", []),
+                "proposals": run.get("proposals", []),
+                "doc_id": run.get("doc_id"),
+                "doc_name": run.get("doc_name"),
+            }
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
 
@@ -1159,8 +1190,37 @@ async def replay(run_id: str):
         metadata={"doc_id": doc_id, "playbook_id": playbook_id, "replayed_from": run_id}
     )
 
-    async def execute_agent_workflow(agent_path: str, blackboard: Blackboard, playbook: Dict[str, Any] = None):
+    async def execute_agent_workflow(agent_path: str, blackboard: Blackboard, playbook: Dict[str, Any] = None, start_step: Optional[str] = None):
         """Execute the appropriate agent workflow based on the agent path"""
+        if start_step:
+            source_history: List[Dict[str, Any]] = []
+            if isinstance(blackboard_source, dict):
+                source_history = blackboard_source.get("history", []) or []
+            run_history = source_history or run.get("history", [])
+            trimmed_history = []
+            found = False
+            for entry in run_history:
+                trimmed_history.append(entry)
+                if entry.get("step_id") == start_step or entry.get("step") == start_step:
+                    found = True
+                    break
+            if found:
+                blackboard.history.extend(trimmed_history)
+                replay_meta = blackboard.metadata.setdefault("replay", {})
+                replay_meta["resume_from_step"] = start_step
+                if body.input_override:
+                    replay_meta["input_override"] = {
+                        "step_id": start_step,
+                        "prompt": body.input_override,
+                    }
+                    blackboard.history.append({
+                        "step": "replay_input_override",
+                        "agent": "system",
+                        "status": "prepared",
+                        "step_id": start_step,
+                        "input_override": body.input_override,
+                        "timestamp": time.time(),
+                    })
         if agent_path == "manager_worker":
             return await manager_worker_workflow(blackboard)
         elif agent_path == "planner_executor":
@@ -1172,7 +1232,12 @@ async def replay(run_id: str):
             return await manager_worker_workflow(blackboard)
 
     # Execute the same agent workflow that was used in the original run
-    workflow_result = await execute_agent_workflow(agent_path, blackboard, playbook)
+    workflow_result = await execute_agent_workflow(
+        agent_path,
+        blackboard,
+        playbook,
+        start_step=body.step_id
+    )
 
     # Calculate score based on risk assessments in the blackboard
     assessments = blackboard.assessments

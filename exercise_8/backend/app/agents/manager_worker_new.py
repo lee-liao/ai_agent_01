@@ -2,6 +2,7 @@
 Manager-Worker agent pattern implementation using the new Agent Framework
 """
 import asyncio
+from datetime import datetime
 from typing import Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
 from app.agents.agent import Agent, AgentStatus, AgentResult
@@ -182,7 +183,22 @@ class WorkerAgent(Agent):
                     "rationale": analysis_result["rationale"],
                     "policy_refs": analysis_result["policy_refs"]
                 })
-                
+
+                blackboard.setdefault("history", []).append({
+                    "step": "risk_analysis_clause",
+                    "step_id": task.get("clause_id") or task.get("task_id"),
+                    "agent": self.name,
+                    "status": "completed",
+                    "timestamp": task.get("timestamp", datetime.utcnow().isoformat()),
+                    "prompt": analysis_result.get("prompt"),
+                    "clause_id": task.get("clause_id"),
+                    "output": {
+                        "risk_level": analysis_result["risk_level"],
+                        "rationale": analysis_result["rationale"],
+                        "policy_refs": analysis_result["policy_refs"],
+                    },
+                })
+
                 self.status = AgentStatus.SUCCESS
                 return AgentResult(
                     agent_name=self.name,

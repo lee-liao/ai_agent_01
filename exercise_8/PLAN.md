@@ -228,6 +228,11 @@ This document outlines the plan for implementing the backend of the HITL Contrac
     - [x] Ensure frontend submits decisions and rehydrates persisted statuses on load.
     - [x] Add automated regression tests covering refresh scenarios and bulk approval flows.
 
+- [x] **Finalize redline approval flow:**
+    - [x] Surface redline proposals and summaries for Final Approval gate.
+    - [x] Update coordinator metadata so downstream endpoints expose proposals consistently.
+    - [x] Verify Final Approval UI reflects persisted proposal decisions end-to-end.
+
 - [ ] **Expand Risk Gate gating criteria:**
     - [ ] Update coordinator approval gating to include medium/low risk clauses per policy.
     - [ ] Ensure pending runs endpoint surfaces runs without high risks.
@@ -250,9 +255,11 @@ This document outlines the plan for implementing the backend of the HITL Contrac
     - [ ] Ensure Redis continues serving latest state while Postgres becomes source of truth for history.
 
 - [ ] **Replay Workflow:**
-    - [ ] Add API endpoint to clone a run with overrides, seeded from stored inputs/artifacts.
-    - [ ] Allow coordinator to bootstrap from persisted state and link replay runs back to their original.
-    - [ ] Expose APIs for fetching timelines, replay lineage, and comparisons for frontend consumption.
+    - [x] Add API endpoint to clone a run with overrides, seeded from stored inputs/artifacts.
+    - [x] Allow coordinator to bootstrap from persisted state and link replay runs back to their original.
+    - [x] Expose APIs for fetching timelines, replay lineage, and comparisons for frontend consumption.
+    - [x] Support "what-if" scenarios where users edit an individual step’s LLM prompt/input and replay from that point forward.
+    - [ ] Surface replay vs original comparisons for score, duration, risk counts, and cost metrics.
 
 - [ ] **Testing & Observability:**
     - [ ] Add automated tests around persistence and replay flows.
@@ -289,3 +296,5 @@ This document outlines the plan for implementing the backend of the HITL Contrac
     - [ ] Design schema to store clause-level risk approvals/comments in Postgres.
     - [ ] Synchronize coordinator blackboard state with durable records on read/write.
     - [ ] Update APIs to source persisted decisions so reviewers retain history across restarts.
+- [ ] **Replay What-If enhancements:**
+    - [ ] Redesign agent-path switching workflow for Replay before implementation.

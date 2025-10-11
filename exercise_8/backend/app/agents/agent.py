@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, List
 from enum import Enum
 from pydantic import BaseModel, Field
 
-from app.utils.analysis import parse_document_content
+from app.utils.analysis import parse_document_content, build_risk_prompt
 
 
 class AgentStatus(str, Enum):
@@ -275,24 +275,37 @@ class RiskAnalyzerAgent(Agent):
         try:
             clauses = blackboard.get("clauses", [])
             policy_rules = task.get("policy_rules", {})
+            timestamp = task.get("timestamp", "unknown")
             
             assessments = []
-            for clause in clauses:
+            for index, clause in enumerate(clauses):
                 # Perform comprehensive risk assessment
                 assessment = self._assess_clause_risk_detailed(clause, policy_rules)
                 assessments.append(assessment)
+
+                prompt = build_risk_prompt(clause.get("text", ""), policy_rules)
+                clause_step_id = clause.get("id") or clause.get("clause_id") or f"clause_{index + 1}"
+
+                blackboard.setdefault("history", []).append({
+                    "step": "risk_analysis_clause",
+                    "step_id": clause_step_id,
+                    "agent": self.name,
+                    "status": "completed",
+                    "timestamp": timestamp,
+                    "prompt": prompt,
+                    "clause_id": clause_step_id,
+                    "output": assessment,
+                })
             
             # Write to blackboard
             blackboard["assessments"] = assessments
             
             # Record execution in history
-            if "history" not in blackboard:
-                blackboard["history"] = []
-            blackboard["history"].append({
+            blackboard.setdefault("history", []).append({
                 "step": "risk_assessment_complete",
                 "agent": self.name,
                 "status": "success",
-                "timestamp": task.get("timestamp", "unknown"),
+                "timestamp": timestamp,
                 "output": {"assessment_count": len(assessments)}
             })
             

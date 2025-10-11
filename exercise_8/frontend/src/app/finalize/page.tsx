@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   CheckCircle,
   XCircle,
@@ -76,6 +77,8 @@ interface RedlineDetails {
 }
 
 export default function FinalizePage() {
+  const searchParams = useSearchParams();
+  const deepLinkRunId = useMemo(() => searchParams?.get("run_id") ?? "", [searchParams]);
   const [pendingRuns, setPendingRuns] = useState<PendingFinalRun[]>([]);
   const [pendingLoading, setPendingLoading] = useState(true);
   const [pendingError, setPendingError] = useState<string | null>(null);
@@ -157,6 +160,20 @@ export default function FinalizePage() {
       setDetailsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!deepLinkRunId || pendingRuns.length === 0) {
+      return;
+    }
+    if (!pendingRuns.some((run) => run.run_id === deepLinkRunId)) {
+      return;
+    }
+    if (selectedRun === deepLinkRunId) {
+      return;
+    }
+    void handleLoadRedline(deepLinkRunId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkRunId, pendingRuns]);
 
   const handleToggleApproval = (proposalId: string) => {
     const newApproved = new Set(approvedProposals);

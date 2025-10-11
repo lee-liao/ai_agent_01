@@ -4,8 +4,29 @@ Utilities for risk analysis and document processing
 
 import os
 import re
+import json
 from typing import Dict, Any
 import openai
+
+
+def build_risk_prompt(clause_text: str, policy_rules: Dict[str, Any] | None = None) -> str:
+    """Construct the LLM prompt used for clause risk analysis."""
+    if policy_rules:
+        try:
+            policy_context = json.dumps(policy_rules, indent=2)
+        except (TypeError, ValueError):
+            policy_context = str(policy_rules)
+    else:
+        policy_context = "No specific policy rules provided"
+
+    return (
+        "Analyze the following contract clause for legal and business risks according to these policy rules.\n"
+        "POLICY RULES:\n"
+        f"{policy_context}\n\n"
+        "CLAUSE TO ANALYZE:\n"
+        f"{clause_text}\n\n"
+        "Respond in JSON with keys risk_level, rationale, policy_refs."
+    )
 
 
 def analyze_risk_with_openai(clause_text: str, policy_rules: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -35,31 +56,16 @@ def analyze_risk_with_openai(clause_text: str, policy_rules: Dict[str, Any] = No
             risk_level = "Low"
             rationale = "Standard legal language with no obvious risk indicators"
         
+        prompt = build_risk_prompt(clause_text, policy_rules)
         return {
             "risk_level": risk_level,
             "rationale": rationale,
-            "policy_refs": []
+            "policy_refs": [],
+            "prompt": prompt,
         }
     
     # Real OpenAI analysis
-    policy_context = str(policy_rules) if policy_rules else "No specific policy rules provided"
-    
-    prompt = f"""
-    Analyze the following contract clause for legal and business risks according to these policy rules:
-    
-    POLICY RULES:
-    {policy_context}
-    
-    CLAUSE TO ANALYZE:
-    {clause_text}
-    
-    Please analyze and provide:
-    1. Risk level: "High", "Medium", or "Low"
-    2. Rationale for the risk assessment
-    3. Specific policy rule references that apply
-    
-    Respond in JSON format with keys: "risk_level", "rationale", "policy_refs"
-    """
+    prompt = build_risk_prompt(clause_text, policy_rules)
     
     try:
         client = openai.OpenAI(api_key=api_key)
@@ -69,13 +75,13 @@ def analyze_risk_with_openai(clause_text: str, policy_rules: Dict[str, Any] = No
             response_format={"type": "json_object"}
         )
         
-        import json
         result = json.loads(response.choices[0].message.content.strip())
         
         return {
             "risk_level": result.get("risk_level", "Medium"),
             "rationale": result.get("rationale", "AI analysis completed"),
-            "policy_refs": result.get("policy_refs", [])
+            "policy_refs": result.get("policy_refs", []),
+            "prompt": prompt,
         }
     except Exception as e:
         print(f"Error calling OpenAI API: {e}")
@@ -83,7 +89,8 @@ def analyze_risk_with_openai(clause_text: str, policy_rules: Dict[str, Any] = No
         return {
             "risk_level": "Medium", 
             "rationale": f"AI analysis failed: {str(e)}, defaulting to medium risk",
-            "policy_refs": []
+            "policy_refs": [],
+            "prompt": prompt,
         }
 
 
