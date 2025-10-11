@@ -2,6 +2,12 @@
 
 This document outlines the plan for implementing the backend of the HITL Contract Redlining Orchestrator.
 
+## Current Status
+
+- [x] Core review, replay, and HITL workflows implemented end-to-end.
+- [ ] Reports page testing and verification outstanding.
+- [ ] Future development initiatives (see “Future Development”) queued for subsequent phases.
+
 ## Part 1: Foundations & Setup
 
 - [x] **Integrate Redis for the Blackboard:**
@@ -210,10 +216,10 @@ This document outlines the plan for implementing the backend of the HITL Contrac
     - [x] Delegate `ParserAgent` clause extraction to `parse_document_content` for consistent heading detection.
     - [x] Normalize clause IDs, headings, and text content for downstream agents.
 
-- [ ] **Hierarchical Clause Extraction:**
-    - [ ] Update parsing pipeline to capture section/subsection hierarchy for nested numbering schemes.
-    - [ ] Preserve heading metadata needed by Reviewer/Risk agents.
-    - [ ] Keep parser configurable for diverse legal formats.
+- [x] **Hierarchical Clause Extraction:**
+    - [x] Update parsing pipeline to capture section/subsection hierarchy for nested numbering schemes.
+    - [x] Preserve heading metadata needed by Reviewer/Risk agents.
+    - [x] Keep parser configurable for diverse legal formats.
 
 ## Part 13: HITL Risk Review Data Flow
 
@@ -277,6 +283,10 @@ This document outlines the plan for implementing the backend of the HITL Contrac
     - [ ] Walk through Risk Gate approval flow (approve/reject mix) and confirm status transitions + audit trail.
     - [ ] Complete Final Approval and export workflow; confirm artifacts recorded and downloadable.
     - [ ] Trigger replay with modified agent path/options, validate linkage to original run and compare outcomes.
+
+- [ ] **Reports Page Validation:**
+    - [ ] Exercise the Reports experience end-to-end and confirm metrics align with backend data.
+    - [ ] Capture any regressions or UX issues for follow-up fixes.
 
 - [ ] **Manual Test Playbook (for HITL review):**
     - [ ] Document step-by-step verification instructions for operators (including UI checkpoints and expected metrics).
