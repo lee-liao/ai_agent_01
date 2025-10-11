@@ -35,5 +35,6 @@ exercise_* copy/
 .gemini/
 .wucai/
 exercise_8/backend/logs/
+exercise_8/backend/app/logs/
 gha-creds-*.json
 

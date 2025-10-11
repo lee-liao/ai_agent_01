@@ -660,6 +660,10 @@ async def start_run(req: RunRequest):
     if req.playbook_id:
         playbook = get_playbook(req.playbook_id)
     
+    document_text = ""
+    if doc_data and isinstance(doc_data, dict):
+        document_text = doc_data.get("content", "")
+
     # Create a blackboard for this run
     blackboard = Blackboard(
         run_id=run_id,
@@ -672,6 +676,7 @@ async def start_run(req: RunRequest):
             {"step": "init", "agent": "system", "status": "started", "timestamp": time.time()}
         ],
         checkpoints={},
+        document_text=document_text,
         metadata={"doc_id": doc_id, "playbook_id": req.playbook_id}
     )
     
@@ -860,7 +865,11 @@ async def replay(run_id: str):
 	if playbook_id:
 		playbook = get_playbook(playbook_id)
 	
-	# Create a blackboard for this replay run
+    document_text = ""
+    if doc_data and isinstance(doc_data, dict):
+        document_text = doc_data.get("content", "")
+
+    # Create a blackboard for this replay run
 	blackboard = Blackboard(
 		run_id=new_id,
 		clauses=clauses,
@@ -872,6 +881,7 @@ async def replay(run_id: str):
 			{"step": "init", "agent": "system", "status": "started", "timestamp": time.time()}
 		],
 		checkpoints={},
+        document_text=document_text,
 		metadata={"doc_id": doc_id, "playbook_id": playbook_id, "replayed_from": run_id}
 	)
 	

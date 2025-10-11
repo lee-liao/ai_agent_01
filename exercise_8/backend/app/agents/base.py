@@ -26,6 +26,7 @@ class Blackboard(BaseModel):
     artifacts: Dict[str, Any] = {}
     history: List[Dict[str, Any]] = []
     checkpoints: Dict[str, Any] = {}
+    document_text: Optional[str] = None
     metadata: Dict[str, Any] = {}
 
     def update_clauses(self, clauses: List[Dict[str, Any]]):

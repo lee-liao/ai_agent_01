@@ -259,7 +259,7 @@ This document outlines the plan for implementing the backend of the HITL Contrac
     - [x] Allow coordinator to bootstrap from persisted state and link replay runs back to their original.
     - [x] Expose APIs for fetching timelines, replay lineage, and comparisons for frontend consumption.
     - [x] Support "what-if" scenarios where users edit an individual step’s LLM prompt/input and replay from that point forward.
-    - [ ] Surface replay vs original comparisons for score, duration, risk counts, and cost metrics.
+    - [x] Surface replay vs original comparisons for score, duration, risk counts, and cost metrics.
 
 - [ ] **Testing & Observability:**
     - [ ] Add automated tests around persistence and replay flows.

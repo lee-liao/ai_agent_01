@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional, Literal
+from datetime import datetime
 import uuid
 import time
 import json
@@ -28,7 +29,7 @@ from app.agents.team_store import TeamStore
 from app.agents.coordinator import RunStatus
 
 # Import existing functionality to maintain compatibility
-from app.utils.analysis import analyze_risk_with_openai, parse_document_content
+from app.utils.analysis import analyze_risk_with_openai, parse_document_content, resolve_clause_texts, build_risk_prompt
 from app.export import export_redline_document
 from app.metrics import get_slo_metrics, get_run_metrics, get_run_costs, get_run_quality_indicators
 from app.agents.base import Blackboard
@@ -185,7 +186,12 @@ def _safe_get_doc_name(doc_id: Optional[str]) -> str:
 def _summarize_risk_counts(assessments: List[Dict[str, Any]]) -> Dict[str, int]:
     counts = {"high": 0, "medium": 0, "low": 0}
     for assessment in assessments or []:
-        level = (assessment.get("risk_level") or "").upper()
+        raw_level = assessment.get("risk_level")
+        if not raw_level:
+            output = assessment.get("output") if isinstance(assessment, dict) else None
+            if isinstance(output, dict):
+                raw_level = output.get("risk_level")
+        level = (raw_level or "").strip().upper()
         if level == "HIGH":
             counts["high"] += 1
         elif level == "MEDIUM":
@@ -226,6 +232,134 @@ def _calculate_run_score(assessments: List[Dict[str, Any]]) -> float:
     score_value = 1.0 - (high_count * 0.3) - (medium_count * 0.1)
     score_value = max(0.0, min(1.0, score_value))
     return score_value * 100
+
+
+def _parse_timestamp(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            pass
+        try:
+            normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+            return datetime.fromisoformat(normalized).timestamp()
+        except ValueError:
+            return None
+    return None
+
+
+def _calculate_duration_seconds(run_meta: Dict[str, Any], history: Optional[List[Dict[str, Any]]] = None) -> Optional[float]:
+    start_candidate = run_meta.get("created_at") or run_meta.get("start_time")
+    end_candidate = run_meta.get("completed_at") or run_meta.get("finished_at") or run_meta.get("updated_at")
+    start_ts = _parse_timestamp(start_candidate)
+    end_ts = _parse_timestamp(end_candidate)
+    if start_ts is not None and end_ts is not None and end_ts >= start_ts:
+        return end_ts - start_ts
+
+    history_entries = history if history is not None else run_meta.get("history", [])
+    timestamps: List[float] = []
+    for entry in history_entries or []:
+        ts = _parse_timestamp(entry.get("timestamp"))
+        if ts is not None:
+            timestamps.append(ts)
+    if len(timestamps) >= 2:
+        timestamps.sort()
+        return timestamps[-1] - timestamps[0]
+    return None
+
+
+def _calculate_cost_deltas(original: Dict[str, Any], replay: Dict[str, Any]) -> Dict[str, float]:
+    deltas: Dict[str, float] = {}
+    for key, value in replay.items():
+        if not isinstance(value, (int, float)):
+            continue
+        original_value = original.get(key)
+        if isinstance(original_value, (int, float)):
+            deltas[key] = round(value - original_value, 4)
+        else:
+            deltas[key] = round(value, 4)
+    return deltas
+
+
+def _calculate_risk_deltas(original: Dict[str, int], replay: Dict[str, int]) -> Dict[str, int]:
+    levels = {"high", "medium", "low"}
+    return {level: replay.get(level, 0) - original.get(level, 0) for level in levels}
+
+
+def _index_by_clause_id(items: Optional[List[Dict[str, Any]]]) -> Dict[str, Dict[str, Any]]:
+    index: Dict[str, Dict[str, Any]] = {}
+    for item in items or []:
+        clause_id = item.get("clause_id") or item.get("id")
+        if clause_id:
+            index[str(clause_id)] = item
+    return index
+
+
+def _risk_level_weight(level: Optional[str]) -> int:
+    mapping = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
+    if not level:
+        return 0
+    return mapping.get(level.upper(), 0)
+
+
+def _build_clause_comparisons(
+    original_clauses: Optional[List[Dict[str, Any]]],
+    original_assessments: Optional[List[Dict[str, Any]]],
+    replay_clauses: Optional[List[Dict[str, Any]]],
+    replay_assessments: Optional[List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    original_clause_index = _index_by_clause_id(original_clauses)
+    replay_clause_index = _index_by_clause_id(replay_clauses)
+    original_assessment_index = _index_by_clause_id(original_assessments)
+    replay_assessment_index = _index_by_clause_id(replay_assessments)
+
+    all_clause_ids = set(original_clause_index.keys()) | set(replay_clause_index.keys()) | set(replay_assessment_index.keys()) | set(original_assessment_index.keys())
+    clause_comparisons: List[Dict[str, Any]] = []
+
+    for clause_id in sorted(all_clause_ids):
+        original_clause = original_clause_index.get(clause_id, {})
+        replay_clause = replay_clause_index.get(clause_id, {})
+        original_assessment = original_assessment_index.get(clause_id, {})
+        replay_assessment = replay_assessment_index.get(clause_id, {})
+
+        original_risk = (original_assessment.get("risk_level") or "").upper() or None
+        replay_risk = (replay_assessment.get("risk_level") or "").upper() or None
+        delta_weight = _risk_level_weight(replay_risk) - _risk_level_weight(original_risk)
+        original_text = (original_clause.get("text") or original_clause.get("body") or "").strip()
+        replay_text = (replay_clause.get("text") or replay_clause.get("body") or "").strip()
+        clause_comparisons.append({
+            "clause_id": clause_id,
+            "heading": replay_clause.get("heading") or original_clause.get("heading"),
+            "original": {
+                "text": original_text,
+                "risk_level": original_risk,
+                "rationale": original_assessment.get("rationale"),
+                "policy_refs": original_assessment.get("policy_refs"),
+            },
+            "replay": {
+                "text": replay_text,
+                "risk_level": replay_risk,
+                "rationale": replay_assessment.get("rationale"),
+                "policy_refs": replay_assessment.get("policy_refs"),
+            },
+            "delta": {
+                "risk_level_change": None if delta_weight == 0 else ("up" if delta_weight > 0 else "down"),
+                "risk_level_delta": delta_weight,
+                "text_changed": replay_text != original_text,
+                "risk_changed": original_risk != replay_risk,
+                "present_in_original": clause_id in original_clause_index,
+                "present_in_replay": clause_id in replay_clause_index,
+            },
+        })
+
+    return clause_comparisons
 
 
 def _enrich_proposals_for_ui(blackboard: Dict[str, Any], run: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
@@ -1110,8 +1244,13 @@ async def report_cost():
 # ==================== Replay & Debug ====================
 
 class ReplayRequest(BaseModel):
-    step_id: Optional[str] = None
-    input_override: Optional[str] = None
+    agent_path: Optional[str] = None
+    playbook_id: Optional[str] = None
+
+
+class ClauseReplayRequest(BaseModel):
+    prompt: Optional[str] = None
+    policy_rules: Optional[Dict[str, Any]] = None
 
 
 @app.get("/api/runs")
@@ -1149,21 +1288,50 @@ async def replay(run_id: str, body: ReplayRequest = ReplayRequest()):
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
 
-    # Create a new run based on the original
-    new_id = str(uuid.uuid4())
+    # Create a unique identifier for this replay execution (not persisted as a new run)
+    replay_run_id = f"{run_id}::replay::{uuid.uuid4().hex[:8]}"
+
+    stored_run = get_run(run_id) or {}
+    original_run_data: Dict[str, Any] = dict(stored_run) if stored_run else {}
+
+    if isinstance(run, dict):
+        for key in ("doc_id", "agent_path", "playbook_id", "created_at", "updated_at", "score", "assessments", "proposals", "history", "clauses"):
+            if key not in original_run_data or not original_run_data.get(key):
+                value = run.get(key)
+                if value not in (None, [], {}):
+                    original_run_data[key] = value
+
+    if isinstance(blackboard_source, dict):
+        for key in ("assessments", "proposals", "history", "clauses"):
+            if not original_run_data.get(key):
+                value = blackboard_source.get(key)
+                if value:
+                    original_run_data[key] = value
+        if not original_run_data.get("doc_id"):
+            original_run_data["doc_id"] = blackboard_source.get("doc_id")
 
     # Get original parameters
-    doc_id = run.get("doc_id")
-    agent_path = run.get("agent_path", "manager_worker")
-    playbook_id = run.get("playbook_id")
+    doc_id = original_run_data.get("doc_id") or run.get("doc_id")
+    if not doc_id:
+        raise HTTPException(status_code=400, detail="Run is missing associated document")
+    original_agent_path = original_run_data.get("agent_path") or run.get("agent_path", "manager_worker")
+    agent_path = body.agent_path or original_agent_path
+    playbook_id_original = original_run_data.get("playbook_id") or run.get("playbook_id")
+    playbook_id = body.playbook_id if body.playbook_id is not None else playbook_id_original
+    if playbook_id == "":
+        playbook_id = None
 
     # Get the document with parsed clauses
-    docs = get_all_docs()
-    doc_data = get_doc(doc_id) if doc_id in docs else None
+    doc_data = get_doc(doc_id)
 
-    if doc_data and "clauses" in doc_data:
+    clauses = []
+    if original_run_data.get("clauses"):
+        clauses = [dict(clause) for clause in original_run_data.get("clauses", [])]
+    elif isinstance(blackboard_source, dict) and blackboard_source.get("clauses"):
+        clauses = [dict(clause) for clause in blackboard_source.get("clauses", [])]
+    elif doc_data and "clauses" in doc_data:
         clauses = doc_data["clauses"]
-    else:
+    if not clauses:
         clauses = [
             {"id": "c1", "heading": "Confidential Information", "text": "The parties agree to keep information secret."},
             {"id": "c2", "heading": "Term", "text": "Two (2) years from Effective Date."},
@@ -1175,9 +1343,24 @@ async def replay(run_id: str, body: ReplayRequest = ReplayRequest()):
     if playbook_id:
         playbook = get_playbook(playbook_id)
 
+    policy_rules: Dict[str, Any] = {}
+    if playbook:
+        policy_rules = playbook.get("rules", {})
+    if not policy_rules:
+        policy_rules = (
+            original_run_data.get("policy_rules")
+            or (blackboard_source.get("policy_rules") if isinstance(blackboard_source, dict) else {})
+            or run.get("policy_rules")
+            or {}
+        )
+
+    document_text = ""
+    if isinstance(doc_data, dict):
+        document_text = doc_data.get("content", "")
+
     # Create a blackboard for this replay run
     blackboard = Blackboard(
-        run_id=new_id,
+        run_id=replay_run_id,
         clauses=clauses,
         assessments=[],  
         proposals=[],    
@@ -1187,40 +1370,18 @@ async def replay(run_id: str, body: ReplayRequest = ReplayRequest()):
             {"step": "init", "agent": "system", "status": "started", "timestamp": time.time()}
         ],
         checkpoints={},
-        metadata={"doc_id": doc_id, "playbook_id": playbook_id, "replayed_from": run_id}
+        document_text=document_text,
+        metadata={
+            "doc_id": doc_id,
+            "playbook_id": playbook_id,
+            "agent_path": agent_path,
+            "replayed_from": run_id,
+            "policy_rules": policy_rules,
+        }
     )
 
-    async def execute_agent_workflow(agent_path: str, blackboard: Blackboard, playbook: Dict[str, Any] = None, start_step: Optional[str] = None):
+    async def execute_agent_workflow(agent_path: str, blackboard: Blackboard, playbook: Dict[str, Any] = None):
         """Execute the appropriate agent workflow based on the agent path"""
-        if start_step:
-            source_history: List[Dict[str, Any]] = []
-            if isinstance(blackboard_source, dict):
-                source_history = blackboard_source.get("history", []) or []
-            run_history = source_history or run.get("history", [])
-            trimmed_history = []
-            found = False
-            for entry in run_history:
-                trimmed_history.append(entry)
-                if entry.get("step_id") == start_step or entry.get("step") == start_step:
-                    found = True
-                    break
-            if found:
-                blackboard.history.extend(trimmed_history)
-                replay_meta = blackboard.metadata.setdefault("replay", {})
-                replay_meta["resume_from_step"] = start_step
-                if body.input_override:
-                    replay_meta["input_override"] = {
-                        "step_id": start_step,
-                        "prompt": body.input_override,
-                    }
-                    blackboard.history.append({
-                        "step": "replay_input_override",
-                        "agent": "system",
-                        "status": "prepared",
-                        "step_id": start_step,
-                        "input_override": body.input_override,
-                        "timestamp": time.time(),
-                    })
         if agent_path == "manager_worker":
             return await manager_worker_workflow(blackboard)
         elif agent_path == "planner_executor":
@@ -1231,13 +1392,15 @@ async def replay(run_id: str, body: ReplayRequest = ReplayRequest()):
             # Default to manager-worker if unknown path
             return await manager_worker_workflow(blackboard)
 
+    start_time = time.time()
+    start_iso = datetime.utcnow().isoformat()
+
     # Execute the same agent workflow that was used in the original run
-    workflow_result = await execute_agent_workflow(
-        agent_path,
-        blackboard,
-        playbook,
-        start_step=body.step_id
-    )
+    workflow_result = await execute_agent_workflow(agent_path, blackboard, playbook)
+
+    end_time = time.time()
+    end_iso = datetime.utcnow().isoformat()
+    duration_seconds = end_time - start_time
 
     # Calculate score based on risk assessments in the blackboard
     assessments = blackboard.assessments
@@ -1249,26 +1412,295 @@ async def replay(run_id: str, body: ReplayRequest = ReplayRequest()):
     score_value = max(0.0, min(1.0, score_value))  # Keep between 0 and 1
     final_score = score_value * 100  # Convert to percentage
 
-    # Create run data from blackboard
-    new_run_data = {
+    original_assessments = original_run_data.get("assessments") or []
+    original_clauses = original_run_data.get("clauses") or []
+    if not original_clauses and isinstance(blackboard_source, dict):
+        original_clauses = blackboard_source.get("clauses") or []
+    if not original_clauses and isinstance(run, dict):
+        original_clauses = run.get("clauses") or []
+
+    original_counts = _summarize_risk_counts(original_assessments)
+    original_score = original_run_data.get("score")
+    if original_score is None and original_assessments:
+        original_score = _calculate_run_score(original_assessments)
+
+    original_history = original_run_data.get("history")
+    if not original_history and isinstance(blackboard_source, dict):
+        original_history = blackboard_source.get("history")
+    if not original_history and isinstance(run, dict):
+        original_history = run.get("history")
+
+    original_duration = original_run_data.get("duration_seconds")
+    if original_duration is None:
+        original_duration = _calculate_duration_seconds(original_run_data, original_history)
+
+    replay_counts = _summarize_risk_counts(assessments)
+    clause_comparisons = _build_clause_comparisons(
+        original_clauses,
+        original_assessments,
+        blackboard.clauses,
+        assessments,
+    )
+
+    replay_duration = round(duration_seconds, 6)
+
+    replay_payload = {
+        "run_id": replay_run_id,
         "doc_id": doc_id,
         "agent_path": agent_path,
         "playbook_id": playbook_id,
-        "clauses": blackboard.clauses,
-        "assessments": blackboard.assessments,
-        "proposals": blackboard.proposals,
-        "decisions": blackboard.decisions,
-        "artifacts": blackboard.artifacts,
-        "history": blackboard.history,
         "score": final_score,
-        "replayed_from": run_id,
-        "replay_timestamp": time.time()
+        "duration_seconds": replay_duration,
+        "assessments": list(blackboard.assessments),
+        "clauses": list(blackboard.clauses),
+        "proposals": list(blackboard.proposals),
+        "decisions": list(getattr(blackboard, "decisions", [])),
+        "artifacts": dict(getattr(blackboard, "artifacts", {})),
+        "history": list(blackboard.history),
+        "started_at": start_iso,
+        "completed_at": end_iso,
+        "risk_counts": replay_counts,
     }
 
-    # Store the new run in Redis with individual key
-    set_run(new_id, new_run_data)
+    replay_costs = get_run_costs(replay_payload)
+    original_costs = get_run_costs(original_run_data) if original_run_data else {}
+    cost_deltas = _calculate_cost_deltas(original_costs, replay_costs)
+    risk_deltas = _calculate_risk_deltas(original_counts, replay_counts)
+    score_delta = None if original_score is None else round(final_score - original_score, 2)
+    duration_delta = None if original_duration is None else round(replay_duration - original_duration, 6)
 
-    return {"run_id": new_id, "workflow_result": workflow_result}
+    comparison = {
+        "score": {
+            "original": original_score,
+            "replay": final_score,
+            "delta": score_delta,
+        },
+        "duration_seconds": {
+            "original": original_duration,
+            "replay": replay_duration,
+            "delta": duration_delta,
+        },
+        "risk_counts": {
+            "original": original_counts,
+            "replay": replay_counts,
+            "delta": risk_deltas,
+        },
+        "costs": {
+            "original": original_costs,
+            "replay": replay_costs,
+            "delta": cost_deltas,
+        },
+        "clauses": clause_comparisons,
+    }
+    replay_payload["costs"] = replay_costs
+
+    last_replay_summary = {
+        "run_id": replay_run_id,
+        "started_at": start_iso,
+        "completed_at": end_iso,
+        "duration_seconds": replay_duration,
+        "score": final_score,
+        "risk_counts": replay_counts,
+        "costs": replay_costs,
+        "comparison": comparison,
+    }
+
+    run_record = coordinator.runs.get(run_id)
+    if run_record:
+        run_record["last_replay"] = last_replay_summary
+        run_record["updated_at"] = end_iso
+
+    if stored_run:
+        stored_run.setdefault("replays", [])
+        stored_run["last_replay"] = last_replay_summary
+        stored_run["replays"].append(last_replay_summary)
+        set_run(run_id, stored_run)
+
+    return {
+        "run_id": run_id,
+        "workflow_result": workflow_result,
+        "replay": replay_payload,
+        "comparison": comparison,
+        "score": final_score,
+        "costs": replay_costs,
+        "clause_comparisons": clause_comparisons,
+    }
+
+
+@app.post("/api/replay/{run_id}/clauses/{clause_id}")
+async def replay_clause(run_id: str, clause_id: str, body: ClauseReplayRequest):
+    """Replay a single clause with a custom prompt."""
+
+    run_meta = coordinator.get_run(run_id)
+    blackboard_source = coordinator.get_blackboard(run_id)
+    stored_run = get_run(run_id) or {}
+
+    if not run_meta and not stored_run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    original_run_data: Dict[str, Any] = dict(stored_run) if stored_run else {}
+    if isinstance(run_meta, dict):
+        for key in ("assessments", "clauses", "history", "policy_rules", "doc_id", "playbook_id"):
+            if key not in original_run_data or not original_run_data.get(key):
+                value = run_meta.get(key)
+                if value not in (None, [], {}):
+                    original_run_data[key] = value
+
+    if isinstance(blackboard_source, dict):
+        for key in ("assessments", "clauses", "history", "policy_rules"):
+            if not original_run_data.get(key):
+                value = blackboard_source.get(key)
+                if value:
+                    original_run_data[key] = value
+        if not original_run_data.get("doc_id"):
+            original_run_data["doc_id"] = blackboard_source.get("doc_id")
+
+    doc_id = original_run_data.get("doc_id") or (run_meta or {}).get("doc_id")
+    if not doc_id:
+        raise HTTPException(status_code=400, detail="Run is missing associated document")
+
+    # Determine policy rules
+    policy_rules = body.policy_rules or (
+        original_run_data.get("policy_rules")
+        or (blackboard_source.get("policy_rules") if isinstance(blackboard_source, dict) else {})
+        or stored_run.get("policy_rules")
+        or {}
+    )
+
+    # Locate clause data
+    clause_sources: List[List[Dict[str, Any]]] = []
+    if isinstance(blackboard_source, dict):
+        clause_sources.append(blackboard_source.get("clauses", []))
+    clause_sources.append(original_run_data.get("clauses", []))
+    doc_data = get_doc(doc_id)
+    document_text = doc_data.get("content", "") if isinstance(doc_data, dict) else ""
+    if doc_data and isinstance(doc_data.get("clauses"), list):
+        clause_sources.append(doc_data.get("clauses", []))
+
+    clause_record: Optional[Dict[str, Any]] = None
+    for source in clause_sources:
+        for clause in source or []:
+            cid = clause.get("clause_id") or clause.get("id")
+            if cid == clause_id:
+                clause_record = clause
+                break
+        if clause_record:
+            break
+
+    if not clause_record:
+        raise HTTPException(status_code=404, detail="Clause not found in run context")
+
+    clause_for_resolution = dict(clause_record)
+    clause_for_resolution.setdefault("clause_id", clause_id)
+    resolved_clause_map = resolve_clause_texts([clause_for_resolution], document_text)
+    normalized_clause_text = resolved_clause_map.get(clause_id)
+    display_text = (
+        normalized_clause_text
+        or clause_record.get("body")
+        or clause_record.get("text")
+        or ""
+    )
+    analysis_text = normalized_clause_text or clause_record.get("body") or clause_record.get("text") or display_text
+    if not analysis_text:
+        raise HTTPException(status_code=400, detail="Clause text unavailable for replay")
+
+    # Locate original assessment and history entry
+    original_assessment = None
+    for assessment in original_run_data.get("assessments", []):
+        if (assessment.get("clause_id") or assessment.get("id")) == clause_id:
+            original_assessment = assessment
+            break
+
+    history_entry = None
+    for entry_source in (
+        (blackboard_source.get("history") if isinstance(blackboard_source, dict) else None),
+        original_run_data.get("history")
+    ):
+        if not entry_source:
+            continue
+        for entry in entry_source:
+            if (entry.get("clause_id") or entry.get("step_id")) == clause_id:
+                history_entry = entry
+                break
+        if history_entry:
+            break
+
+    original_prompt = None
+    original_duration = None
+    if history_entry:
+        if isinstance(history_entry.get("prompt"), str):
+            original_prompt = history_entry["prompt"]
+        if isinstance(history_entry.get("duration_seconds"), (int, float)):
+            original_duration = float(history_entry["duration_seconds"])
+        elif isinstance(history_entry.get("duration_ms"), (int, float)):
+            original_duration = float(history_entry["duration_ms"]) / 1000.0
+
+    log_metadata = {
+        "run_id": run_id,
+        "original_run_id": run_id,
+        "clause_id": clause_id,
+        "mode": "clause_replay",
+        "agent_path": (run_meta or {}).get("agent_path") or stored_run.get("agent_path") or "unknown",
+        "playbook_id": (run_meta or {}).get("playbook_id") or stored_run.get("playbook_id") or (original_run_data.get("playbook_id") if original_run_data else None),
+        "prompt_override_provided": body.prompt is not None,
+    }
+    start_time = time.time()
+    analysis_result = analyze_risk_with_openai(
+        analysis_text,
+        policy_rules,
+        prompt_override=body.prompt or original_prompt,
+        log_metadata=log_metadata,
+    )
+    end_time = time.time()
+    replay_duration = round(end_time - start_time, 6)
+
+    replay_assessment = {
+        "clause_id": clause_id,
+        "risk_level": analysis_result.get("risk_level", "UNKNOWN"),
+        "rationale": analysis_result.get("rationale"),
+        "policy_refs": analysis_result.get("policy_refs", []),
+    }
+
+    replay_costs = get_run_costs({"assessments": [replay_assessment], "proposals": []})
+    replay_total_cost = replay_costs.get("total_cost")
+
+    original_costs = (
+        get_run_costs({"assessments": [original_assessment], "proposals": []})
+        if original_assessment
+        else {"total_cost": 0.0}
+    )
+    original_total_cost = original_costs.get("total_cost")
+
+    display_prompt = body.prompt or original_prompt or build_risk_prompt(analysis_text, policy_rules)
+
+    comparison = {
+        "risk_level": {
+            "original": original_assessment.get("risk_level") if original_assessment else None,
+            "replay": replay_assessment["risk_level"],
+        },
+        "cost": {
+            "original": original_total_cost,
+            "replay": replay_total_cost,
+            "delta": None if (original_total_cost is None or replay_total_cost is None) else round(replay_total_cost - original_total_cost, 6),
+        },
+        "duration_seconds": {
+            "original": original_duration,
+            "replay": replay_duration,
+            "delta": None if original_duration is None else round(replay_duration - original_duration, 6),
+        },
+    }
+
+    return {
+        "run_id": run_id,
+        "clause_id": clause_id,
+        "prompt": display_prompt,
+        "duration_seconds": replay_duration,
+        "assessment": replay_assessment,
+        "comparison": comparison,
+        "original_assessment": original_assessment,
+        "policy_rules": policy_rules,
+        "clause_text": display_text,
+    }
 
 
 # ==================== Team Management (for debugging) ====================

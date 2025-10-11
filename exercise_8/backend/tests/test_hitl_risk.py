@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 sys.modules.setdefault("markdown", ModuleType("markdown"))
 
 from app.agents.coordinator import RunStatus
+from app.agents.agent import RiskAnalyzerAgent
 from app.main import app, coordinator
 
 
@@ -261,5 +262,94 @@ def test_final_approve_updates_run_status():
         assert final_record["approved"] == ["clause_1"]
         assert final_record["rejected"] == ["clause_2"]
         assert final_record["notes"] == "Approved primary edits"
+    finally:
+        _cleanup_run(run_id)
+
+
+def test_risk_analysis_prompt_uses_clause_text_only():
+    doc_text = (
+        "Clause One - Confidentiality\n"
+        "Confidentiality obligations remain.\n\n"
+        "Clause Two - Liability\n"
+        "Unlimited liability for damages.\n"
+    )
+    clauses = [
+        {
+            "clause_id": "c1",
+            "heading": "Clause One - Confidentiality",
+            "text": doc_text,
+            "body": "Confidentiality obligations remain.",
+            "start_line": 1,
+            "level": 1,
+        },
+        {
+            "clause_id": "c2",
+            "heading": "Clause Two - Liability",
+            "text": doc_text,
+            "body": "Unlimited liability for damages.",
+            "start_line": 4,
+            "level": 1,
+        },
+    ]
+
+    blackboard = {
+        "clauses": clauses,
+        "document_text": doc_text,
+        "history": [],
+        "assessments": [],
+    }
+
+    agent = RiskAnalyzerAgent()
+    agent.execute({"type": "assess_risk", "policy_rules": {}, "timestamp": "now"}, blackboard)
+
+    prompts = [
+        entry["prompt"]
+        for entry in blackboard["history"]
+        if entry.get("step") == "risk_analysis_clause"
+    ]
+
+    assert len(prompts) == 2
+    assert "Confidentiality obligations remain." in prompts[0]
+    assert "Unlimited liability for damages." not in prompts[0]
+    assert "Unlimited liability for damages." in prompts[1]
+
+    assessments = blackboard["assessments"]
+    assert {a["clause_id"] for a in assessments} == {"c1", "c2"}
+    risk_by_clause = {a["clause_id"]: a["risk_level"] for a in assessments}
+    assert risk_by_clause["c1"].upper() == "LOW"
+    assert risk_by_clause["c2"].upper() == "HIGH"
+
+
+def test_run_level_replay_returns_comparison():
+    run_id = _seed_run("test_run_replay")
+    try:
+        response = client.post(
+            f"/api/replay/{run_id}",
+            json={"agent_path": "manager_worker"},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["run_id"] == run_id
+        assert "comparison" in payload
+        assert "score" in payload["comparison"]
+    finally:
+        _cleanup_run(run_id)
+
+
+def test_clause_level_replay_returns_clause_comparison():
+    run_id = _seed_run("test_clause_replay")
+    try:
+        response = client.post(
+            f"/api/replay/{run_id}/clauses/clause_1",
+            json={"prompt": "Custom prompt"},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["run_id"] == run_id
+        assert payload["clause_id"] == "clause_1"
+        assert "comparison" in payload
+        assert "risk_level" in payload["comparison"]
     finally:
         _cleanup_run(run_id)

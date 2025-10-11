@@ -8,11 +8,17 @@ Each agent can:
 - Report its status and results
 """
 
+import time
 from typing import Dict, Any, Optional, List
 from enum import Enum
 from pydantic import BaseModel, Field
 
-from app.utils.analysis import parse_document_content, build_risk_prompt
+from app.utils.analysis import (
+    parse_document_content,
+    build_risk_prompt,
+    resolve_clause_texts,
+    analyze_risk_with_openai,
+)
 
 
 class AgentStatus(str, Enum):
@@ -151,6 +157,72 @@ class Agent:
 
 # Example Agent Implementations (Students should complete these)
 
+
+def _extract_risk_log_context(blackboard: Any) -> Dict[str, Any]:
+    run_id = None
+    doc_id = None
+    playbook_id = None
+    agent_path = None
+    replayed_from = None
+    metadata: Dict[str, Any] = {}
+
+    if isinstance(blackboard, dict):
+        run_id = blackboard.get("run_id")
+        doc_id = blackboard.get("doc_id")
+        playbook_id = blackboard.get("playbook_id")
+        agent_path = blackboard.get("agent_path")
+        replayed_from = blackboard.get("replayed_from")
+        maybe_metadata = blackboard.get("metadata")
+        if isinstance(maybe_metadata, dict):
+            metadata = maybe_metadata
+    else:
+        run_id = getattr(blackboard, "run_id", None)
+        doc_id = getattr(blackboard, "doc_id", None)
+        playbook_id = getattr(blackboard, "playbook_id", None)
+        agent_path = getattr(blackboard, "agent_path", None)
+        replayed_from = getattr(blackboard, "replayed_from", None)
+        maybe_metadata = getattr(blackboard, "metadata", None)
+        if isinstance(maybe_metadata, dict):
+            metadata = maybe_metadata
+
+    context: Dict[str, Any] = {}
+
+    if metadata:
+        run_id = metadata.get("run_id") or run_id
+        doc_id = metadata.get("doc_id") or doc_id
+        playbook_id = metadata.get("playbook_id") or playbook_id
+        agent_path = metadata.get("agent_path") or agent_path
+        replayed_from = metadata.get("replayed_from") or replayed_from
+
+    if run_id:
+        context["run_id"] = run_id
+    if agent_path:
+        context["agent_path"] = agent_path
+    context["mode"] = "replay" if replayed_from else "initial"
+    if replayed_from:
+        context["original_run_id"] = replayed_from
+    if doc_id:
+        context["doc_id"] = doc_id
+    if playbook_id:
+        context["playbook_id"] = playbook_id
+
+    return context
+
+
+def _build_risk_log_metadata(
+    blackboard: Any,
+    clause_id: Optional[str],
+    source: str,
+) -> Dict[str, Any]:
+    context = _extract_risk_log_context(blackboard)
+    payload = {
+        **context,
+        "source": source,
+        "clause_id": clause_id,
+    }
+    return {k: v for k, v in payload.items() if v is not None}
+
+
 class ParserAgent(Agent):
     """
     Parses legal documents into structured clauses.
@@ -276,15 +348,68 @@ class RiskAnalyzerAgent(Agent):
             clauses = blackboard.get("clauses", [])
             policy_rules = task.get("policy_rules", {})
             timestamp = task.get("timestamp", "unknown")
+            if isinstance(blackboard, dict):
+                document_text = blackboard.get("document_text", "")
+            else:
+                document_text = getattr(blackboard, "document_text", "")
+                if not document_text and hasattr(blackboard, "metadata"):
+                    metadata = getattr(blackboard, "metadata")
+                    if isinstance(metadata, dict):
+                        document_text = metadata.get("document_text", "")
+
+            normalized_texts = resolve_clause_texts(clauses, document_text)
             
             assessments = []
             for index, clause in enumerate(clauses):
-                # Perform comprehensive risk assessment
-                assessment = self._assess_clause_risk_detailed(clause, policy_rules)
+                clause_step_id = (
+                    clause.get("id")
+                    or clause.get("clause_id")
+                    or f"clause_{index + 1}"
+                )
+                clause_text = normalized_texts.get(clause_step_id) or clause.get("text", "")
+
+                start_time = time.time()
+                log_metadata = _build_risk_log_metadata(
+                    blackboard,
+                    clause_step_id,
+                    source="RiskAnalyzerAgent",
+                )
+                analysis_result = analyze_risk_with_openai(
+                    clause_text,
+                    policy_rules,
+                    log_metadata=log_metadata,
+                )
+                duration_seconds = round(time.time() - start_time, 6)
+
+                if not isinstance(analysis_result, dict):
+                    analysis_result = {}
+
+                normalized_level = (analysis_result.get("risk_level") or "UNKNOWN").strip().upper()
+
+                if not analysis_result.get("rationale") or analysis_result.get("policy_refs") is None:
+                    fallback = self._assess_clause_risk_detailed(
+                        clause,
+                        policy_rules,
+                        clause_text_override=clause_text,
+                    )
+                    if isinstance(fallback, dict):
+                        analysis_result.setdefault("rationale", fallback.get("rationale"))
+                        analysis_result.setdefault("policy_refs", fallback.get("policy_refs"))
+                        if not analysis_result.get("risk_level"):
+                            normalized_level = (fallback.get("risk_level") or "UNKNOWN").strip().upper()
+
+                analysis_result["risk_level"] = normalized_level
+                policy_refs = analysis_result.get("policy_refs") or []
+
+                assessment = {
+                    "clause_id": clause_step_id,
+                    "risk_level": normalized_level,
+                    "rationale": analysis_result.get("rationale"),
+                    "policy_refs": policy_refs,
+                }
                 assessments.append(assessment)
 
-                prompt = build_risk_prompt(clause.get("text", ""), policy_rules)
-                clause_step_id = clause.get("id") or clause.get("clause_id") or f"clause_{index + 1}"
+                prompt = analysis_result.get("prompt") or build_risk_prompt(clause_text, policy_rules)
 
                 blackboard.setdefault("history", []).append({
                     "step": "risk_analysis_clause",
@@ -295,6 +420,9 @@ class RiskAnalyzerAgent(Agent):
                     "prompt": prompt,
                     "clause_id": clause_step_id,
                     "output": assessment,
+                    "clause_text": clause_text,
+                    "duration_seconds": duration_seconds,
+                    "duration_ms": round(duration_seconds * 1000, 3) if duration_seconds is not None else None,
                 })
             
             # Write to blackboard
@@ -334,13 +462,20 @@ class RiskAnalyzerAgent(Agent):
                 error=str(e)
             )
     
-    def _assess_clause_risk_detailed(self, clause: Dict[str, Any], policy_rules: Dict[str, Any]) -> Dict[str, Any]:
+    def _assess_clause_risk_detailed(
+        self,
+        clause: Dict[str, Any],
+        policy_rules: Dict[str, Any],
+        *,
+        clause_text_override: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Perform detailed risk assessment on a single clause with rationale and policy references
         """
         import re
         
-        text = clause.get("text", "").lower()
+        source_text = clause_text_override if clause_text_override is not None else clause.get("text", "")
+        text = (source_text or "").lower()
         heading = clause.get("heading", "").lower()
         
         # Define risk indicators with severity levels
