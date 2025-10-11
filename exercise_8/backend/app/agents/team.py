@@ -278,21 +278,57 @@ class Team:
                     "success": False
                 }
             
-            # Workers execute in parallel using the same parallel execution approach as above
-            if workers:
+            def _execute_worker_stage(agent_group: List[Agent]) -> List[Dict[str, Any]]:
+                if not agent_group:
+                    return []
+
                 import concurrent.futures
-                
-                with concurrent.futures.ThreadPoolExecutor(max_workers=len(workers)) as executor:
-                    # Submit all worker execution tasks
+
+                stage_results: List[Dict[str, Any]] = []
+                with concurrent.futures.ThreadPoolExecutor(max_workers=len(agent_group)) as executor:
                     future_to_worker = {
-                        executor.submit(self._execute_agent_sync, worker, task, blackboard): worker 
-                        for worker in workers
+                        executor.submit(self._execute_agent_sync, worker, task, blackboard): worker
+                        for worker in agent_group
                     }
-                    
-                    # Collect worker results as they complete
+
                     for future in concurrent.futures.as_completed(future_to_worker):
                         worker_result = future.result()
-                        results.append(worker_result.dict() if hasattr(worker_result, 'dict') else worker_result)
+                        stage_results.append(worker_result.dict() if hasattr(worker_result, "dict") else worker_result)
+
+                return stage_results
+
+            risk_workers: List[Agent] = []
+            redline_workers: List[Agent] = []
+            other_workers: List[Agent] = []
+
+            for worker in workers:
+                capabilities = set(getattr(worker, "capabilities", []) or [])
+                if {"assess_risk", "policy_check"} & capabilities:
+                    risk_workers.append(worker)
+                elif {"generate_redlines", "create_proposals"} & capabilities:
+                    redline_workers.append(worker)
+                else:
+                    other_workers.append(worker)
+
+            # Run risk assessment stage before generating redlines so assessments populate the blackboard
+            risk_results = _execute_worker_stage(risk_workers)
+            results.extend(risk_results)
+
+            def _is_successful(entry: Dict[str, Any]) -> bool:
+                status_value = entry.get("status") if isinstance(entry, dict) else None
+                if status_value is None and hasattr(entry, "status"):
+                    status_value = getattr(entry.status, "value", None)
+                if isinstance(status_value, str):
+                    return status_value.lower() in {"success", "completed"}
+                return False
+
+            risk_stage_success = all(_is_successful(res) for res in risk_results) if risk_results else True
+
+            other_results = _execute_worker_stage(other_workers)
+            results.extend(other_results)
+
+            if risk_stage_success:
+                results.extend(_execute_worker_stage(redline_workers))
             
             # Finally, manager aggregates results (if manager has aggregation capability)
             if hasattr(manager, 'aggregate_results'):
@@ -311,9 +347,17 @@ class Team:
             )
             results.append(error_result.dict())
         
+        def _extract_status(entry: Dict[str, Any]) -> Optional[str]:
+            if isinstance(entry, dict):
+                return entry.get("status")
+            if hasattr(entry, "status"):
+                status_attr = getattr(entry.status, "value", None)
+                if status_attr is not None:
+                    return status_attr
+            return None
+
         success = all(
-            (r.get('status') if isinstance(r, dict) else 
-             (r.status.value if hasattr(r, 'status') else 'failed')) == 'success' 
+            (_extract_status(r) or "failed").lower() in {"success", "completed"}
             for r in results
         )
         

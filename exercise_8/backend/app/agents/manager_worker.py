@@ -8,6 +8,10 @@ from typing import Dict, Any, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from app.agents.base import BaseAgent, Blackboard
 from app.utils.analysis import analyze_risk_with_openai, resolve_clause_texts, build_risk_prompt
+from app.utils.logging import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def _extract_log_context(blackboard: Blackboard) -> Dict[str, Any]:
@@ -127,13 +131,17 @@ class ManagerAgent(BaseAgent):
                 
                 normalized_level = (analysis_result.get("risk_level") or "UNKNOWN").strip().upper()
                 analysis_result["risk_level"] = normalized_level
+                policy_refs = analysis_result.get("policy_refs")
+                if not isinstance(policy_refs, list):
+                    policy_refs = [policy_refs] if policy_refs else []
+                analysis_result["policy_refs"] = policy_refs
 
                 return {
                     "task_id": task.get("task_id"),
                     "clause_id": task.get("clause_id"),
                     "risk_level": normalized_level,
                     "rationale": analysis_result["rationale"],
-                    "policy_refs": analysis_result["policy_refs"],
+                    "policy_refs": policy_refs,
                     "prompt": analysis_result.get("prompt"),
                     "duration_seconds": duration_seconds,
                     "status": "completed"
@@ -189,13 +197,17 @@ class WorkerAgent(BaseAgent):
 
             normalized_level = (analysis_result.get("risk_level") or "UNKNOWN").strip().upper()
             analysis_result["risk_level"] = normalized_level
+            policy_refs = analysis_result.get("policy_refs")
+            if not isinstance(policy_refs, list):
+                policy_refs = [policy_refs] if policy_refs else []
+            analysis_result["policy_refs"] = policy_refs
 
             result = {
                 "task_id": task.get("task_id"),
                 "clause_id": task.get("clause_id"),
                 "risk_level": normalized_level,
                 "rationale": analysis_result["rationale"],
-                "policy_refs": analysis_result["policy_refs"],
+                "policy_refs": policy_refs,
                 "prompt": analysis_result.get("prompt"),
                 "duration_seconds": duration_seconds,
                 "duration_ms": round(duration_seconds * 1000, 3),
@@ -206,7 +218,7 @@ class WorkerAgent(BaseAgent):
                 "clause_id": task.get("clause_id"),
                 "risk_level": normalized_level,
                 "rationale": analysis_result["rationale"],
-                "policy_refs": analysis_result["policy_refs"],
+                "policy_refs": policy_refs,
             }
             self.blackboard.add_assessment(assessment)
 
@@ -239,6 +251,10 @@ class WorkerAgent(BaseAgent):
 
 async def manager_worker_workflow(blackboard: Blackboard) -> Dict[str, Any]:
     """Execute the manager-worker workflow"""
+    run_id = getattr(blackboard, "run_id", None)
+    start_time = time.time()
+    logger.info("Manager-worker workflow started for run_id=%s", run_id or "unknown")
+
     # Create manager
     manager = ManagerAgent("manager-agent-1", blackboard)
 
@@ -286,11 +302,15 @@ async def manager_worker_workflow(blackboard: Blackboard) -> Dict[str, Any]:
             continue
 
         clause_id = entry.get("clause_id") or entry.get("task_id")
+        policy_refs = entry.get("policy_refs")
+        if not isinstance(policy_refs, list):
+            policy_refs = [policy_refs] if policy_refs else []
+
         assessment = {
             "clause_id": clause_id,
             "risk_level": entry.get("risk_level"),
             "rationale": entry.get("rationale"),
-            "policy_refs": entry.get("policy_refs"),
+            "policy_refs": policy_refs,
         }
         assessments_generated.append(assessment)
 
@@ -309,7 +329,7 @@ async def manager_worker_workflow(blackboard: Blackboard) -> Dict[str, Any]:
             "output": {
                 "risk_level": entry.get("risk_level"),
                 "rationale": entry.get("rationale"),
-                "policy_refs": entry.get("policy_refs"),
+                "policy_refs": policy_refs,
             },
         })
 
@@ -322,5 +342,13 @@ async def manager_worker_workflow(blackboard: Blackboard) -> Dict[str, Any]:
     # Generate redline proposals for high/medium risk clauses
     from app.agents.redline_generator import generate_redlines_for_run
     await generate_redlines_for_run(blackboard)
+
+    end_time = time.time()
+    duration_ms = round((end_time - start_time) * 1000, 3)
+    logger.info(
+        "Manager-worker workflow finished for run_id=%s in %.3f ms",
+        run_id or "unknown",
+        duration_ms,
+    )
 
     return result

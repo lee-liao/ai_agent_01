@@ -276,6 +276,7 @@ This document outlines the plan for implementing the backend of the HITL Contrac
 - [ ] **Automated Verification Harness:**
     - [ ] Stand up pytest suites that spin up Redis/Postgres test instances and seed sample documents.
     - [ ] Provide helper factories to create documents, playbooks, and run requests for reuse across tests.
+    - [ ] Add regression coverage for manager-worker sequencing (risk before redline, policy_refs populated).
 
 - [ ] **Core E2E Scenarios:**
     - [ ] Upload document → start `sequential` run → verify assessments/proposals persisted and rendered via API.

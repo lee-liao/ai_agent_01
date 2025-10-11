@@ -65,7 +65,61 @@ def _append_risk_log(entry: Dict[str, Any]) -> None:
         print(f"Failed to write risk payload log: {logging_error}")
 
 
-def _mock_risk_analysis(prompt: str, clause_text: str) -> Dict[str, Any]:
+def _collect_policy_tokens(value: Any) -> List[str]:
+    tokens: List[str] = []
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            tokens.append(str(key))
+            tokens.extend(_collect_policy_tokens(nested))
+    elif isinstance(value, (list, tuple, set)):
+        for item in value:
+            tokens.extend(_collect_policy_tokens(item))
+    elif isinstance(value, str):
+        tokens.append(value)
+    return tokens
+
+
+def _infer_policy_refs(
+    clause_text: str,
+    policy_rules: Optional[Dict[str, Any]],
+    *,
+    risk_level: str,
+) -> List[str]:
+    if not policy_rules:
+        return []
+
+    text_lower = (clause_text or "").lower()
+    matched: List[str] = []
+
+    for top_key, config in policy_rules.items():
+        candidates = [top_key]
+        candidates.extend(_collect_policy_tokens(config))
+
+        for candidate in candidates:
+            normalized = str(candidate).replace("_", " ").lower()
+            if not normalized or normalized in {"true", "false", "yes", "no"}:
+                continue
+            tokens = [normalized]
+            if " " in normalized:
+                tokens.extend(normalized.split())
+            if any(token and token in text_lower for token in tokens):
+                matched.append(top_key)
+                break
+
+    if matched:
+        return sorted({key.replace("_", " ") for key in matched})
+
+    if risk_level.strip().upper() != "LOW":
+        return [key.replace("_", " ") for key in list(policy_rules.keys())[:3]]
+
+    return []
+
+
+def _mock_risk_analysis(
+    prompt: str,
+    clause_text: str,
+    policy_rules: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     # Simple heuristic for mock risk assessment
     high_risk_keywords = [
         "unlimited",
@@ -101,10 +155,12 @@ def _mock_risk_analysis(prompt: str, clause_text: str) -> Dict[str, Any]:
         risk_level = "Low"
         rationale = "Standard legal language with no obvious risk indicators"
 
+    policy_refs = _infer_policy_refs(clause_text, policy_rules, risk_level=risk_level)
+
     return {
         "risk_level": risk_level,
         "rationale": rationale,
-        "policy_refs": [],
+        "policy_refs": policy_refs,
         "prompt": prompt,
     }
 
@@ -145,7 +201,7 @@ def analyze_risk_with_openai(
             )
         else:
             print("Using mock risk analysis (no OpenAI API key)")
-        return _mock_risk_analysis(prompt, clause_text)
+        return _mock_risk_analysis(prompt, clause_text, policy_rules)
 
     # Real OpenAI analysis
     try:
@@ -158,15 +214,21 @@ def analyze_risk_with_openai(
 
         result = json.loads(response.choices[0].message.content.strip())
 
+        risk_level = result.get("risk_level", "Medium")
+        rationale = result.get("rationale", "AI analysis completed")
+        policy_refs = result.get("policy_refs")
+        if not isinstance(policy_refs, list) or not policy_refs:
+            policy_refs = _infer_policy_refs(clause_text, policy_rules, risk_level=risk_level)
+
         return {
-            "risk_level": result.get("risk_level", "Medium"),
-            "rationale": result.get("rationale", "AI analysis completed"),
-            "policy_refs": result.get("policy_refs", []),
+            "risk_level": risk_level,
+            "rationale": rationale,
+            "policy_refs": policy_refs,
             "prompt": prompt,
         }
     except Exception as e:
         print(f"Error calling OpenAI API: {e}")
-        return _mock_risk_analysis(prompt, clause_text)
+        return _mock_risk_analysis(prompt, clause_text, policy_rules)
 
 
 def resolve_clause_texts(
