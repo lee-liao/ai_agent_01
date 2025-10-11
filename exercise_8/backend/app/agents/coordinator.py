@@ -303,6 +303,11 @@ class Coordinator:
                 "timestamp": datetime.now().isoformat(),
                 "details": result
             })
+
+            # Persist latest artifacts onto run metadata for downstream consumers
+            self.runs[run_id]["assessments"] = list(blackboard.get("assessments", []))
+            self.runs[run_id]["proposals"] = list(blackboard.get("proposals", []))
+            self.runs[run_id]["history"] = list(blackboard.get("history", []))
             
             # Check if we need HITL approval
             if self._needs_risk_approval(blackboard):

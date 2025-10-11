@@ -228,14 +228,17 @@ def _calculate_run_score(assessments: List[Dict[str, Any]]) -> float:
     return score_value * 100
 
 
-def _enrich_proposals_for_ui(blackboard: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _enrich_proposals_for_ui(blackboard: Dict[str, Any], run: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     clauses = {c.get("clause_id") or c.get("id"): c for c in blackboard.get("clauses", [])}
     assessments = {
         a.get("clause_id") or a.get("id"): a for a in blackboard.get("assessments", [])
     }
+    proposal_source = blackboard.get("proposals")
+    if not proposal_source and run:
+        proposal_source = run.get("proposals", [])
 
     proposals: List[Dict[str, Any]] = []
-    for idx, proposal in enumerate(blackboard.get("proposals", []), start=1):
+    for idx, proposal in enumerate(proposal_source or [], start=1):
         clause_id = proposal.get("clause_id") or f"clause_{idx}"
         clause = clauses.get(clause_id, {})
         assessment = assessments.get(clause_id, {})
@@ -247,7 +250,7 @@ def _enrich_proposals_for_ui(blackboard: Dict[str, Any]) -> List[Dict[str, Any]]
             "clause_heading": clause.get("heading") or clause_id,
             "risk_level": risk_level,
             "original_text": proposal.get("original_text") or clause.get("text") or "",
-            "proposed_text": proposal.get("proposed_text") or "",
+            "proposed_text": proposal.get("proposed_text") or proposal.get("edited_text") or "",
             "rationale": proposal.get("rationale") or assessment.get("rationale") or "",
             "policy_refs": proposal.get("policy_refs") or assessment.get("policy_refs", []),
             "variant": proposal.get("variant") or ("conservative" if risk_level == "HIGH" else "moderate"),
@@ -257,10 +260,12 @@ def _enrich_proposals_for_ui(blackboard: Dict[str, Any]) -> List[Dict[str, Any]]
     return proposals
 
 
-def _build_final_summary(blackboard: Dict[str, Any], score: float) -> Dict[str, Any]:
+def _build_final_summary(blackboard: Dict[str, Any], score: float, *, run: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     assessments = blackboard.get("assessments", [])
     counts = _summarize_risk_counts(assessments)
     proposals = blackboard.get("proposals", [])
+    if not proposals and run:
+        proposals = run.get("proposals", [])
     total_clauses = len(blackboard.get("clauses", []))
 
     return {
@@ -273,9 +278,12 @@ def _build_final_summary(blackboard: Dict[str, Any], score: float) -> Dict[str, 
     }
 
 
-def _build_final_memo(blackboard: Dict[str, Any], score: float) -> Dict[str, Any]:
+def _build_final_memo(blackboard: Dict[str, Any], score: float, *, run: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     counts = _summarize_risk_counts(blackboard.get("assessments", []))
-    proposals = len(blackboard.get("proposals", []))
+    proposal_records = blackboard.get("proposals", [])
+    if not proposal_records and run:
+        proposal_records = run.get("proposals", [])
+    proposals = len(proposal_records)
     recommendations: List[str] = []
 
     if proposals:
@@ -853,7 +861,7 @@ async def list_pending_final_runs():
         blackboard = coordinator.get_blackboard(run_id) or {}
         doc_id = blackboard.get("doc_id") or run.get("doc_id")
         assessments = blackboard.get("assessments", [])
-        proposals = _enrich_proposals_for_ui(blackboard)
+        proposals = _enrich_proposals_for_ui(blackboard, run)
         score = _calculate_run_score(assessments)
 
         final_runs.append({
@@ -885,7 +893,7 @@ async def get_redline_details(run_id: str):
         raise HTTPException(status_code=404, detail="Blackboard not found")
 
     doc_id = blackboard.get("doc_id") or run.get("doc_id")
-    proposals = _enrich_proposals_for_ui(blackboard)
+    proposals = _enrich_proposals_for_ui(blackboard, run)
     score = _calculate_run_score(blackboard.get("assessments", []))
 
     return {
@@ -897,9 +905,9 @@ async def get_redline_details(run_id: str):
         "status": run.get("status"),
         "created_at": run.get("created_at"),
         "score": score,
-        "summary": _build_final_summary(blackboard, score),
+        "summary": _build_final_summary(blackboard, score, run=run),
         "proposals": proposals,
-        "memo": _build_final_memo(blackboard, score),
+        "memo": _build_final_memo(blackboard, score, run=run),
     }
 
 
