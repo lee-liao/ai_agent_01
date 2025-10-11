@@ -7,7 +7,7 @@ Integrates the new multi-agent framework with existing exercise 8 functionality.
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional, Literal
 import uuid
 import time
@@ -213,6 +213,89 @@ def _default_recommendation(risk_level: str) -> Dict[str, str]:
     }
 
 
+def _calculate_run_score(assessments: List[Dict[str, Any]]) -> float:
+    high_count = 0
+    medium_count = 0
+    for assessment in assessments or []:
+        level = (assessment.get("risk_level") or "").upper()
+        if level == "HIGH":
+            high_count += 1
+        elif level == "MEDIUM":
+            medium_count += 1
+
+    score_value = 1.0 - (high_count * 0.3) - (medium_count * 0.1)
+    score_value = max(0.0, min(1.0, score_value))
+    return score_value * 100
+
+
+def _enrich_proposals_for_ui(blackboard: Dict[str, Any]) -> List[Dict[str, Any]]:
+    clauses = {c.get("clause_id") or c.get("id"): c for c in blackboard.get("clauses", [])}
+    assessments = {
+        a.get("clause_id") or a.get("id"): a for a in blackboard.get("assessments", [])
+    }
+
+    proposals: List[Dict[str, Any]] = []
+    for idx, proposal in enumerate(blackboard.get("proposals", []), start=1):
+        clause_id = proposal.get("clause_id") or f"clause_{idx}"
+        clause = clauses.get(clause_id, {})
+        assessment = assessments.get(clause_id, {})
+        risk_level = (assessment.get("risk_level") or proposal.get("risk_level") or "LOW").upper()
+
+        proposals.append({
+            "proposal_id": proposal.get("proposal_id") or clause_id,
+            "clause_id": clause_id,
+            "clause_heading": clause.get("heading") or clause_id,
+            "risk_level": risk_level,
+            "original_text": proposal.get("original_text") or clause.get("text") or "",
+            "proposed_text": proposal.get("proposed_text") or "",
+            "rationale": proposal.get("rationale") or assessment.get("rationale") or "",
+            "policy_refs": proposal.get("policy_refs") or assessment.get("policy_refs", []),
+            "variant": proposal.get("variant") or ("conservative" if risk_level == "HIGH" else "moderate"),
+            "reviewer_notes": proposal.get("reviewer_notes") or "",
+        })
+
+    return proposals
+
+
+def _build_final_summary(blackboard: Dict[str, Any], score: float) -> Dict[str, Any]:
+    assessments = blackboard.get("assessments", [])
+    counts = _summarize_risk_counts(assessments)
+    proposals = blackboard.get("proposals", [])
+    total_clauses = len(blackboard.get("clauses", []))
+
+    return {
+        "total_clauses": total_clauses,
+        "high_risk_clauses": counts["high"],
+        "medium_risk_clauses": counts["medium"],
+        "low_risk_clauses": counts["low"],
+        "proposals_generated": len(proposals),
+        "estimated_risk_reduction": f"{int(round(score))}%",
+    }
+
+
+def _build_final_memo(blackboard: Dict[str, Any], score: float) -> Dict[str, Any]:
+    counts = _summarize_risk_counts(blackboard.get("assessments", []))
+    proposals = len(blackboard.get("proposals", []))
+    recommendations: List[str] = []
+
+    if proposals:
+        recommendations.append("Review and sign off on approved proposal language before export")
+    if counts["high"]:
+        recommendations.append("Ensure remaining high-risk items are mitigated or escalated")
+    if not recommendations:
+        recommendations.append("Proceed to export and deliverables distribution")
+
+    return {
+        "executive_summary": (
+            f"{proposals} proposal(s) prepared with an overall risk score of {int(round(score))}%"
+        ),
+        "risk_assessment": (
+            f"Current assessment counts: {counts['high']} high, {counts['medium']} medium, {counts['low']} low"
+        ),
+        "recommendations": recommendations,
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown events"""
@@ -350,6 +433,16 @@ class RunRequest(BaseModel):
     scope: Optional[str] = None
     options: Optional[Dict[str, Any]] = None
 
+class RiskDecisionItem(BaseModel):
+    clause_id: str
+    decision: Literal["approve", "reject", "review"] = "review"
+    comments: Optional[str] = None
+
+
+class RiskDecisionSaveRequest(BaseModel):
+    items: List[RiskDecisionItem]
+
+
 class RiskApprovalItem(BaseModel):
     clause_id: str
     decision: Literal["approve", "reject"] = "approve"
@@ -362,6 +455,8 @@ class RiskApprovalRequest(BaseModel):
 
 class FinalApproveRequest(BaseModel):
     run_id: str
+    approved: List[str] = Field(default_factory=list)
+    rejected: List[str] = Field(default_factory=list)
     note: Optional[str] = None
 
 
@@ -592,15 +687,8 @@ async def get_run_by_id(run_id: str):
     
     blackboard = coordinator.get_blackboard(run_id)
     
-    # Calculate score based on risk assessments
     assessments = blackboard.get("assessments", [])
-    high_count = sum(1 for a in assessments if a.get("risk_level", "").lower() == "high")
-    medium_count = sum(1 for a in assessments if a.get("risk_level", "").lower() == "medium")
-    
-    # Basic scoring: start with 1.0 and subtract penalties
-    score_value = 1.0 - (high_count * 0.3) - (medium_count * 0.1)
-    score_value = max(0.0, min(1.0, score_value))  # Keep between 0 and 1
-    final_score = score_value * 100  # Convert to percentage
+    final_score = _calculate_run_score(assessments)
     
     return {
         **run,
@@ -681,6 +769,8 @@ async def get_risk_assessments(run_id: str):
     doc_id = blackboard.get("doc_id") or run.get("doc_id")
     doc_name = _safe_get_doc_name(doc_id)
 
+    decisions = coordinator.get_risk_decisions(run_id)
+
     clauses = {}
     clause_order = {}
     for idx, clause in enumerate(blackboard.get("clauses", [])):
@@ -697,6 +787,7 @@ async def get_risk_assessments(run_id: str):
             continue
         clause = clauses.get(clause_id, {})
         defaults = _default_recommendation(assessment.get("risk_level"))
+        decision_progress = decisions.get(clause_id, {})
         enriched_assessments.append({
             "clause_id": clause_id,
             "clause_heading": clause.get("heading") or clause_id,
@@ -706,6 +797,9 @@ async def get_risk_assessments(run_id: str):
             "policy_refs": assessment.get("policy_refs", []),
             "recommended_action": assessment.get("recommended_action", defaults["recommended_action"]),
             "impact_assessment": assessment.get("impact_assessment", defaults["impact_assessment"]),
+            "decision": decision_progress.get("decision", "review"),
+            "decision_comment": decision_progress.get("comments", ""),
+            "decision_updated_at": decision_progress.get("updated_at"),
         })
 
     enriched_assessments.sort(key=lambda item: clause_order.get(item["clause_id"], 0))
@@ -716,6 +810,96 @@ async def get_risk_assessments(run_id: str):
         "doc_name": doc_name,
         "agent_path": run.get("agent_path"),
         "assessments": enriched_assessments,
+    }
+
+
+@app.post("/api/hitl/runs/{run_id}/decisions")
+async def save_risk_decisions(run_id: str, body: RiskDecisionSaveRequest):
+    run = coordinator.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    if not body.items:
+        return {"status": "noop", "run_id": run_id, "count": 0}
+
+    decisions = [
+        {
+            "clause_id": item.clause_id,
+            "decision": item.decision,
+            "comments": item.comments,
+        }
+        for item in body.items
+    ]
+
+    success = coordinator.save_risk_decisions(run_id, decisions)
+    if not success:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    return {"status": "saved", "run_id": run_id, "count": len(decisions)}
+
+
+@app.get("/api/hitl/final-runs")
+async def list_pending_final_runs():
+    """Return runs awaiting final approval with proposal summaries."""
+    final_runs = []
+    for run in coordinator.list_runs():
+        if run.get("status") != RunStatus.AWAITING_FINAL_APPROVAL.value:
+            continue
+
+        run_id = run.get("run_id")
+        if not run_id:
+            continue
+
+        blackboard = coordinator.get_blackboard(run_id) or {}
+        doc_id = blackboard.get("doc_id") or run.get("doc_id")
+        assessments = blackboard.get("assessments", [])
+        proposals = _enrich_proposals_for_ui(blackboard)
+        score = _calculate_run_score(assessments)
+
+        final_runs.append({
+            "run_id": run_id,
+            "doc_id": doc_id,
+            "doc_name": _safe_get_doc_name(doc_id),
+            "agent_path": run.get("agent_path"),
+            "status": run.get("status"),
+            "created_at": run.get("created_at"),
+            "updated_at": run.get("updated_at"),
+            "total_proposals": len(proposals),
+            "high_risk_resolved": sum(1 for proposal in proposals if proposal["risk_level"] == "HIGH"),
+            "score": score,
+        })
+
+    final_runs.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    return final_runs
+
+
+@app.get("/api/hitl/runs/{run_id}/redlines")
+async def get_redline_details(run_id: str):
+    """Fetch enriched redline proposals and summary for final approval."""
+    run = coordinator.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    blackboard = coordinator.get_blackboard(run_id)
+    if not blackboard:
+        raise HTTPException(status_code=404, detail="Blackboard not found")
+
+    doc_id = blackboard.get("doc_id") or run.get("doc_id")
+    proposals = _enrich_proposals_for_ui(blackboard)
+    score = _calculate_run_score(blackboard.get("assessments", []))
+
+    return {
+        "run_id": run_id,
+        "doc_id": doc_id,
+        "doc_name": _safe_get_doc_name(doc_id),
+        "agent_path": run.get("agent_path"),
+        "playbook_id": run.get("playbook_id") or blackboard.get("playbook_id"),
+        "status": run.get("status"),
+        "created_at": run.get("created_at"),
+        "score": score,
+        "summary": _build_final_summary(blackboard, score),
+        "proposals": proposals,
+        "memo": _build_final_memo(blackboard, score),
     }
 
 
@@ -769,25 +953,38 @@ async def final_approve(body: FinalApproveRequest):
     Final Gate: Human approval for all redline proposals.
     Uses the coordinator's final approval mechanism.
     """
-    # For now, we'll approve all proposals
     blackboard = coordinator.get_blackboard(body.run_id)
     if not blackboard:
-        raise HTTPException(status_code=404, detail="Run not found")
-    
-    # Get all proposal IDs
-    proposal_ids = [p["clause_id"] for p in blackboard.get("proposals", [])]
-    
+        raise HTTPException(status_code=404, detail="Blackboard not found")
+
+    proposal_records = _enrich_proposals_for_ui(blackboard)
+    valid_ids = {proposal["clause_id"] for proposal in proposal_records}
+
+    approved = [pid for pid in body.approved if pid in valid_ids]
+    rejected = [pid for pid in body.rejected if pid in valid_ids]
+
+    approved_set = set(approved)
+    rejected = [pid for pid in rejected if pid not in approved_set]
+
     success = coordinator.approve_final(
         run_id=body.run_id,
-        approved_proposals=proposal_ids,
-        rejected_proposals=[],
+        approved_proposals=approved,
+        rejected_proposals=rejected,
         notes=body.note
     )
-    
+
     if not success:
         raise HTTPException(status_code=404, detail="Run not found")
-    
-    return {"status": "approved", "run_id": body.run_id}
+
+    run = coordinator.get_run(body.run_id) or {}
+
+    return {
+        "status": "final_approved",
+        "run_id": body.run_id,
+        "approved": approved,
+        "rejected": rejected,
+        "run_status": run.get("status")
+    }
 
 
 # ==================== Export ====================

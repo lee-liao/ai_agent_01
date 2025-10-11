@@ -40,6 +40,9 @@ interface AssessmentEntry {
   policy_refs: string[];
   recommended_action: string;
   impact_assessment: string;
+  decision?: "approve" | "reject" | "review";
+  decision_comment?: string;
+  decision_updated_at?: string;
 }
 
 interface AssessmentResponse {
@@ -94,6 +97,30 @@ export default function RiskGatePage() {
     setSubmitError(null);
   };
 
+  const persistClauseDecisions = async (
+    clauseIds: string[],
+    approvedSet: Set<string>,
+    rejectedSet: Set<string>,
+    commentsMap: Record<string, string>
+  ) => {
+    if (!assessments || clauseIds.length === 0) return;
+    const items = clauseIds.map((clauseId) => ({
+      clause_id: clauseId,
+      decision: rejectedSet.has(clauseId)
+        ? "reject"
+        : approvedSet.has(clauseId)
+        ? "approve"
+        : "review",
+      comments: commentsMap[clauseId] ?? "",
+    }));
+
+    try {
+      await api.saveRiskGateDecisions(assessments.run_id, { items });
+    } catch (error) {
+      console.error("Failed to persist risk decisions", error);
+    }
+  };
+
   const handleLoadRun = async (runId: string) => {
     setSelectedRun(runId);
     resetDecisionState();
@@ -102,6 +129,25 @@ export default function RiskGatePage() {
     setAssessmentsLoading(true);
     try {
       const data: AssessmentResponse = await api.getRiskAssessments(runId);
+      const approved = new Set<string>();
+      const rejected = new Set<string>();
+      const comments: Record<string, string> = {};
+
+      for (const assessment of data.assessments) {
+        const decision = (assessment.decision || "review").toLowerCase();
+        if (decision === "approve") {
+          approved.add(assessment.clause_id);
+        } else if (decision === "reject") {
+          rejected.add(assessment.clause_id);
+        }
+        if (assessment.decision_comment) {
+          comments[assessment.clause_id] = assessment.decision_comment;
+        }
+      }
+
+      setApprovedClauses(approved);
+      setRejectedClauses(rejected);
+      setClauseComments(comments);
       setAssessments(data);
     } catch (error) {
       console.error(error);
@@ -139,20 +185,38 @@ export default function RiskGatePage() {
 
     setApprovedClauses(newApproved);
     setRejectedClauses(newRejected);
+    void persistClauseDecisions([clauseId], newApproved, newRejected, clauseComments);
   };
 
   const handleApproveAllClauses = () => {
     if (!assessments) return;
-    const allIds = new Set(assessments.assessments.map((a) => a.clause_id));
-    setApprovedClauses(allIds);
-    setRejectedClauses(new Set());
+    const allIds = assessments.assessments.map((a) => a.clause_id);
+    const approved = new Set(allIds);
+    const rejected = new Set<string>();
+    setApprovedClauses(approved);
+    setRejectedClauses(rejected);
+    void persistClauseDecisions(allIds, approved, rejected, clauseComments);
   };
 
   const handleRejectAllClauses = () => {
     if (!assessments) return;
-    const allIds = new Set(assessments.assessments.map((a) => a.clause_id));
-    setRejectedClauses(allIds);
-    setApprovedClauses(new Set());
+    const allIds = assessments.assessments.map((a) => a.clause_id);
+    const rejected = new Set(allIds);
+    const approved = new Set<string>();
+    setRejectedClauses(rejected);
+    setApprovedClauses(approved);
+    void persistClauseDecisions(allIds, approved, rejected, clauseComments);
+  };
+
+  const handleCommentChange = (clauseId: string, value: string) => {
+    const nextComments = { ...clauseComments };
+    if (value) {
+      nextComments[clauseId] = value;
+    } else {
+      delete nextComments[clauseId];
+    }
+    setClauseComments(nextComments);
+    void persistClauseDecisions([clauseId], approvedClauses, rejectedClauses, nextComments);
   };
 
   const highRiskCount =
@@ -522,12 +586,7 @@ export default function RiskGatePage() {
                           rows={2}
                           placeholder="Add any notes or concerns about this risk assessment..."
                           value={clauseComments[assessment.clause_id] || ""}
-                          onChange={(e) =>
-                            setClauseComments({
-                              ...clauseComments,
-                              [assessment.clause_id]: e.target.value,
-                            })
-                          }
+                          onChange={(e) => handleCommentChange(assessment.clause_id, e.target.value)}
                         />
                       </div>
                     </div>

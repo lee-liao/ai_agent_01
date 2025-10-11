@@ -344,22 +344,17 @@ class Coordinator:
         return self.teams.get(team_name) if team_name else None
     
     def _needs_risk_approval(self, blackboard: Dict[str, Any]) -> bool:
-        """
-        Check if the run needs human approval at the risk gate.
-        
-        Args:
-            blackboard: Blackboard state
-            
-        Returns:
-            True if risk approval is needed
-        """
+        """Check if the run needs human approval at the risk gate."""
         assessments = blackboard.get("assessments", [])
-        
-        # Require approval if any HIGH risk clauses found
+
+        if not assessments:
+            return False
+
         for assessment in assessments:
-            if assessment.get("risk_level") == "HIGH":
+            level = (assessment.get("risk_level") or "").upper()
+            if level in {"HIGH", "MEDIUM", "LOW"}:
                 return True
-        
+
         return False
     
     def get_blackboard(self, run_id: str) -> Optional[Dict[str, Any]]:
@@ -395,6 +390,52 @@ class Coordinator:
         """
         return list(self.runs.values())
     
+    def save_risk_decisions(
+        self,
+        run_id: str,
+        decisions: List[Dict[str, Any]]
+    ) -> bool:
+        blackboard = self.blackboards.get(run_id)
+        run = self.runs.get(run_id)
+
+        if not blackboard or not run:
+            return False
+
+        progress = blackboard.setdefault("risk_gate_progress", {})
+        timestamp = datetime.now().isoformat()
+
+        for item in decisions:
+            clause_id = item.get("clause_id")
+            if not clause_id:
+                continue
+
+            decision = (item.get("decision") or "review").lower()
+            comments = item.get("comments")
+
+            if decision not in {"approve", "reject", "review"}:
+                continue
+
+            if decision == "review" and (comments is None or comments == ""):
+                progress.pop(clause_id, None)
+                continue
+
+            entry = progress.setdefault(clause_id, {})
+            entry["decision"] = decision
+            entry["updated_at"] = timestamp
+            if comments is None:
+                entry.pop("comments", None)
+            else:
+                entry["comments"] = comments
+
+        run["updated_at"] = datetime.now().isoformat()
+        return True
+
+    def get_risk_decisions(self, run_id: str) -> Dict[str, Any]:
+        blackboard = self.blackboards.get(run_id)
+        if not blackboard:
+            return {}
+        return blackboard.get("risk_gate_progress", {})
+
     def approve_risk(
         self,
         run_id: str,

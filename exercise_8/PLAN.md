@@ -222,6 +222,17 @@ This document outlines the plan for implementing the backend of the HITL Contrac
     - [x] Update frontend Risk Gate page to load pending runs/assessments and submit real approvals.
     - [x] Add automated tests covering risk run summaries, assessments, and approval lifecycle.
 
+- [x] **Persist Risk Gate approval decisions:**
+    - [x] Define storage layer for assessor decisions (reuse PostgreSQL or blackboard persistence as appropriate).
+    - [x] Update backend HITL endpoints to write/read approval state per assessment.
+    - [x] Ensure frontend submits decisions and rehydrates persisted statuses on load.
+    - [x] Add automated regression tests covering refresh scenarios and bulk approval flows.
+
+- [ ] **Expand Risk Gate gating criteria:**
+    - [ ] Update coordinator approval gating to include medium/low risk clauses per policy.
+    - [ ] Ensure pending runs endpoint surfaces runs without high risks.
+    - [ ] Adjust UI cues to reflect broader approval scope.
+
 - [ ] **Operational Verification:**
     - [ ] Perform manual HITL walkthroughs in staging to validate UX and edge cases.
     - [ ] Capture follow-up issues and polish items from manual review.
@@ -274,3 +285,7 @@ This document outlines the plan for implementing the backend of the HITL Contrac
     - [ ] Store team definitions in PostgreSQL for durability beyond JSON files.
     - [ ] Provide migration scripts and admin APIs to manage team configurations centrally.
     - [ ] Keep Redis/blackboard synchronization consistent when team records change.
+- [ ] **Persist Risk Gate decisions durably:**
+    - [ ] Design schema to store clause-level risk approvals/comments in Postgres.
+    - [ ] Synchronize coordinator blackboard state with durable records on read/write.
+    - [ ] Update APIs to source persisted decisions so reviewers retain history across restarts.
