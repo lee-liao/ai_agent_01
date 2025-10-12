@@ -438,6 +438,41 @@ def _build_final_memo(blackboard: Dict[str, Any], score: float, *, run: Optional
     }
 
 
+def _build_run_payload_for_export(run_id: str) -> Dict[str, Any]:
+    """Resolve run data for export, enriching from coordinator state when needed."""
+    blackboard = coordinator.get_blackboard(run_id)
+    stored_run = get_run(run_id)
+    run_payload: Dict[str, Any] = dict(stored_run) if stored_run else {}
+
+    if not run_payload:
+        coordinator_run = coordinator.get_run(run_id)
+        if coordinator_run:
+            run_payload.update(coordinator_run)
+
+    if not run_payload and not blackboard:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    run_payload.setdefault("run_id", run_id)
+
+    if blackboard:
+        run_payload.setdefault("doc_id", blackboard.get("doc_id"))
+        run_payload.setdefault("agent_path", blackboard.get("agent_path"))
+        run_payload.setdefault("playbook_id", blackboard.get("playbook_id"))
+        if not run_payload.get("assessments"):
+            run_payload["assessments"] = list(blackboard.get("assessments", []))
+        if not run_payload.get("proposals"):
+            run_payload["proposals"] = list(blackboard.get("proposals", []))
+        if not run_payload.get("history") and blackboard.get("history"):
+            run_payload["history"] = list(blackboard.get("history", []))
+        if "score" not in run_payload:
+            run_payload["score"] = _calculate_run_score(run_payload.get("assessments", []))
+
+    if not stored_run or run_payload != stored_run:
+        set_run(run_id, run_payload)
+
+    return run_payload
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown events"""
@@ -1136,9 +1171,7 @@ async def export_redline(run_id: str, format: str = "md"):
     """
     Export redlined document.
     """
-    run = get_run(run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _build_run_payload_for_export(run_id)
     
     try:
         export_content = await export_redline_document(run, format)
@@ -1168,9 +1201,7 @@ async def export_redline(run_id: str, format: str = "md"):
 @app.get("/api/export/download/{run_id}/{format}")
 async def download_export(run_id: str, format: str):
     """Download the exported document"""
-    run = get_run(run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _build_run_payload_for_export(run_id)
     
     try:
         export_content = await export_redline_document(run, format)

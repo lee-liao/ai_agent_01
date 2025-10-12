@@ -111,16 +111,20 @@ export default function FinalizePage() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const refreshPendingRuns = async () => {
+  const refreshPendingRuns = async (options?: { preserveSelection?: boolean }) => {
+    const preserveSelection = options?.preserveSelection ?? false;
     setPendingLoading(true);
     setPendingError(null);
     try {
       const data: PendingFinalRun[] = await api.listPendingFinalRuns();
       setPendingRuns(data);
 
-      if (!data.some((item) => item.run_id === selectedRun)) {
+      const runStillPending = data.some((item) => item.run_id === selectedRun);
+      if (!runStillPending && !preserveSelection) {
         setSelectedRun("");
         setRedlineDetails(null);
+        setShowExportOptions(false);
+        setExportComplete(false);
       }
     } catch (error) {
       console.error("Failed to load pending final runs", error);
@@ -131,7 +135,7 @@ export default function FinalizePage() {
   };
 
   useEffect(() => {
-    refreshPendingRuns();
+    void refreshPendingRuns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -211,7 +215,7 @@ export default function FinalizePage() {
 
       setShowExportOptions(true);
       setExportComplete(false);
-      await refreshPendingRuns();
+      await refreshPendingRuns({ preserveSelection: true });
     } catch (error) {
       console.error("Final approval failed", error);
       setFinalApproveError("Unable to finalize approval. Please try again.");
