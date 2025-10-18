@@ -21,6 +21,7 @@ class ExtractorAgent:
         "phone": r"\b(?:\+\d{1,2}\s?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b",
         "address": r"\b\d+\s+[A-Za-z\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct)\b",
         "name": r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b",  # Simple name pattern
+        "passport": r"\b[A-Z]{2}\d{7}\b",
     }
     
     def extract(
@@ -213,6 +214,11 @@ class ExtractorAgent:
                 digits = ''.join(c for c in value if c.isdigit())
                 if len(digits) >= 4:
                     return "***-***-" + digits[-4:]
+                return "***"
+            elif pii_type == "passport":
+                # Keep last 4 characters
+                if len(value) >= 4:
+                    return "***" + value[-4:]
                 return "***"
             else:
                 return "***"
