@@ -243,6 +243,10 @@ function ReviewPageInner() {
                     >
                       Go to HITL Queue →
                     </a>
+                    <div className="mt-2 text-xs text-yellow-700">
+                      The pipeline pauses at reviewer/drafter until a decision is made.
+                      After approval, this page will auto-refresh and continue.
+                    </div>
                   </div>
                 )}
               </div>
