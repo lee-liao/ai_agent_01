@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { listDocuments, listPolicies, startReviewRun, getRun } from "@/lib/api";
 
-export default function ReviewPage() {
+function ReviewPageInner() {
   const searchParams = useSearchParams();
   const docIdParam = searchParams.get("doc_id");
 
@@ -337,6 +337,14 @@ export default function ReviewPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ReviewPage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto px-4 py-8">Loading review...</div>}>
+      <ReviewPageInner />
+    </Suspense>
   );
 }
 
