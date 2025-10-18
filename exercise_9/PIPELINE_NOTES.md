@@ -47,3 +47,31 @@ This document summarizes the pipeline flow, inputs/outputs per agent, and HITL i
 - Amount parsing uses `$[digits,]` with optional cents; threshold is taken from `Risk Management Thresholds` policy.
 - Reviewer sets `requires_hitl = True` whenever high-risk items (including high-value) exist; pipeline enqueues HITL.
 
+## Notes for Task 9 (Context-Aware PII)
+- Enhanced `extractor.py` with context-aware heuristics for `name` and `email` PII:
+  - Names: confidence boosted near signature/contact hints; suppressed for heading-like lines or common legal headings.
+  - Emails: confidence reduced for generic local parts (e.g., `info@`, `support@`); boosted for personal-like addresses (`first.last@`).
+- Risk is down-adjusted when confidence is low; very low-confidence names are dropped entirely.
+- `pii_entities[]` now includes a `confidence` field.
+- HITL checks now consider confidence (require high-risk with confidence ≥ 0.7; policy/financial-health checks require at least one PII with confidence ≥ 0.6).
+
+### Step 9 Validation Snapshot
+- Before: Names in headings (e.g., “Governing Law”) were sometimes flagged as `name` with `medium` risk.
+- After: Such headings are either dropped (confidence < 0.3) or downgraded, reducing false positives.
+- Emails like `info@company.com` now carry lower confidence and risk; personal emails like `john.doe@company.com` remain high-confidence.
+
+### Sample Document for Step 9
+Create `exercise_9/data/sample_documents/context_pii_test.md` with lines:
+
+```
+Governing Law
+The parties agree to the laws of California.
+
+Signature:
+Print Name: John Doe
+Email: john.doe@company.com
+Contact: info@company.com
+```
+
+- Expected: “Governing Law” should not be flagged as a `name`. “John Doe” near “Print Name” should be detected with high confidence. `john.doe@company.com` high confidence; `info@company.com` lower confidence.
+
