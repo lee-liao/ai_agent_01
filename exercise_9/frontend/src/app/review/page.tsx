@@ -232,6 +232,22 @@ function ReviewPageInner() {
                     </p>
                   </div>
                 </div>
+                {runResult.status === "completed" && (
+                  <div className="mt-4">
+                    <a
+                      href={`/export/${runResult.run_id}/final`}
+                      className="inline-block bg-gray-800 text-white px-4 py-2 rounded text-sm hover:bg-gray-900"
+                    >
+                      View Final Document →
+                    </a>
+                    <a
+                      href={`/export/${runResult.run_id}/redline`}
+                      className="inline-block ml-2 bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
+                    >
+                      View Redline →
+                    </a>
+                  </div>
+                )}
                 {runResult.hitl_required && (
                   <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                     <p className="text-yellow-800 font-medium">
