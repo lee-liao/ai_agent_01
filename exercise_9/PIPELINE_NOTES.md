@@ -34,10 +34,16 @@ This document summarizes the pipeline flow, inputs/outputs per agent, and HITL i
 - After Drafter: if `requires_final_hitl` → queue HITL, pause
 - Resume: `/api/hitl/{hitl_id}/respond` calls `continue_after_hitl(...)` to proceed to next stage(s)
 
+### High-Value Financial Trigger
+- Reviewer now emits explicit HITL items of type `financial_amount` when a clause contains a dollar amount above `Risk Management Thresholds.financial_terms_threshold` (default `$100,000`).
+- Each item includes: `clause_id`, `heading`, `amount`, `threshold`, `severity`, and a descriptive message.
+- These items appear in `review_result.high_risk_items`, so the pipeline enqueues HITL after the Reviewer stage and pauses the run.
+
 ## Finalization
 - On completion, run stores `final_output` with `{ document, redactions_count, overall_risk }` and marks status `completed`.
 
 ## Notes for Task 8 (High-Value Trigger)
-- Reviewer already parses dollar amounts and compares to `Risk Management Thresholds` policy value (`financial_terms_threshold`, default 100000).
-- Implement `_check_high_value` hook to create explicit HITL items when amount > threshold and wire into Reviewer result (`requires_hitl = True` with details) and pipeline.
+- Implemented explicit high-value HITL items directly in Reviewer clause assessment.
+- Amount parsing uses `$[digits,]` with optional cents; threshold is taken from `Risk Management Thresholds` policy.
+- Reviewer sets `requires_hitl = True` whenever high-risk items (including high-value) exist; pipeline enqueues HITL.
 

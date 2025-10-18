@@ -109,6 +109,9 @@ class ReviewerAgent:
             # Determine risk level
             risk_level = "low"
             risk_factors = []
+            financial_amount = None
+            financial_exceeds_threshold = False
+            threshold_used = None
             
             # Check for high-risk keywords
             for keyword in self.RISK_KEYWORDS["high"]:
@@ -135,9 +138,12 @@ class ReviewerAgent:
                         if policy.get("name") == "Risk Management Thresholds":
                             threshold = policy.get("rules", {}).get("financial_terms_threshold", 100000)
                     
+                    financial_amount = amount
+                    threshold_used = threshold
                     if amount > threshold:
                         risk_level = "high"
                         risk_factors.append(f"financial amount exceeds threshold: ${amount:,.2f}")
+                        financial_exceeds_threshold = True
                 except:
                     pass
             
@@ -156,7 +162,10 @@ class ReviewerAgent:
                 "risk_level": risk_level,
                 "rationale": rationale,
                 "policy_refs": policy_refs,
-                "risk_factors": risk_factors
+                "risk_factors": risk_factors,
+                "financial_amount": financial_amount,
+                "financial_exceeds_threshold": financial_exceeds_threshold,
+                "financial_threshold": threshold_used
             })
         
         return assessments
@@ -320,6 +329,20 @@ class ReviewerAgent:
                     "heading": clause["heading"],
                     "risk_level": "high",
                     "rationale": clause["rationale"]
+                })
+            # Explicit high-value financial trigger items
+            if clause.get("financial_exceeds_threshold"):
+                amt = clause.get("financial_amount")
+                thr = clause.get("financial_threshold")
+                high_risk_items.append({
+                    "id": f"hitl_financial_{clause['clause_id']}",
+                    "type": "financial_amount",
+                    "clause_id": clause["clause_id"],
+                    "heading": clause["heading"],
+                    "amount": amt,
+                    "threshold": thr,
+                    "severity": "high",
+                    "description": f"Financial amount ${amt:,.2f} exceeds threshold ${thr:,.2f}"
                 })
         
         # High severity violations
