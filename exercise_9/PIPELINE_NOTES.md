@@ -83,3 +83,22 @@ Contact: info@company.com
   - After a run completes, navigate from Review page to Redline → Final via provided links.
   - Direct URLs: `/export/<run_id>/redline` and `/export/<run_id>/final`.
 
+## Notes for Task 11 (KPIs & Exports Validation)
+- KPIs: `/api/reports/kpis` and `/reports` page verified. Metrics include accuracy, PII F1, SLA, red team pass rate, HITL queue size, totals.
+- Exports:
+  - Redline: `/api/export/run/{run_id}/redline` → `/export/<run_id>/redline` UI viewer.
+  - Final: `/api/export/run/{run_id}/final` → `/export/<run_id>/final` UI viewer.
+- Review page now auto-polls run status and shows quick links to Final/Redline once completed.
+
+## Documentation Checklist (Task 12)
+- [ ] Quickstart steps (backend + frontend run commands)
+- [ ] Page tour with screenshots (Home, Documents, Review, HITL, Chat, Red Team, Audit, Reports)
+- [ ] Pipeline flow and HITL triggers summary
+- [ ] PII detection modes and custom passport pattern
+- [ ] Custom policy example (External Sharing)
+- [ ] Chat security hardening examples and audit entries
+- [ ] Red team scenarios and results
+- [ ] Step 8 high-value trigger walkthrough
+- [ ] Step 9 context-aware PII before/after snapshots
+- [ ] Export usage (redline/final) and KPIs overview
+
