@@ -14,6 +14,7 @@ function ReviewPageInner() {
   const [selectedPolicyIds, setSelectedPolicyIds] = useState<string[]>([]);
   const [runResult, setRunResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [polling, setPolling] = useState(false);
 
   useEffect(() => {
     loadDocuments();
@@ -62,6 +63,8 @@ function ReviewPageInner() {
         try {
           const run = await getRun(result.run_id);
           setRunResult(run);
+          // begin polling until run completes or fails
+          setPolling(true);
         } catch (error) {
           console.error("Failed to get run results:", error);
         }
@@ -71,6 +74,39 @@ function ReviewPageInner() {
       alert("Failed to start review");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Auto-poll run status while in-progress or awaiting HITL
+  useEffect(() => {
+    let interval: any;
+    const shouldPoll = polling && runResult && !["completed", "failed"].includes(runResult.status);
+    if (shouldPoll) {
+      interval = setInterval(async () => {
+        try {
+          const latest = await getRun(runResult.run_id);
+          setRunResult(latest);
+          if (["completed", "failed"].includes(latest.status)) {
+            setPolling(false);
+            clearInterval(interval);
+          }
+        } catch (err) {
+          console.error("Polling run failed:", err);
+        }
+      }, 3000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [polling, runResult]);
+
+  const refreshRun = async () => {
+    if (!runResult?.run_id) return;
+    try {
+      const latest = await getRun(runResult.run_id);
+      setRunResult(latest);
+    } catch (err) {
+      console.error("Refresh run failed:", err);
     }
   };
 
@@ -320,6 +356,14 @@ function ReviewPageInner() {
                               View Redline Document →
                             </a>
                           )}
+                          {runResult?.final_output && (
+                            <a
+                              href={`/export/${runResult.run_id}/final`}
+                              className="inline-block ml-2 bg-gray-700 text-white px-4 py-2 rounded text-sm hover:bg-gray-800"
+                            >
+                              View Final Document →
+                            </a>
+                          )}
                         </div>
                       )}
                     </div>
@@ -332,6 +376,13 @@ function ReviewPageInner() {
           {!loading && !runResult && (
             <div className="bg-white rounded-lg shadow-md p-6 text-center text-gray-600">
               <p>Select a document and click "Start Multi-Agent Review" to begin.</p>
+            </div>
+          )}
+          {runResult && (
+            <div className="mt-4">
+              <button onClick={refreshRun} className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-2 rounded text-sm">
+                Refresh Run Status
+              </button>
             </div>
           )}
         </div>
