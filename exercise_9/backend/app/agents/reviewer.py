@@ -203,9 +203,19 @@ class ReviewerAgent:
                         "disclaimer_type": disclaimer_type
                     })
         
-        # Check for third-party sharing without protection
-        if re.search(r"third[- ]party|share.*(?:with|to).*(?:partner|vendor|contractor)", content, re.IGNORECASE):
-            if any(pii["risk_level"] == "high" for pii in pii_entities):
+        # Check for third-party sharing without protection per policy
+        external_policy = next((p for p in policies if p.get("name") == "External Sharing Policy"), None)
+        third_party_match = re.search(r"third[- ]party|share.*?(?:with|to).*?(?:partner|vendor|contractor|third[- ]party)", content, re.IGNORECASE)
+        if third_party_match:
+            high_risk_present = any(pii["risk_level"] == "high" for pii in pii_entities)
+            if external_policy and external_policy.get("rules", {}).get("third_party_sharing") == "prohibited_without_hitl":
+                violations.append({
+                    "type": "third_party_sharing",
+                    "severity": "high" if high_risk_present else "medium",
+                    "description": "Third-party sharing requires HITL per External Sharing Policy",
+                    "policy": "External Sharing Policy"
+                })
+            elif high_risk_present:
                 violations.append({
                     "type": "third_party_pii_sharing",
                     "severity": "high",
