@@ -19,6 +19,23 @@ function ReviewPageInner() {
   useEffect(() => {
     loadDocuments();
     loadPolicies();
+    // Load last run results from localStorage to restore links/state
+    try {
+      const lastId = typeof window !== 'undefined' ? localStorage.getItem('last_run_id') : null;
+      if (lastId && !runResult) {
+        (async () => {
+          try {
+            const latest = await getRun(lastId);
+            setRunResult(latest);
+            if (!['completed', 'failed'].includes(latest.status)) {
+              setPolling(true);
+            }
+          } catch (e) {
+            // ignore
+          }
+        })();
+      }
+    } catch {}
   }, []);
 
   const loadDocuments = async () => {
@@ -57,6 +74,8 @@ function ReviewPageInner() {
         selectedDocId,
         selectedPolicyIds.length > 0 ? selectedPolicyIds : undefined
       );
+      // Persist last run id for quick revisit
+      try { localStorage.setItem('last_run_id', result.run_id); } catch {}
       
       // Poll for results
       setTimeout(async () => {
@@ -218,7 +237,7 @@ function ReviewPageInner() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <span className="text-sm text-gray-600">Run ID:</span>
-                    <p className="font-mono text-xs">{runResult.run_id}</p>
+                    <p className="font-mono text-xs break-all">{runResult.run_id}</p>
                   </div>
                   <div>
                     <span className="text-sm text-gray-600">Status:</span>
@@ -246,6 +265,15 @@ function ReviewPageInner() {
                     >
                       View Redline →
                     </a>
+                    <div className="mt-2 text-xs text-gray-500">
+                      Or open directly:
+                      <div>
+                        <code className="break-all">{`/export/${runResult.run_id}/final`}</code>
+                      </div>
+                      <div>
+                        <code className="break-all">{`/export/${runResult.run_id}/redline`}</code>
+                      </div>
+                    </div>
                   </div>
                 )}
                 {runResult.hitl_required && (
