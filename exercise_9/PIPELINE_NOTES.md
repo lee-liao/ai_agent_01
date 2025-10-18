@@ -75,3 +75,11 @@ Contact: info@company.com
 
 - Expected: “Governing Law” should not be flagged as a `name`. “John Doe” near “Print Name” should be detected with high confidence. `john.doe@company.com` high confidence; `info@company.com` lower confidence.
 
+## Notes for Task 10 (Custom Feature)
+- Added frontend export viewers:
+  - `src/app/export/[run_id]/redline/page.tsx`: Displays redline with tracked changes; copy and download options.
+  - `src/app/export/[run_id]/final/page.tsx`: Displays final document with redactions and risk; copy and download options.
+- Usage:
+  - After a run completes, navigate from Review page to Redline → Final via provided links.
+  - Direct URLs: `/export/<run_id>/redline` and `/export/<run_id>/final`.
+
