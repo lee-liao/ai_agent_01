@@ -73,6 +73,32 @@ class ChatbotAgent:
         r"os\.",
         r"__import__",
     ]
+
+    # Persona/authority attacks
+    PERSONA_PATTERNS = [
+        r"as\s+(?:outside|external)\s+counsel",
+        r"as\s+the\s+ceo",
+        r"as\s+the\s+cfo",
+        r"as\s+general\s+counsel",
+        r"as\s+compliance\s+officer",
+        r"i\s+am\s+from\s+security",
+        r"this\s+is\s+your\s+manager",
+    ]
+
+    # Bulk extraction attempts
+    BULK_EXTRACTION_PATTERNS = [
+        r"list\s+all\s+(?:ssns?|emails?|phones?|addresses|credit\s*cards?)",
+        r"extract\s+all\s+(?:pii|data|records)",
+        r"export\s+all\s+(?:emails?|contacts|numbers)",
+        r"dump\s+(?:the|all)\s+(?:database|docs|documents|data)",
+    ]
+
+    # Encoding bypass indicators
+    ENCODING_BYPASS_PATTERNS = [
+        r"base64",
+        r"rot13",
+        r"encode\s+this|decode\s+this",
+    ]
     
     def __init__(self):
         self.conversation_history: List[Dict[str, Any]] = []
@@ -152,6 +178,52 @@ class ChatbotAgent:
                     "type": "forbidden_operation",
                     "pattern": pattern,
                     "severity": "critical"
+                })
+
+        # Persona/authority coercion attempts
+        for pattern in self.PERSONA_PATTERNS:
+            if re.search(pattern, message_lower, re.IGNORECASE):
+                threats.append({
+                    "type": "persona_attack",
+                    "pattern": pattern,
+                    "severity": "medium"
+                })
+
+        # Bulk extraction attempts
+        for pattern in self.BULK_EXTRACTION_PATTERNS:
+            if re.search(pattern, message_lower, re.IGNORECASE):
+                threats.append({
+                    "type": "bulk_extraction",
+                    "pattern": pattern,
+                    "severity": "high"
+                })
+
+        # Encoding bypass indicators (explicit mentions)
+        for pattern in self.ENCODING_BYPASS_PATTERNS:
+            if re.search(pattern, message_lower, re.IGNORECASE):
+                threats.append({
+                    "type": "encoding_bypass_intent",
+                    "pattern": pattern,
+                    "severity": "medium"
+                })
+
+        # Heuristic Base64 blob detection (long base64-like tokens)
+        base64_like = re.findall(r"(?:[A-Za-z0-9+/]{16,}={0,2})", message)
+        if any(len(tok) >= 24 for tok in base64_like):
+            threats.append({
+                "type": "encoded_payload",
+                "encoding": "base64_suspected",
+                "samples": base64_like[:3],
+                "severity": "high"
+            })
+
+        # Unicode homoglyph/homograph suspicion (non-ascii mix)
+        if any(ord(c) > 127 for c in message):
+            if any('a' <= c <= 'z' or 'A' <= c <= 'Z' for c in message):
+                threats.append({
+                    "type": "unicode_homoglyph",
+                    "details": "Non-ASCII characters mixed with ASCII letters",
+                    "severity": "medium"
                 })
         
         # Check message length (potential DoS)
