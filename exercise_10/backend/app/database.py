@@ -1,11 +1,17 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
-from .config import settings
+import os
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./call_center.db")
 
 # Create async engine
 engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.DEBUG,
+    DATABASE_URL,
+    echo=False,
     future=True
 )
 

@@ -1,12 +1,7 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import Dict
 import json
-import uuid
 from datetime import datetime
-
-from ..database import get_db
-from ..models import Call, Transcript
 
 router = APIRouter(tags=["WebSocket"])
 

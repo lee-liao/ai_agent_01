@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://admin:password@localhost:5432/callcenter"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./call_center.db"
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
