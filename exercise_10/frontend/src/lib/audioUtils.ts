@@ -125,7 +125,15 @@ export class AudioRecorder {
         if (event.data.size > 0 && this.onAudioChunk) {
           this.onAudioChunk(event.data);
           
-          // Simulate transcription for demo (in production, this comes from backend)
+          // NOTE: Simulated transcription is DISABLED
+          // In production, the backend would send real transcriptions via WebSocket
+          // Students can implement this by:
+          // 1. Sending audio to OpenAI Whisper API
+          // 2. Returning transcript text via WebSocket
+          // 3. Displaying it in the chat
+          
+          // Uncomment below to re-enable demo transcription:
+          /*
           if (this.onTranscript && Math.random() > 0.7) {
             const phrases = [
               "I need help with my order",
@@ -137,6 +145,7 @@ export class AudioRecorder {
             const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
             setTimeout(() => this.onTranscript?.(randomPhrase), 500);
           }
+          */
         }
       };
       
