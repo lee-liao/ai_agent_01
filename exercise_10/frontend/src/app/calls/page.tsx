@@ -64,49 +64,70 @@ export default function CallsPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const startCall = () => {
+  const startCall = async () => {
     setInCall(true);
     
-    // Connect WebSocket
-    const callId = `call_${Date.now()}`;
-    const websocket = new WebSocket(`ws://localhost:8000/ws/call/${callId}`);
-    
-    websocket.onopen = () => {
-      console.log('✅ Connected to call');
-      websocket.send(JSON.stringify({
-        type: 'start_call',
-        call_id: callId,
-        agent_name: user?.username,
-        timestamp: new Date().toISOString()
-      }));
+    try {
+      // Step 1: Request connection to backend matching service
+      const callApiModule = await import('@/lib/callApi');
+      const response = await callApiModule.callAPI.startCall('agent', user?.username || 'Agent');
       
-      addMessage('system', 'Call started. Waiting for customer...');
-    };
-
-    websocket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
+      console.log('📞 Agent call response:', response);
+      
+      // Step 2: Connect WebSocket with assigned call_id
+      const websocket = new WebSocket(`ws://localhost:8000/ws/call/${response.call_id}`);
+      
+      websocket.onopen = () => {
+        console.log('✅ Agent WebSocket connected with call_id:', response.call_id);
         
-        if (data.type === 'transcript' && data.speaker === 'customer') {
-          addMessage('customer', data.text);
-        } else if (data.type === 'call_ended') {
-          addMessage('system', 'Customer ended the call');
-          endCall();
+        websocket.send(JSON.stringify({
+          type: 'start_call',
+          call_id: response.call_id,
+          agent_name: user?.username,
+          timestamp: new Date().toISOString()
+        }));
+        
+        // Show appropriate message based on match status
+        if (response.matched && response.partner_name) {
+          addMessage('system', `Connected to customer: ${response.partner_name}`);
+        } else {
+          addMessage('system', `${response.message} Waiting for incoming calls...`);
         }
-      } catch (e) {
-        console.error('Error parsing message:', e);
-      }
-    };
+      };
 
-    websocket.onerror = () => {
-      addMessage('system', '⚠️ Connection error. Using demo mode.');
-    };
+      websocket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.type === 'transcript' && data.speaker === 'customer') {
+            addMessage('customer', data.text);
+          } else if (data.type === 'call_ended') {
+            addMessage('system', 'Customer ended the call');
+            endCall();
+          } else if (data.type === 'call_started') {
+            addMessage('system', 'Customer connected to the call');
+          }
+        } catch (e) {
+          console.error('Error parsing message:', e);
+        }
+      };
 
-    websocket.onclose = () => {
-      console.log('WebSocket closed');
-    };
+      websocket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        addMessage('system', '⚠️ Connection error. Please check if backend is running.');
+      };
 
-    setWs(websocket);
+      websocket.onclose = () => {
+        console.log('WebSocket closed');
+      };
+
+      setWs(websocket);
+      
+    } catch (error: any) {
+      console.error('Failed to start call:', error);
+      addMessage('system', `⚠️ Failed to connect: ${error.message || 'Please check if the server is running on port 8000.'}`);
+      setInCall(false);
+    }
   };
 
   const endCall = () => {

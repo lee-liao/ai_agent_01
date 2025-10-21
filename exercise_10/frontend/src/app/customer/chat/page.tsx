@@ -36,56 +36,77 @@ export default function CustomerChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const connectToAgent = () => {
+  const connectToAgent = async () => {
     setWaitingForAgent(true);
     
-    // Connect WebSocket
-    const callId = `call_${Date.now()}`;
-    const websocket = new WebSocket(`ws://localhost:8000/ws/call/${callId}`);
-    
-    websocket.onopen = () => {
-      console.log('✅ Connected to support');
-      websocket.send(JSON.stringify({
-        type: 'start_call',
-        call_id: callId,
-        customer_name: customer?.name,
-        timestamp: new Date().toISOString()
-      }));
+    try {
+      // Step 1: Request connection to backend matching service
+      const callApiModule = await import('@/lib/callApi');
+      const response = await callApiModule.callAPI.startCall('customer', customer?.name || 'Customer');
       
-      setConnected(true);
-      setWaitingForAgent(false);
-      addMessage('system', `Connected! An agent will be with you shortly.`);
-    };
-
-    websocket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
+      console.log('📞 Call response:', response);
+      
+      // Step 2: Connect WebSocket with assigned call_id
+      const websocket = new WebSocket(`ws://localhost:8000/ws/call/${response.call_id}`);
+      
+      websocket.onopen = () => {
+        console.log('✅ WebSocket connected with call_id:', response.call_id);
         
-        if (data.type === 'transcript' && data.speaker === 'agent') {
-          addMessage('agent', data.text);
-        } else if (data.type === 'call_ended') {
-          addMessage('system', 'Agent ended the call. Thank you!');
-          disconnectFromAgent();
-        } else if (data.type === 'call_started') {
-          addMessage('system', 'Agent connected! How can we help you?');
+        // Notify backend that customer is ready
+        websocket.send(JSON.stringify({
+          type: 'start_call',
+          call_id: response.call_id,
+          customer_name: customer?.name,
+          timestamp: new Date().toISOString()
+        }));
+        
+        setConnected(true);
+        setWaitingForAgent(false);
+        
+        // Show appropriate message based on match status
+        if (response.matched && response.partner_name) {
+          addMessage('system', `Connected to ${response.partner_name}! How can we help you today?`);
+        } else {
+          addMessage('system', `${response.message} You are in the queue.`);
         }
-      } catch (e) {
-        console.error('Error parsing message:', e);
-      }
-    };
+      };
 
-    websocket.onerror = () => {
-      addMessage('system', '⚠️ Connection error. Using demo mode - your messages will be displayed but no agent is connected.');
-      setConnected(true);
+      websocket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          if (data.type === 'transcript' && data.speaker === 'agent') {
+            addMessage('agent', data.text);
+          } else if (data.type === 'call_ended') {
+            addMessage('system', 'Agent ended the call. Thank you for contacting us!');
+            disconnectFromAgent();
+          } else if (data.type === 'call_started') {
+            addMessage('system', 'Agent has joined the chat!');
+          }
+        } catch (e) {
+          console.error('Error parsing message:', e);
+        }
+      };
+
+      websocket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        addMessage('system', '⚠️ Connection error. Please try again.');
+        setConnected(false);
+        setWaitingForAgent(false);
+      };
+
+      websocket.onclose = () => {
+        console.log('WebSocket closed');
+        setConnected(false);
+      };
+
+      setWs(websocket);
+      
+    } catch (error: any) {
+      console.error('Failed to connect:', error);
+      addMessage('system', `⚠️ Failed to connect: ${error.message || 'Please check if the server is running.'}`);
       setWaitingForAgent(false);
-    };
-
-    websocket.onclose = () => {
-      console.log('WebSocket closed');
-      setConnected(false);
-    };
-
-    setWs(websocket);
+    }
   };
 
   const disconnectFromAgent = () => {
