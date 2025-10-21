@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Phone, PhoneOff, MessageSquare, User, Send } from 'lucide-react';
+import { Phone, PhoneOff, MessageSquare, User, Send, Mic, MicOff, Volume2 } from 'lucide-react';
+import { useAudioCall } from '@/lib/useAudioCall';
 
 interface Message {
   id: string;
@@ -20,6 +21,23 @@ export default function CustomerChatPage() {
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [waitingForAgent, setWaitingForAgent] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Audio call hook
+  const {
+    isAudioEnabled,
+    isMuted,
+    audioLevel,
+    audioDevices,
+    selectedDevice,
+    startAudio,
+    stopAudio,
+    toggleMute,
+    changeDevice
+  } = useAudioCall(ws, {
+    onTranscript: (text, speaker) => {
+      addMessage(speaker, `[Voice] ${text}`);
+    }
+  });
 
   // Check if customer is logged in
   useEffect(() => {
@@ -248,6 +266,85 @@ export default function CustomerChatPage() {
                 ) : null}
               </div>
             </div>
+
+            {/* Audio Controls - Only show when connected */}
+            {connected && (
+              <div className="px-6 py-3 bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    {/* Audio toggle button */}
+                    {!isAudioEnabled ? (
+                      <button
+                        onClick={startAudio}
+                        className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition"
+                      >
+                        <Mic className="w-4 h-4" />
+                        Start Voice Call
+                      </button>
+                    ) : (
+                      <button
+                        onClick={stopAudio}
+                        className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition"
+                      >
+                        <PhoneOff className="w-4 h-4" />
+                        End Voice Call
+                      </button>
+                    )}
+                    
+                    {/* Mute toggle */}
+                    {isAudioEnabled && (
+                      <button
+                        onClick={toggleMute}
+                        className={`p-2 rounded-lg transition ${
+                          isMuted 
+                            ? 'bg-red-100 text-red-700 hover:bg-red-200' 
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                        title={isMuted ? 'Unmute' : 'Mute'}
+                      >
+                        {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                      </button>
+                    )}
+                    
+                    {/* Audio level indicator */}
+                    {isAudioEnabled && (
+                      <div className="flex items-center gap-2">
+                        <Volume2 className="w-4 h-4 text-gray-500" />
+                        <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-purple-500 transition-all duration-100"
+                            style={{ width: `${Math.min(audioLevel * 100, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Device selector */}
+                  {isAudioEnabled && audioDevices.length > 1 && (
+                    <select
+                      value={selectedDevice}
+                      onChange={(e) => changeDevice(e.target.value)}
+                      className="text-sm border border-gray-300 rounded px-3 py-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      {audioDevices.map((device) => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                
+                {/* Status message */}
+                {isAudioEnabled && (
+                  <div className="mt-2 text-xs text-purple-600 flex items-center gap-2">
+                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
+                    {isMuted ? 'Microphone muted' : 'Voice call active - speak naturally'}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">

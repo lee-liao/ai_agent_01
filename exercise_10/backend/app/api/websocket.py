@@ -35,14 +35,34 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
             if "bytes" in data:
                 # Audio data received
                 audio_chunk = data["bytes"]
-                print(f"📊 Received audio chunk: {len(audio_chunk)} bytes")
+                print(f"📊 Received audio chunk: {len(audio_chunk)} bytes from {call_id}")
                 
-                # TODO: Send to transcription service
-                # For now, just acknowledge
+                # Simulate transcription (in production, send to Whisper API)
+                # For demo, we'll just acknowledge receipt
                 await websocket.send_json({
                     "type": "audio_received",
-                    "size": len(audio_chunk)
+                    "size": len(audio_chunk),
+                    "timestamp": datetime.utcnow().isoformat()
                 })
+                
+                # Route audio to partner (for future real-time audio streaming)
+                from .calls import active_calls
+                partner_call_id = None
+                for active_call_id, call_info in active_calls.items():
+                    if call_id == call_info.get("agent_call_id"):
+                        partner_call_id = call_info.get("customer_call_id")
+                        break
+                    elif call_id == call_info.get("customer_call_id"):
+                        partner_call_id = call_info.get("agent_call_id")
+                        break
+                
+                # Forward audio to partner if connected
+                if partner_call_id and partner_call_id in active_connections:
+                    try:
+                        await active_connections[partner_call_id].send_bytes(audio_chunk)
+                        print(f"📤 Forwarded audio from {call_id} to {partner_call_id}")
+                    except Exception as e:
+                        print(f"Error forwarding audio: {e}")
                 
             elif "text" in data:
                 # Control message received
@@ -58,7 +78,7 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                     break
                     
                 elif message["type"] == "transcript":
-                    # Manual transcript entry (for testing)
+                    # Manual transcript entry (for testing) or real transcription
                     await handle_transcript(call_id, message, websocket)
     
     except WebSocketDisconnect:
