@@ -94,16 +94,41 @@ async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
     })
 
 async def handle_transcript(call_id: str, message: dict, websocket: WebSocket):
-    """Handle transcript segment"""
-    # Echo back the transcript
-    await websocket.send_json({
-        "type": "transcript",
-        "speaker": message.get("speaker", "customer"),
-        "text": message.get("text", ""),
-        "timestamp": datetime.utcnow().isoformat()
-    })
+    """Handle transcript segment and route to partner"""
+    speaker = message.get("speaker", "customer")
+    text = message.get("text", "")
     
-    # TODO: Trigger AI suggestion generation
+    transcript_msg = {
+        "type": "transcript",
+        "speaker": speaker,
+        "text": text,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    
+    # Echo back to sender (for confirmation)
+    await websocket.send_json(transcript_msg)
+    
+    # Route to partner (agent or customer)
+    # Import from calls.py to check active connections
+    from .calls import active_calls
+    
+    # Find partner's call_id
+    partner_call_id = None
+    for active_call_id, call_info in active_calls.items():
+        if call_id == call_info.get("agent_call_id"):
+            partner_call_id = call_info.get("customer_call_id")
+            break
+        elif call_id == call_info.get("customer_call_id"):
+            partner_call_id = call_info.get("agent_call_id")
+            break
+    
+    # Send to partner if connected
+    if partner_call_id and partner_call_id in active_connections:
+        try:
+            await active_connections[partner_call_id].send_json(transcript_msg)
+            print(f"📤 Routed message from {call_id} to {partner_call_id}")
+        except Exception as e:
+            print(f"Error routing message: {e}")
 
 async def broadcast_to_call(call_id: str, message: dict):
     """Broadcast a message to a specific call's WebSocket"""
