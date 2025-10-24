@@ -194,13 +194,13 @@ export default function CustomerChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100">
+    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100">
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Phone className="w-6 h-6 text-purple-600" />
+              <Phone className="w-6 h-6 text-primary-600" />
               <div>
                 <h1 className="text-xl font-bold text-gray-900">Customer Support</h1>
                 <p className="text-sm text-gray-600">Welcome, {customer.name}</p>
@@ -250,7 +250,7 @@ export default function CustomerChatPage() {
                 {!connected && !waitingForAgent ? (
                   <button
                     onClick={connectToAgent}
-                    className="flex items-center gap-2 bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition"
+                    className="flex items-center gap-2 bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700 transition"
                   >
                     <Phone className="w-5 h-5" />
                     Connect to Agent
@@ -269,7 +269,7 @@ export default function CustomerChatPage() {
 
             {/* Audio Controls - Only show when connected */}
             {connected && (
-              <div className="px-6 py-3 bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-100">
+              <div className="px-6 py-3 bg-gradient-to-r from-primary-50 to-primary-100 border-b border-primary-100">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     {/* Audio toggle button */}
@@ -312,7 +312,7 @@ export default function CustomerChatPage() {
                         <Volume2 className="w-4 h-4 text-gray-500" />
                         <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
                           <div 
-                            className="h-full bg-purple-500 transition-all duration-100"
+                            className="h-full bg-primary-500 transition-all duration-100"
                             style={{ width: `${Math.min(audioLevel * 100, 100)}%` }}
                           />
                         </div>
@@ -325,7 +325,7 @@ export default function CustomerChatPage() {
                     <select
                       value={selectedDevice}
                       onChange={(e) => changeDevice(e.target.value)}
-                      className="text-sm border border-gray-300 rounded px-3 py-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="text-sm border border-gray-300 rounded px-3 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
                     >
                       {audioDevices.map((device) => (
                         <option key={device.deviceId} value={device.deviceId}>
@@ -338,8 +338,8 @@ export default function CustomerChatPage() {
                 
                 {/* Status message */}
                 {isAudioEnabled && (
-                  <div className="mt-2 text-xs text-purple-600 flex items-center gap-2">
-                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
+                  <div className="mt-2 text-xs text-primary-600 flex items-center gap-2">
+                    <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
                     {isMuted ? 'Microphone muted' : 'Voice call active - speak naturally'}
                   </div>
                 )}
@@ -364,7 +364,7 @@ export default function CustomerChatPage() {
                             setInputMessage(msg);
                           }
                         }}
-                        className="block w-full bg-purple-50 hover:bg-purple-100 text-purple-700 px-4 py-2 rounded-lg text-sm transition"
+                        className="block w-full bg-primary-50 hover:bg-primary-100 text-primary-700 px-4 py-2 rounded-lg text-sm transition"
                       >
                         {msg}
                       </button>
@@ -380,7 +380,7 @@ export default function CustomerChatPage() {
                     <div
                       className={`max-w-[70%] rounded-lg px-4 py-3 ${
                         message.speaker === 'agent'
-                          ? 'bg-purple-100 text-purple-900'
+                          ? 'bg-primary-100 text-primary-900'
                           : message.speaker === 'customer'
                           ? 'bg-blue-500 text-white'
                           : 'bg-gray-100 text-gray-600 text-sm italic'
@@ -415,12 +415,12 @@ export default function CustomerChatPage() {
                   onKeyPress={handleKeyPress}
                   placeholder={connected ? "Type your message..." : "Connect to agent to send messages"}
                   disabled={!connected}
-                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
                 <button
                   onClick={sendMessage}
                   disabled={!connected || !inputMessage.trim()}
-                  className="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <Send className="w-5 h-5" />
                 </button>
@@ -446,8 +446,8 @@ export default function CustomerChatPage() {
           {/* Info Card */}
           <div className="mt-6 bg-white rounded-lg shadow p-4">
             <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                <MessageSquare className="w-5 h-5 text-purple-600" />
+              <div className="flex-shrink-0 w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+                <MessageSquare className="w-5 h-5 text-primary-600" />
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-gray-900 mb-1">How it works</h3>
@@ -459,6 +459,32 @@ export default function CustomerChatPage() {
                 </ul>
               </div>
             </div>
+          </div>
+
+          {/* Customer Info Panel */}
+          <div className="mt-6 bg-white rounded-lg shadow p-4">
+            <h3 className="font-semibold text-gray-900 mb-3">Your Info</h3>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-gray-600">Name</span>
+                <p className="font-medium">{customer?.name || '—'}</p>
+              </div>
+              <div>
+                <span className="text-gray-600">Account</span>
+                <p className="font-medium">{customer?.accountNumber || '—'}</p>
+              </div>
+              <div>
+                <span className="text-gray-600">Tier</span>
+                <p className="font-medium">{customer?.tier || 'standard'}</p>
+              </div>
+              <div>
+                <span className="text-gray-600">Email</span>
+                <p className="font-medium">{customer?.email || '—'}</p>
+              </div>
+            </div>
+            {!connected && (
+              <p className="mt-3 text-xs text-gray-500">Connect to agent to receive tailored assistance.</p>
+            )}
           </div>
         </div>
       </div>

@@ -42,11 +42,11 @@ export default function CustomerSignInPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 flex items-center justify-center p-4">
       <div className="max-w-md w-full">
         {/* Logo/Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-600 rounded-full mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-600 rounded-full mb-4">
             <Phone className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -69,7 +69,7 @@ export default function CustomerSignInPage() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 placeholder="John Doe"
                 required
               />
@@ -84,7 +84,7 @@ export default function CustomerSignInPage() {
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 placeholder="+1 (555) 123-4567"
               />
             </div>
@@ -98,7 +98,7 @@ export default function CustomerSignInPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 placeholder="john@example.com"
               />
             </div>
@@ -112,14 +112,14 @@ export default function CustomerSignInPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-purple-600 text-white py-3 rounded-lg font-semibold hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-primary-600 text-white py-3 rounded-lg font-semibold hover:bg-primary-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Connecting...' : 'Start Chat'}
             </button>
           </form>
 
           {/* Info */}
-          <div className="mt-6 p-4 bg-purple-50 rounded-lg">
+          <div className="mt-6 p-4 bg-primary-50 rounded-lg">
             <p className="text-sm text-purple-900">
               <strong>💬 Live Support</strong><br />
               Our agents are ready to help you with any questions or concerns.
@@ -130,7 +130,7 @@ export default function CustomerSignInPage() {
         {/* Footer */}
         <div className="text-center mt-6">
           <p className="text-sm text-gray-600">
-            Are you an agent? <a href="/auth/signin" className="text-purple-600 hover:text-purple-700 font-medium">Sign in here</a>
+            Are you an agent? <a href="/auth/signin" className="text-primary-600 hover:text-primary-700 font-medium">Sign in here</a>
           </p>
         </div>
       </div>

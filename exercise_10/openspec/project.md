@@ -92,3 +92,13 @@ Build a real-time AI call center assistance platform where an AI agent supports 
   - Backend: `DATABASE_URL`, `REDIS_URL`, `OPENAI_API_KEY`, `SECRET_KEY`, `CORS_ORIGINS`
   - Frontend: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WS_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`
   - Suggested `.env` files: `backend/.env`, `frontend/.env.local`
+
+## Testing Utilities
+- `customer-sim/` (HTML simulator):
+  - Purpose: lightweight debug utility to test WebSocket pairing, routing, and transcript flow without the full Next.js app.
+  - Use when: quickly reproducing backend issues, verifying call start/end flow, or testing message handling.
+  - Not production: no auth/roles, no real audio capture; intended for local/manual checks.
+  - How to run: open `customer-sim/index.html` directly or serve with `python -m http.server 8080` and visit `http://localhost:8080`.
+- Main frontend (`frontend/`):
+  - Purpose: agent UI with Next.js, auth screens, and integration points for audio, transcripts, AI suggestions, and customer context.
+  - Use when: validating end-to-end UX, auth, and real-time features in the app environment.

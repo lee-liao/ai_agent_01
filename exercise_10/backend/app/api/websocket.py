@@ -125,13 +125,13 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                 message = json.loads(data["text"])
                 
                 if message["type"] == "start_call":
-                    print(f"📞 Call started: {call_id}")
+                    print(f"▶️ Call started: {call_id}")
                     await handle_start_call(call_id, message, websocket)
                     
                 elif message["type"] == "end_call":
-                    print(f"📴 Call ended: {call_id}")
+                    print(f"⏹️ Call ended: {call_id}")
                     await handle_end_call(call_id, message, websocket)
-                    break
+                    return
                     
                 elif message["type"] == "transcript":
                     # Manual transcript entry (for testing) or real transcription
@@ -160,7 +160,7 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                                 print(f"Error sending suggestion: {e}")
     
     except WebSocketDisconnect:
-        print(f"❌ WebSocket disconnected: {call_id}")
+        print(f"ℹ️ WebSocket disconnected: {call_id}")
     
     except Exception as e:
         print(f"❌ WebSocket error: {e}")
@@ -185,6 +185,7 @@ async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
         "call_id": call_id,
         "timestamp": datetime.utcnow().isoformat()
     })
+    await websocket.close(code=1000)
 
 async def handle_transcript(call_id: str, message: dict, websocket: WebSocket):
     """Handle transcript segment and route to partner"""
