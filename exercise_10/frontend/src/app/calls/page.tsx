@@ -119,6 +119,8 @@ export default function CallsPage() {
           
           if (data.type === 'transcript' && data.speaker === 'customer') {
             addMessage('customer', data.text);
+          } else if (data.type === 'ai_suggestion') {
+            addMessage('system', `AI Suggestion: ${data.suggestion} (conf: ${(data.confidence ?? 0).toFixed(2)})`);
           } else if (data.type === 'call_ended') {
             addMessage('system', 'Customer ended the call');
             endCall();

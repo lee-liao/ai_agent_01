@@ -217,6 +217,11 @@
         </div>
 
         <div class="form-group">
+            <label for="apiUrl">API URL</label>
+            <input type="text" id="apiUrl" value="http://localhost:8000" placeholder="http://localhost:8000">
+        </div>
+
+        <div class="form-group">
             <label for="wsUrl">WebSocket URL</label>
             <input type="text" id="wsUrl" value="ws://localhost:8000/ws/call/" placeholder="ws://localhost:8000/ws/call/">
         </div>
@@ -253,10 +258,6 @@
         let ws = null;
         let callId = null;
 
-        function generateCallId() {
-            return 'call_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
-        }
-
         function updateStatus(status, text) {
             const statusEl = document.getElementById('status');
             statusEl.className = `status ${status}`;
@@ -266,7 +267,6 @@
         function addTranscript(speaker, text) {
             const transcriptEl = document.getElementById('transcript');
             
-            // Remove empty state if exists
             if (transcriptEl.querySelector('.empty-state')) {
                 transcriptEl.innerHTML = '';
             }
@@ -285,31 +285,49 @@
             document.getElementById('customerMessage').value = text;
         }
 
-        function startCall() {
+        async function startCall() {
+            const apiUrl = document.getElementById('apiUrl').value;
             const wsUrl = document.getElementById('wsUrl').value;
-            callId = generateCallId();
-            
+            const customerName = document.getElementById('customerName').value;
+
+            if (!customerName) {
+                alert('Please enter your name.');
+                return;
+            }
+
+            document.getElementById('startBtn').disabled = true;
+            updateStatus('calling', '🟡 Contacting server...');
+            addTranscript('system', 'Attempting to start a call...');
+
             try {
-                // Connect WebSocket
+                // Step 1: Register the call via HTTP
+                const response = await fetch(`${apiUrl}/api/calls/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_type: 'customer',
+                        user_name: customerName
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API request failed: ${response.statusText}`);
+                }
+
+                const callData = await response.json();
+                callId = callData.call_id;
+                addTranscript('system', `Received Call ID: ${callId}. ${callData.message}`);
+
+                // Step 2: Connect via WebSocket
                 ws = new WebSocket(wsUrl + callId);
 
                 ws.onopen = () => {
                     console.log('✅ WebSocket connected');
-                    updateStatus('connected', '🟢 Connected - Ready to call');
+                    updateStatus('connected', '🟢 Connected & waiting for agent');
                     
-                    // Send start_call message
-                    const customerName = document.getElementById('customerName').value;
-                    ws.send(JSON.stringify({
-                        type: 'start_call',
-                        call_id: callId,
-                        customer_name: customerName,
-                        timestamp: new Date().toISOString()
-                    }));
-
-                    addTranscript('system', `Call started (ID: ${callId})`);
+                    // The backend now knows about the call, no need to send start_call via WebSocket
+                    addTranscript('system', 'WebSocket connection established.');
                     
-                    // Update button states
-                    document.getElementById('startBtn').disabled = true;
                     document.getElementById('sendBtn').disabled = false;
                     document.getElementById('endBtn').disabled = false;
                 };
@@ -319,19 +337,20 @@
                         const data = JSON.parse(event.data);
                         console.log('📨 Received:', data);
 
-                        if (data.type === 'call_started') {
-                            updateStatus('calling', '📞 In call...');
-                            addTranscript('system', 'Agent connected');
+                        if (data.type === 'call_started' || (data.type === 'transcript' && data.speaker === 'agent')) {
+                             if (data.type === 'call_started') {
+                                updateStatus('calling', '📞 In call with an agent');
+                                addTranscript('system', 'Agent has connected.');
+                            } else {
+                                addTranscript(data.speaker, data.text);
+                            }
                         }
                         else if (data.type === 'transcript') {
                             addTranscript(data.speaker, data.text);
                         }
                         else if (data.type === 'call_ended') {
-                            addTranscript('system', 'Call ended by agent');
+                            addTranscript('system', 'Call ended by agent.');
                             endCall();
-                        }
-                        else if (data.type === 'audio_received') {
-                            console.log(`Audio received: ${data.size} bytes`);
                         }
                     } catch (e) {
                         console.error('Error parsing message:', e);
@@ -341,14 +360,14 @@
                 ws.onerror = (error) => {
                     console.error('❌ WebSocket error:', error);
                     updateStatus('disconnected', '⚫ Connection error');
-                    addTranscript('system', 'Connection error occurred');
+                    addTranscript('system', 'Connection error occurred.');
+                    document.getElementById('startBtn').disabled = false;
                 };
 
                 ws.onclose = () => {
                     console.log('👋 WebSocket closed');
                     updateStatus('disconnected', '⚫ Disconnected');
                     
-                    // Reset button states
                     document.getElementById('startBtn').disabled = false;
                     document.getElementById('sendBtn').disabled = true;
                     document.getElementById('endBtn').disabled = true;
@@ -357,7 +376,8 @@
             } catch (error) {
                 console.error('Error starting call:', error);
                 updateStatus('disconnected', '⚫ Failed to connect');
-                addTranscript('system', 'Failed to start call: ' + error.message);
+                addTranscript('system', `Failed to start call: ${error.message}`);
+                document.getElementById('startBtn').disabled = false;
             }
         }
 
@@ -369,11 +389,9 @@
 
             const message = document.getElementById('customerMessage').value.trim();
             if (!message) {
-                alert('Please enter a message');
                 return;
             }
 
-            // Send transcript message
             ws.send(JSON.stringify({
                 type: 'transcript',
                 speaker: 'customer',
@@ -382,30 +400,23 @@
             }));
 
             addTranscript('customer', message);
-            
-            // Clear input
             document.getElementById('customerMessage').value = '';
         }
 
         function endCall() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                // Send end_call message
-                ws.send(JSON.stringify({
-                    type: 'end_call',
-                    call_id: callId,
-                    timestamp: new Date().toISOString()
-                }));
-
-                addTranscript('system', 'Ending call...');
-                
-                // Close WebSocket
+            if (ws) {
                 ws.close();
             }
+            
+            if (callId) {
+                const apiUrl = document.getElementById('apiUrl').value;
+                fetch(`${apiUrl}/api/calls/end/${callId}`, { method: 'POST' });
+            }
 
-            // Reset states
             ws = null;
             callId = null;
             updateStatus('disconnected', '⚫ Disconnected');
+            addTranscript('system', 'Call has been terminated.');
             
             document.getElementById('startBtn').disabled = false;
             document.getElementById('sendBtn').disabled = true;

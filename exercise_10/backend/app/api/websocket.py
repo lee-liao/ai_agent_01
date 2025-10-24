@@ -8,6 +8,14 @@ router = APIRouter(tags=["WebSocket"])
 # Active WebSocket connections
 active_connections: Dict[str, WebSocket] = {}
 
+# Services
+from ..config import settings
+from .whisper_service import WhisperService
+from .ai_service import AIAssistantService
+
+whisper_service = WhisperService(settings.OPENAI_API_KEY)
+ai_service = AIAssistantService(settings.OPENAI_API_KEY)
+
 @router.websocket("/ws/call/{call_id}")
 async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
     """
@@ -55,6 +63,54 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                     elif call_id == call_info.get("customer_call_id"):
                         partner_call_id = call_info.get("agent_call_id")
                         break
+
+                # Transcribe audio and emit transcript/suggestion
+                transcript_text = ""
+                try:
+                    transcript_text = await whisper_service.transcribe_audio(audio_chunk)
+                except Exception as e:
+                    print(f"Whisper error: {e}")
+
+                if transcript_text:
+                    # Determine speaker based on mapping
+                    speaker = "customer"
+                    for _, cinfo in active_calls.items():
+                        if call_id == cinfo.get("agent_call_id"):
+                            speaker = "agent"
+                            break
+                        elif call_id == cinfo.get("customer_call_id"):
+                            speaker = "customer"
+                            break
+
+                    transcript_msg = {
+                        "type": "transcript",
+                        "speaker": speaker,
+                        "text": transcript_text,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+
+                    # Echo to sender
+                    await websocket.send_json(transcript_msg)
+
+                    # Forward to partner
+                    if partner_call_id and partner_call_id in active_connections:
+                        try:
+                            await active_connections[partner_call_id].send_json(transcript_msg)
+                        except Exception as e:
+                            print(f"Error routing transcript: {e}")
+
+                    # Generate AI suggestion for agent when customer spoke
+                    if speaker == "customer" and partner_call_id and partner_call_id in active_connections:
+                        suggestion = await ai_service.generate_suggestion(call_id=call_id, customer_message=transcript_text)
+                        try:
+                            await active_connections[partner_call_id].send_json({
+                                "type": "ai_suggestion",
+                                "suggestion": suggestion.get("suggestion", ""),
+                                "confidence": suggestion.get("confidence", 0.0),
+                                "timestamp": suggestion.get("timestamp", datetime.utcnow().isoformat())
+                            })
+                        except Exception as e:
+                            print(f"Error sending suggestion: {e}")
                 
                 # Forward audio to partner if connected
                 if partner_call_id and partner_call_id in active_connections:
@@ -80,6 +136,28 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                 elif message["type"] == "transcript":
                     # Manual transcript entry (for testing) or real transcription
                     await handle_transcript(call_id, message, websocket)
+                    # Generate suggestion for agent if customer message
+                    if message.get("speaker") == "customer":
+                        from .calls import active_calls
+                        partner_call_id = None
+                        for active_call_id, call_info in active_calls.items():
+                            if call_id == call_info.get("agent_call_id"):
+                                partner_call_id = call_info.get("customer_call_id")
+                                break
+                            elif call_id == call_info.get("customer_call_id"):
+                                partner_call_id = call_info.get("agent_call_id")
+                                break
+                        if partner_call_id and partner_call_id in active_connections:
+                            suggestion = await ai_service.generate_suggestion(call_id=call_id, customer_message=message.get("text", ""))
+                            try:
+                                await active_connections[partner_call_id].send_json({
+                                    "type": "ai_suggestion",
+                                    "suggestion": suggestion.get("suggestion", ""),
+                                    "confidence": suggestion.get("confidence", 0.0),
+                                    "timestamp": suggestion.get("timestamp", datetime.utcnow().isoformat())
+                                })
+                            except Exception as e:
+                                print(f"Error sending suggestion: {e}")
     
     except WebSocketDisconnect:
         print(f"❌ WebSocket disconnected: {call_id}")
