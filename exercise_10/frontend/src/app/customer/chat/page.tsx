@@ -46,7 +46,32 @@ export default function CustomerChatPage() {
       router.push('/customer');
       return;
     }
-    setCustomer(JSON.parse(customerData));
+    const parsed = JSON.parse(customerData);
+    setCustomer(parsed);
+    
+    // Fetch server-side context (public)
+    import('@/lib/callApi').then(async (mod) => {
+      try {
+        const q = parsed.name || parsed.email || parsed.phone || parsed.accountNumber || '';
+        if (q) {
+          const info = await mod.customerAPI.publicSearch(q);
+          if (info) {
+            setCustomer((prev: any) => ({
+              ...prev,
+              name: info.name ?? prev?.name,
+              email: info.email ?? prev?.email,
+              phone: info.phone ?? prev?.phone,
+              accountNumber: info.account_number ?? prev?.accountNumber,
+              tier: info.tier ?? prev?.tier,
+              status: info.status ?? prev?.status,
+            }));
+          }
+        }
+      } catch (e) {
+        // Non-blocking if server has no match
+        console.warn('Customer context lookup failed:', e);
+      }
+    });
   }, [router]);
 
   // Auto-scroll to latest message

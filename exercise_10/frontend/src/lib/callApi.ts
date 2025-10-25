@@ -51,5 +51,12 @@ export const callAPI = {
   }
 };
 
+export const customerAPI = {
+  async publicSearch(q: string) {
+    const response = await axios.get(`${API_URL}/api/customers/public/search`, { params: { q } });
+    return response.data;
+  }
+};
+
 export default callAPI;
 

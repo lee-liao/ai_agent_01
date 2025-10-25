@@ -104,6 +104,77 @@ async def search_customer(
         }) for ticket in tickets]
     )
 
+# Public read-only search (limited fields)
+class PublicCustomerResponse(BaseModel):
+    id: int
+    name: str
+    email: Optional[str]
+    phone: Optional[str]
+    account_number: str
+    tier: str
+    status: str
+
+class PublicCustomerDetailResponse(PublicCustomerResponse):
+    orders: List[OrderResponse] = []
+    tickets: List[TicketResponse] = []
+
+@router.get("/public/search", response_model=Optional[PublicCustomerDetailResponse])
+async def public_search_customer(
+    q: str = Query(..., description="Search query (name, email, phone, or account number)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Public search for a customer by name, email, phone, or account number.
+    Returns limited, non-sensitive fields and recent orders/tickets.
+    """
+    result = await db.execute(
+        select(Customer).where(
+            or_(
+                Customer.name.ilike(f"%{q}%"),
+                Customer.email.ilike(f"%{q}%"),
+                Customer.phone.ilike(f"%{q}%"),
+                Customer.account_number.ilike(f"%{q}%")
+            )
+        )
+    )
+
+    customer = result.scalar_one_or_none()
+    if not customer:
+        return None
+
+    orders_result = await db.execute(
+        select(Order)
+        .where(Order.customer_id == customer.id)
+        .order_by(Order.order_date.desc())
+        .limit(10)
+    )
+    orders = orders_result.scalars().all()
+
+    tickets_result = await db.execute(
+        select(Ticket)
+        .where(Ticket.customer_id == customer.id)
+        .order_by(Ticket.created_at.desc())
+        .limit(5)
+    )
+    tickets = tickets_result.scalars().all()
+
+    return PublicCustomerDetailResponse(
+        id=customer.id,
+        name=customer.name,
+        email=customer.email,
+        phone=customer.phone,
+        account_number=customer.account_number,
+        tier=customer.tier,
+        status=customer.status,
+        orders=[OrderResponse(**{
+            **order.__dict__,
+            'order_date': order.order_date.isoformat() if order.order_date else ''
+        }) for order in orders],
+        tickets=[TicketResponse(**{
+            **ticket.__dict__,
+            'created_at': ticket.created_at.isoformat() if ticket.created_at else ''
+        }) for ticket in tickets]
+    )
+
 @router.get("/{customer_id}", response_model=CustomerDetailResponse)
 async def get_customer(
     customer_id: int,
