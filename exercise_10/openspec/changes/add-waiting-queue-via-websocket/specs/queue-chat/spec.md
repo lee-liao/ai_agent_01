@@ -9,15 +9,15 @@
 - When the conversation is established, previous chat history is cleared.
 - The matched customer context is shown in the “Customer Info” panel.
 - The “Waiting Customers” stays visible (collapsed) showing the current count in queue.
-- The queue is maintained in Redis in FIFO order; racing pickup by multiple agents is handled.
+- The queue is maintained in Redis in FIFO order; racing pickup by multiple agents is handled atomically (Lua for top-of-queue and by-account).
 - After the agent clicks “End Chat”, the conversation is ended, if still active.
 
 #### Scenario: Agent Monitor Mode
 - WHEN the agent opens the Call Center page and is not in a chat
 - THEN the “Waiting Customers” queue panel is visible and synchronized via WebSocket
 
-#### Scenario: Agent Start Chat (Top of Queue)
-- WHEN the agent clicks “Start Chat”
+#### Scenario: Agent Take Top (Top of Queue)
+- WHEN the agent clicks “STake Top”
 - THEN the top queued customer is picked up and a conversation is established
 - AND prior chat history is cleared and customer context is shown
 
