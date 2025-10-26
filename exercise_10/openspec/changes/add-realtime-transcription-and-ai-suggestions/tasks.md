@@ -1,8 +1,8 @@
 ## 1. Implementation
-- [ ] 1.1 Create `backend/app/api/whisper_service.py` with async transcription method
-- [ ] 1.2 Integrate Whisper into `backend/app/api/websocket.py` for audio -> transcript
-- [ ] 1.3 Create `backend/app/api/ai_service.py` for suggestions
-- [ ] 1.4 Generate agent-only suggestions on customer transcript events
+- [x] 1.1 Create `backend/app/api/whisper_service.py` with async transcription method
+- [x] 1.2 Integrate Whisper into `backend/app/api/websocket.py` for audio -> transcript
+- [x] 1.3 Create `backend/app/api/ai_service.py` for suggestions
+- [x] 1.4 Generate agent-only suggestions on customer transcript events
 - [ ] 1.5 Enhance customer lookup endpoint and invoke on call start
 - [ ] 1.6 Update frontend `src/app/calls/page.tsx` to render transcripts, suggestions, and customer info
 
