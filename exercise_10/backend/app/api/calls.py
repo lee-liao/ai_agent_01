@@ -11,7 +11,7 @@ from .queue_service import (
     remove_from_queue,
     get_waiting_count,
     get_queue_position,
-    get_redis,
+    find_call_id_by_account,
 )
 
 router = APIRouter(prefix="/api/calls", tags=["Calls"])
@@ -72,7 +72,27 @@ async def start_call(request: StartCallRequest):
                 partner_name=agent_info["agent_name"]
             )
         else:
-            # No agents available - add to Redis-backed queue
+            # No agents available - ensure single active/queued chat per customer/account
+            if request.account_number:
+                # Guard 1: active conversation already exists
+                for _, conv in active_conversations.items():
+                    if conv.get("account_number") == request.account_number or conv.get("customer_name") == request.user_name:
+                        return CallResponse(
+                            call_id=call_id,
+                            status="duplicate",
+                            message="You already have an active conversation.",
+                            matched=False
+                        )
+                # Guard 2: queued item already exists in Redis
+                existing_cid = await find_call_id_by_account(request.account_number)
+                if existing_cid:
+                    return CallResponse(
+                        call_id=existing_cid,
+                        status="duplicate",
+                        message="You already have a pending request in the queue.",
+                        matched=False
+                    )
+            # Add to Redis-backed queue
             await enqueue_waiting_customer(request.user_name, request.account_number, call_id)
             # Notify subscribed agents of new waiting customer
             try:

@@ -199,6 +199,13 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                                 })
                             except Exception as e:
                                 print(f"Error sending suggestion: {e}")
+                
+                elif message["type"] == "ping":
+                    # Heartbeat response
+                    await websocket.send_json({
+                        "type": "pong",
+                        "ts": datetime.utcnow().isoformat()
+                    })
     
     except WebSocketDisconnect:
         print(f"ℹ️ WebSocket disconnected: {call_id}")

@@ -24,7 +24,7 @@ export default function CallsPage() {
   const [queueItems, setQueueItems] = useState<Array<{ customer_name?: string; account_number?: string; waiting_since?: string }>>([]);
   const [callDuration, setCallDuration] = useState(0);
   const [showQueuePanel, setShowQueuePanel] = useState(true);
-  const [selectedCustomer, setSelectedCustomer] = useState<{ name?: string; account?: string; tier?: string; status?: string } | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<{ name?: string; account?: string; tier?: string; status?: string; orders?: any[]; tickets?: any[] } | null>(null);
   const [aiSuggestions, setAiSuggestions] = useState<Array<{ text: string; timestamp: Date }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -68,6 +68,17 @@ export default function CallsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // WS heartbeat: send ping every 25s when connected
+  useEffect(() => {
+    if (!ws) return;
+    const interval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 25000);
+    return () => clearInterval(interval);
+  }, [ws]);
 
   // Call timer
   useEffect(() => {
@@ -127,7 +138,7 @@ export default function CallsPage() {
           addMessage('system', `Connected to customer: ${response.partner_name}`);
           setInCall(true);
         } else {
-          addMessage('system', `${response.message} Waiting for incoming calls... (subscribed)`);
+          addMessage('system', `${response.message} Waiting for incoming conversation... (subscribed)`);
           websocket.send(JSON.stringify({ type: 'subscribe_queue' }));
           console.log('Agent subscribed to queue updates');
         }
@@ -160,17 +171,21 @@ export default function CallsPage() {
               setMessages([]);
               setInCall(true);
               setSelectedCustomer({ name: data.customer_name, account: data.account_number });
-              if (data.account_number) {
+              if (data.account_number || data.customer_name) {
                 import('@/lib/callApi').then(async (mod) => {
                   try {
-                    const info = await mod.customerAPI.publicSearch(data.account_number);
+                    const q = data.account_number || data.customer_name;
+                    const info = await mod.customerAPI.publicSearch(q);
                     if (info) {
-                      setSelectedCustomer({
-                        name: info.name ?? data.customer_name,
-                        account: info.account_number ?? data.account_number,
-                        tier: info.tier,
-                        status: info.status,
-                      });
+                      setSelectedCustomer(prev => ({
+                        ...prev,
+                        name: info.name ?? prev?.name,
+                        account: info.account_number ?? prev?.account,
+                        tier: info.tier ?? prev?.tier,
+                        status: info.status ?? prev?.status,
+                        orders: info.orders ?? [],
+                        tickets: info.tickets ?? [],
+                      }));
                     }
                   } catch (e) {
                     console.warn('Agent: customer context lookup failed:', e);
@@ -330,7 +345,7 @@ export default function CallsPage() {
                         className="flex items-center gap-2 bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition"
                       >
                         <Phone className="w-5 h-5" />
-                        Start Chat
+                        Ready to Assist
                       </button>
                     ) : (
                       <button
@@ -430,7 +445,7 @@ export default function CallsPage() {
                 {messages.length === 0 ? (
                   <div className="text-center text-gray-400 mt-20">
                     <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>No messages yet. Start a call to begin conversation.</p>
+                    <p>No messages yet. Start a conversation to begin conversation.</p>
                   </div>
                 ) : (
                   messages.map((message) => (
@@ -463,27 +478,48 @@ export default function CallsPage() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input Area */}
-              <div className="border-t border-gray-200 p-4">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder={inCall ? "Type your response..." : "Start a call to send messages"}
-                    disabled={!inCall}
-                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-                  />
-                  <button
-                    onClick={sendMessage}
-                    disabled={!inCall || !inputMessage.trim()}
-                    className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Send
-                  </button>
+            {/* Input Area */}
+            <div className="border-t border-gray-200 p-4">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={inCall ? "Type your response..." : "Start a conversation to send messages"}
+                  disabled={!inCall}
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                />
+                <button
+                  onClick={sendMessage}
+                  disabled={!inCall || !inputMessage.trim()}
+                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+
+            {/* AI Suggestions (Under Chat) */}
+            {aiSuggestions.length > 0 && (
+              <div className="border-t border-gray-200 p-4 bg-gray-50">
+                <h4 className="text-sm font-semibold text-gray-800 mb-2">AI Suggestions</h4>
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                  {aiSuggestions.map((s, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setInputMessage(s.text)}
+                      className={`w-full text-left rounded-lg p-2 border transition hover:opacity-90 ${idx % 2 === 0 ? 'bg-yellow-100 border-yellow-300' : 'bg-blue-50 border-blue-200'}`}
+                      title="Click to copy into chat input"
+                    >
+                      <p className="text-sm text-gray-900">{s.text}</p>
+                      <div className="text-[10px] text-gray-600 mt-1">{s.timestamp.toLocaleTimeString()}</div>
+                    </button>
+                  ))}
                 </div>
               </div>
+            )}
             </div>
           </div>
 
@@ -505,7 +541,7 @@ export default function CallsPage() {
                     disabled={!ws || ws.readyState !== WebSocket.OPEN || queueItems.length === 0}
                     className="text-sm bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
                   >
-                    Start Chat (Top)
+                    Take Top
                   </button>
                 </div>
                 {queueItems.length === 0 ? (
@@ -524,7 +560,8 @@ export default function CallsPage() {
                               ws.send(JSON.stringify({ type: 'pickup', account_number: item.account_number }));
                             }
                           }}
-                          className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-700"
+                          disabled={!ws || ws.readyState !== WebSocket.OPEN || !item.account_number}
+                          className="text-sm px-3 py-2 rounded-lg transition disabled:opacity-50 disabled:bg-gray-300 disabled:text-gray-500 bg-blue-600 text-white hover:bg-blue-700"
                         >
                           Pick Up
                         </button>
@@ -559,38 +596,43 @@ export default function CallsPage() {
                   </div>
                   {selectedCustomer?.tier && (<div><span className="text-gray-600">Tier:</span><p className="font-medium">{selectedCustomer.tier}</p></div>)}
                   {selectedCustomer?.status && (<div><span className="text-gray-600">Status:</span><p className="font-medium">{selectedCustomer.status}</p></div>)}
+                  {selectedCustomer?.orders && selectedCustomer.orders.length > 0 ? (
+                    <div className="mt-3">
+                      <span className="text-gray-600">Recent Orders</span>
+                      <ul className="text-sm text-gray-700 space-y-1">
+                        {selectedCustomer.orders.map((o: any) => (
+                          <li key={o.order_number} className="flex justify-between">
+                            <span>{o.product_name}</span>
+                            <span className="text-gray-500">{o.order_number}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-2">No recent orders</p>
+                  )}
+                  {selectedCustomer?.tickets && selectedCustomer.tickets.length > 0 ? (
+                    <div className="mt-3">
+                      <span className="text-gray-600">Recent Tickets</span>
+                      <ul className="text-sm text-gray-700 space-y-1">
+                        {selectedCustomer.tickets.map((t: any) => (
+                          <li key={t.ticket_number} className="flex justify-between">
+                            <span>{t.subject}</span>
+                            <span className="text-gray-500">{t.ticket_number}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-2">No recent tickets</p>
+                  )}
                 </div>
               ) : (
-                <p className="text-gray-400 text-sm">Start a call to see customer information</p>
+                <p className="text-gray-400 text-sm">Start a conversation to see customer information</p>
               )}
             </div>
 
-            {/* AI Suggestions */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">AI Suggestions</h3>
-              {inCall ? (
-                aiSuggestions.length > 0 ? (
-                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                    {aiSuggestions.map((s, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setInputMessage(s.text)}
-                        className={`w-full text-left rounded-lg p-3 border transition hover:opacity-90 ${idx % 2 === 0 ? 'bg-yellow-100 border-yellow-300' : 'bg-blue-50 border-blue-200'}`}
-                        title="Click to copy into chat input"
-                      >
-                        <p className="text-sm text-gray-900">{s.text}</p>
-                        <div className="text-[10px] text-gray-600 mt-1">{s.timestamp.toLocaleTimeString()}</div>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-400 text-sm">Suggestions will appear during calls</p>
-                )
-              ) : (
-                <p className="text-gray-400 text-sm">AI suggestions will appear during calls</p>
-              )}
-            </div>
+            {/* AI Suggestions moved under chat */}
 
             {/* Quick Actions */}
             <div className="bg-white rounded-lg shadow-lg p-6">
@@ -599,7 +641,7 @@ export default function CallsPage() {
               </h3>
               <div className="space-y-2">
                 <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm transition">
-                  Transfer Call
+                  Transfer conversation
                 </button>
                 <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm transition">
                   Create Ticket

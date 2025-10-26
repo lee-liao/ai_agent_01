@@ -33,32 +33,63 @@ async def enqueue_waiting_customer(customer_name: str, account_number: Optional[
 
 async def dequeue_top() -> Optional[Dict]:
     r = get_redis()
-    call_id = await r.lpop(QUEUE_LIST_KEY)
-    if not call_id:
+    # Lua script: atomically LPOP id, read hash, delete hash, and return full item
+    script = """
+    local list = KEYS[1]
+    local prefix = ARGV[1]
+    local id = redis.call('LPOP', list)
+    if not id then return nil end
+    local key = prefix .. id
+    local data = redis.call('HGETALL', key)
+    redis.call('DEL', key)
+    local result = {id}
+    for i=1,#data do table.insert(result, data[i]) end
+    return result
+    """
+    res = await r.eval(script, 1, QUEUE_LIST_KEY, "queue:item:")
+    if not res:
         return None
-    item_key = f"queue:item:{call_id}"
-    data = await r.hgetall(item_key)
-    await r.delete(item_key)
-    return data or None
+    # Redis returns a flat array: [id, field1, value1, field2, value2, ...]
+    call_id = res[0]
+    fields = res[1:]
+    item: Dict[str, str] = {fields[i]: fields[i+1] for i in range(0, len(fields), 2)} if fields else {}
+    if call_id:
+        item["call_id"] = call_id
+    return item
 
 
 async def dequeue_by_account_number(account_number: str) -> Optional[Dict]:
     r = get_redis()
-    ids: List[str] = await r.lrange(QUEUE_LIST_KEY, 0, -1)
-    target_id: Optional[str] = None
-    for cid in ids:
-        info = await r.hgetall(f"queue:item:{cid}")
-        if info and info.get("account_number") == account_number:
-            target_id = cid
-            break
-    if not target_id:
+    # Lua script: scan list, find first id whose hash field account_number matches, remove and return full item
+    script = """
+    local list = KEYS[1]
+    local prefix = ARGV[1]
+    local target_acc = ARGV[2]
+    local ids = redis.call('LRANGE', list, 0, -1)
+    for _, id in ipairs(ids) do
+      local key = prefix .. id
+      local acc = redis.call('HGET', key, 'account_number')
+      if acc == target_acc then
+        redis.call('LREM', list, 1, id)
+        local data = redis.call('HGETALL', key)
+        redis.call('DEL', key)
+        local result = {id}
+        for i=1,#data do table.insert(result, data[i]) end
+        return result
+      end
+    end
+    return nil
+    """
+    res = await r.eval(script, 1, QUEUE_LIST_KEY, "queue:item:", account_number)
+    if not res:
         return None
-    # Remove from list (first occurrence) and return the item
-    await r.lrem(QUEUE_LIST_KEY, 1, target_id)
-    item_key = f"queue:item:{target_id}"
-    data = await r.hgetall(item_key)
-    await r.delete(item_key)
-    return data or None
+    # Redis returns a flat array: [id, field1, value1, field2, value2, ...]
+    call_id = res[0]
+    fields = res[1:]
+    item: Dict[str, str] = {fields[i]: fields[i+1] for i in range(0, len(fields), 2)} if fields else {}
+    if call_id:
+        item["call_id"] = call_id
+    return item
 
 
 async def remove_from_queue(call_id: str) -> None:
@@ -94,4 +125,14 @@ async def get_queue_position(call_id: str) -> Optional[int]:
     for idx, cid in enumerate(ids):
         if cid == call_id:
             return idx + 1
+    return None
+
+
+async def find_call_id_by_account(account_number: str) -> Optional[str]:
+    r = get_redis()
+    ids: List[str] = await r.lrange(QUEUE_LIST_KEY, 0, -1)
+    for cid in ids:
+        acc = await r.hget(f"queue:item:{cid}", "account_number")
+        if acc == account_number:
+            return cid
     return None

@@ -90,7 +90,7 @@ export default function CustomerChatPage() {
 
   const connectToAgent = async () => {
     setWaitingForAgent(true);
-    
+
     try {
       // Step 1: Request connection to backend matching service
       const callApiModule = await import('@/lib/callApi');
@@ -99,15 +99,15 @@ export default function CustomerChatPage() {
         customer?.name || 'Customer',
         { accountNumber: customer?.accountNumber }
       );
-      
+
       console.log('📞 Call response:', response);
-      
+
       // Step 2: Connect WebSocket with assigned call_id
       const websocket = new WebSocket(`ws://localhost:8000/ws/call/${response.call_id}`);
-      
+
       websocket.onopen = () => {
         console.log('✅ WebSocket connected with call_id:', response.call_id);
-        
+
         // Notify backend that customer is ready
         websocket.send(JSON.stringify({
           type: 'start_call',
@@ -115,22 +115,26 @@ export default function CustomerChatPage() {
           customer_name: customer?.name,
           timestamp: new Date().toISOString()
         }));
-        
-        setConnected(true);
-        setWaitingForAgent(false);
-        
+
         // Show appropriate message based on match status
         if (response.matched && response.partner_name) {
+          setConnected(true);
+          setWaitingForAgent(false);
           addMessage('system', `Connected to ${response.partner_name}! How can we help you today?`);
         } else {
+          setConnected(false);
+          setWaitingForAgent(true);
           addMessage('system', `${response.message} You are in the queue.`);
+          if (response.status === 'duplicate') {
+            addMessage('system', `You already have a pending request. We will notify you when an agent joins.`);
+          }
         }
       };
 
       websocket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          
+
           if (data.type === 'transcript' && data.speaker === 'agent') {
             addMessage('agent', data.text);
           } else if (data.type === 'conversation_ended') {
@@ -138,6 +142,8 @@ export default function CustomerChatPage() {
             disconnectFromAgent();
           } else if (data.type === 'conversation_started') {
             addMessage('system', 'Agent has joined the chat!');
+            setConnected(true);
+            setWaitingForAgent(false);
           }
         } catch (e) {
           console.error('Error parsing message:', e);
@@ -146,9 +152,9 @@ export default function CustomerChatPage() {
 
       websocket.onerror = (error) => {
         console.error('WebSocket error:', error);
-        addMessage('system', '⚠️ Connection error. Please try again.');
+        addMessage('system', '❗ Connection error. Please try again.');
         setConnected(false);
-        setWaitingForAgent(false);
+        // Keep waitingForAgent as-is if we already sent a request
       };
 
       websocket.onclose = () => {
@@ -157,7 +163,6 @@ export default function CustomerChatPage() {
       };
 
       setWs(websocket);
-      
     } catch (error: any) {
       console.error('Failed to connect:', error);
       addMessage('system', `⚠️ Failed to connect: ${error.message || 'Please check if the server is running.'}`);
@@ -275,7 +280,7 @@ export default function CustomerChatPage() {
                   ) : waitingForAgent ? (
                     <>
                       <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse" />
-                      <span className="text-yellow-700 font-medium">Connecting...</span>
+                      <span className="text-yellow-700 font-medium">Request Sent</span>
                     </>
                   ) : (
                     <>
@@ -285,15 +290,21 @@ export default function CustomerChatPage() {
                   )}
                 </div>
                 
-                {!connected && !waitingForAgent ? (
+                {!connected ? (
                   <button
-                    onClick={connectToAgent}
-                    className="flex items-center gap-2 bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700 transition"
+                    onClick={!waitingForAgent ? connectToAgent : undefined}
+                    disabled={waitingForAgent}
+                    title={waitingForAgent ? 'Request Sent – awaiting agent' : 'Start a chat request'}
+                    className={`flex items-center gap-2 px-6 py-2 rounded-lg transition ${
+                      waitingForAgent
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-primary-600 text-white hover:bg-primary-700'
+                    }`}
                   >
                     <Phone className="w-5 h-5" />
-                    Chat for Assistance
+                    {waitingForAgent ? 'Request Sent' : 'Chat for Assistance'}
                   </button>
-                ) : connected ? (
+                ) : (
                   <button
                     onClick={disconnectFromAgent}
                     className="flex items-center gap-2 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition"
@@ -301,7 +312,7 @@ export default function CustomerChatPage() {
                     <PhoneOff className="w-5 h-5" />
                     End Chat
                   </button>
-                ) : null}
+                )}
               </div>
             </div>
 
@@ -389,7 +400,7 @@ export default function CustomerChatPage() {
               {messages.length === 0 ? (
                 <div className="text-center text-gray-400 mt-20">
                   <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p className="mb-6">Click "Connect to Agent" to start chatting</p>
+                  <p className="mb-6">Click "Chat for Assistance" to start chatting</p>
                   
                   {/* Quick Messages */}
                   <div className="max-w-md mx-auto space-y-2">
@@ -481,23 +492,7 @@ export default function CustomerChatPage() {
             </div>
           </div>
 
-          {/* Info Card */}
-          <div className="mt-6 bg-white rounded-lg shadow p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
-                <MessageSquare className="w-5 h-5 text-primary-600" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-gray-900 mb-1">How it works</h3>
-                <ul className="text-sm text-gray-600 space-y-1">
-                  <li>• Click "Connect to Agent" to start a conversation</li>
-                  <li>• Type your message and press Enter to send</li>
-                  <li>• Our agents will respond in real-time</li>
-                  <li>• Click "End Chat" when you're done</li>
-                </ul>
-              </div>
-            </div>
-          </div>
+          
 
           {/* Customer Info Panel */}
           <div className="mt-6 bg-white rounded-lg shadow p-4">
@@ -553,6 +548,24 @@ export default function CustomerChatPage() {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Info Card moved to end */}
+          <div className="mt-6 bg-white rounded-lg shadow p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+                <MessageSquare className="w-5 h-5 text-primary-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-gray-900 mb-1">How it works</h3>
+                <ul className="text-sm text-gray-600 space-y-1">
+                  <li>• Click "Connect to Agent" to start a conversation</li>
+                  <li>• Type your message and press Enter to send</li>
+                  <li>• Our agents will respond in real-time</li>
+                  <li>• Click "End Chat" when you're done</li>
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
       </div>

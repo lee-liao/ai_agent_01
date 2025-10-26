@@ -6,7 +6,7 @@ import { Phone } from 'lucide-react';
 
 export default function CustomerSignInPage() {
   const router = useRouter();
-  const [name, setName] = useState('John Doe');
+  const [name, setName] = useState('ACC000');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
@@ -70,7 +70,7 @@ export default function CustomerSignInPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                placeholder="John Doe"
+                placeholder="ACCnnnnn"
                 required
               />
             </div>
