@@ -207,37 +207,7 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
         print(f"❌ WebSocket error: {e}")
     
     finally:
-        # If an active conversation exists for this call_id, notify partner before cleanup
-        try:
-            from .calls import active_conversations as active_calls
-            partner_call_id = None
-            key_to_delete = None
-            for active_key, call_info in list(active_calls.items()):
-                if call_id == call_info.get("agent_call_id"):
-                    partner_call_id = call_info.get("customer_call_id")
-                    key_to_delete = active_key
-                    break
-                elif call_id == call_info.get("customer_call_id"):
-                    partner_call_id = call_info.get("agent_call_id")
-                    key_to_delete = active_key
-                    break
-            if key_to_delete:
-                try:
-                    del active_calls[key_to_delete]
-                except Exception:
-                    pass
-                if partner_call_id and partner_call_id in active_connections:
-                    try:
-                        await active_connections[partner_call_id].send_json({
-                            "type": "conversation_ended",
-                            "call_id": partner_call_id,
-                            "timestamp": datetime.utcnow().isoformat()
-                        })
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-        # Cleanup connection maps
+        # Cleanup
         if call_id in active_connections:
             del active_connections[call_id]
         if call_id in agent_queue_subscribers:

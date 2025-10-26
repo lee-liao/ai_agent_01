@@ -20,6 +20,7 @@ export default function CustomerChatPage() {
   const [inputMessage, setInputMessage] = useState('');
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [waitingForAgent, setWaitingForAgent] = useState(false);
+  const [serverContext, setServerContext] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // Audio call hook
@@ -65,6 +66,8 @@ export default function CustomerChatPage() {
               tier: info.tier ?? prev?.tier,
               status: info.status ?? prev?.status,
             }));
+            setServerContext(info);
+            console.log('Loaded server context:', info);
           }
         }
       } catch (e) {
@@ -74,9 +77,15 @@ export default function CustomerChatPage() {
     });
   }, [router]);
 
-  // Auto-scroll to latest message
+  // Auto-scroll: only scroll if user is near bottom to avoid jumping when typing
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesEndRef.current?.parentElement;
+    if (!container) return;
+    const threshold = 120; // px from bottom considered "near bottom"
+    const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    if (nearBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   const connectToAgent = async () => {
@@ -85,7 +94,11 @@ export default function CustomerChatPage() {
     try {
       // Step 1: Request connection to backend matching service
       const callApiModule = await import('@/lib/callApi');
-      const response = await callApiModule.callAPI.startCall('customer', customer?.name || 'Customer');
+      const response = await callApiModule.callAPI.startCall(
+        'customer',
+        customer?.name || 'Customer',
+        { accountNumber: customer?.accountNumber }
+      );
       
       console.log('📞 Call response:', response);
       
@@ -120,10 +133,10 @@ export default function CustomerChatPage() {
           
           if (data.type === 'transcript' && data.speaker === 'agent') {
             addMessage('agent', data.text);
-          } else if (data.type === 'call_ended') {
-            addMessage('system', 'Agent ended the call. Thank you for contacting us!');
+          } else if (data.type === 'conversation_ended') {
+            addMessage('system', 'Conversation ended. Thank you for contacting us!');
             disconnectFromAgent();
-          } else if (data.type === 'call_started') {
+          } else if (data.type === 'conversation_started') {
             addMessage('system', 'Agent has joined the chat!');
           }
         } catch (e) {
@@ -237,7 +250,7 @@ export default function CustomerChatPage() {
                   disconnectFromAgent();
                 }
                 localStorage.removeItem('customer');
-                router.push('/');
+                window.location.href = 'http://localhost:3000/customer';
               }}
               className="text-sm text-gray-600 hover:text-gray-900"
             >
@@ -278,7 +291,7 @@ export default function CustomerChatPage() {
                     className="flex items-center gap-2 bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700 transition"
                   >
                     <Phone className="w-5 h-5" />
-                    Connect to Agent
+                    Chat for Assistance
                   </button>
                 ) : connected ? (
                   <button
@@ -488,27 +501,57 @@ export default function CustomerChatPage() {
 
           {/* Customer Info Panel */}
           <div className="mt-6 bg-white rounded-lg shadow p-4">
-            <h3 className="font-semibold text-gray-900 mb-3">Your Info</h3>
+            <h3 className="font-semibold text-gray-900 mb-3">Your Info (Loaded)</h3>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="text-gray-600">Name</span>
-                <p className="font-medium">{customer?.name || '—'}</p>
+                <p className="font-medium">{(serverContext?.name ?? customer?.name) || '—'}</p>
               </div>
               <div>
                 <span className="text-gray-600">Account</span>
-                <p className="font-medium">{customer?.accountNumber || '—'}</p>
+                <p className="font-medium">{(serverContext?.account_number ?? customer?.accountNumber) || '—'}</p>
               </div>
               <div>
                 <span className="text-gray-600">Tier</span>
-                <p className="font-medium">{customer?.tier || 'standard'}</p>
+                <p className="font-medium">{(serverContext?.tier ?? customer?.tier) || 'standard'}</p>
               </div>
               <div>
                 <span className="text-gray-600">Email</span>
-                <p className="font-medium">{customer?.email || '—'}</p>
+                <p className="font-medium">{(serverContext?.email ?? customer?.email) || '—'}</p>
               </div>
             </div>
             {!connected && (
               <p className="mt-3 text-xs text-gray-500">Connect to agent to receive tailored assistance.</p>
+            )}
+            {serverContext && (
+              <div className="mt-4">
+                <h4 className="font-semibold text-gray-900 mb-2">Recent Orders</h4>
+                {serverContext.orders && serverContext.orders.length > 0 ? (
+                  <ul className="text-sm text-gray-700 space-y-1">
+                    {serverContext.orders.map((o: any) => (
+                      <li key={o.order_number} className="flex justify-between">
+                        <span>{o.product_name}</span>
+                        <span className="text-gray-500">{o.order_number}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-gray-500">No recent orders</p>
+                )}
+                <h4 className="font-semibold text-gray-900 mt-4 mb-2">Recent Tickets</h4>
+                {serverContext.tickets && serverContext.tickets.length > 0 ? (
+                  <ul className="text-sm text-gray-700 space-y-1">
+                    {serverContext.tickets.map((t: any) => (
+                      <li key={t.ticket_number} className="flex justify-between">
+                        <span>{t.subject}</span>
+                        <span className="text-gray-500">{t.ticket_number}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-gray-500">No recent tickets</p>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -516,4 +559,3 @@ export default function CustomerChatPage() {
     </div>
   );
 }
-

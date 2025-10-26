@@ -1,0 +1,151 @@
+*** Begin Patch
+*** Update File: backend/app/api/websocket.py
+@@
+ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
+@@
+-                elif message["type"] == "pickup":
++                elif message["type"] == "pickup":
+@@
+-                    print(f"[WS] Pickup requested by {call_id} for {account_number}: {result}")
+-                    await websocket.send_json({"type": "pickup_result", **result})
+-                    # If success, notify both ends of call start
+-                    if result.get("status") == "success":
+-                            await websocket.send_json({
+-                                "type": "conversation_started",
+-                                "call_id": call_id,
+-                                "timestamp": datetime.utcnow().isoformat()
+-                            })
+-                        customer_call_id = result.get("customer_call_id")
+-                        if customer_call_id and customer_call_id in active_connections:
+-                            try:
+-                                    await active_connections[customer_call_id].send_json({
+-                                        "type": "conversation_started",
+-                                        "call_id": customer_call_id,
+-                                        "timestamp": datetime.utcnow().isoformat()
+-                                    })
+-                                except Exception:
+-                                    pass
++                    print(f"[WS] Pickup requested by {call_id} for {account_number}: {result}")
++                    await websocket.send_json({"type": "pickup_result", **result})
++                    # If success, notify both ends of conversation start
++                    if result.get("status") == "success":
++                        await websocket.send_json({
++                            "type": "conversation_started",
++                            "call_id": call_id,
++                            "timestamp": datetime.utcnow().isoformat()
++                        })
++                        customer_call_id = result.get("customer_call_id")
++                        if customer_call_id and customer_call_id in active_connections:
++                            try:
++                                await active_connections[customer_call_id].send_json({
++                                    "type": "conversation_started",
++                                    "call_id": customer_call_id,
++                                    "timestamp": datetime.utcnow().isoformat()
++                                })
++                            except Exception:
++                                pass
+@@
+-async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
+-    """Handle call end"""
+-    await websocket.send_json({
+-        "type": "conversation_ended",
+-        "call_id": call_id,
+-        "timestamp": datetime.utcnow().isoformat()
+-    })
+-    await websocket.close(code=1000)
++async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
++    """Handle call end: notify partner and cleanup conversation/waiting state"""
++    # Notify sender
++    await websocket.send_json({
++        "type": "conversation_ended",
++        "call_id": call_id,
++        "timestamp": datetime.utcnow().isoformat()
++    })
++    # Try to remove from active conversations and notify partner
++    from .calls import active_conversations as active_calls, waiting_customers, available_agents
++    partner_call_id = None
++    key_to_delete = None
++    for active_key, call_info in list(active_calls.items()):
++        if call_id == call_info.get("agent_call_id"):
++            partner_call_id = call_info.get("customer_call_id")
++            key_to_delete = active_key
++            break
++        elif call_id == call_info.get("customer_call_id"):
++            partner_call_id = call_info.get("agent_call_id")
++            key_to_delete = active_key
++            break
++    if key_to_delete:
++        try:
++            del active_calls[key_to_delete]
++        except Exception:
++            pass
++        if partner_call_id and partner_call_id in active_connections:
++            try:
++                await active_connections[partner_call_id].send_json({
++                    "type": "conversation_ended",
++                    "call_id": partner_call_id,
++                    "timestamp": datetime.utcnow().isoformat()
++                })
++            except Exception:
++                pass
++    else:
++        # Not in active conversation: remove from waiting/available queues
++        try:
++            removed_waiting = False
++            removed_agents = False
++            # remove waiting customer with this call_id
++            for i in range(len(waiting_customers) - 1, -1, -1):
++                if waiting_customers[i].get("call_id") == call_id:
++                    waiting_customers.pop(i)
++                    removed_waiting = True
++                    break
++            # remove available agent with this call_id
++            for i in range(len(available_agents) - 1, -1, -1):
++                if available_agents[i].get("call_id") == call_id:
++                    available_agents.pop(i)
++                    removed_agents = True
++                    break
++            # If queues changed, broadcast updated queue to subscribers
++            if removed_waiting or removed_agents:
++                await broadcast_queue_update()
++        except Exception:
++            pass
++    await websocket.close(code=1000)
+@@
+-async def try_pickup_customer(agent_call_id: str, account_number: str) -> dict:
+-    from .calls import waiting_customers, active_conversations as active_calls
++async def try_pickup_customer(agent_call_id: str, account_number: str) -> dict:
++    from .calls import waiting_customers, active_conversations as active_calls, queue_lock
+@@
+-    idx = None
+-    for i, c in enumerate(waiting_customers):
+-        if c.get("account_number") == account_number:
+-            idx = i
+-            break
+-    if idx is None:
+-        return {"status": "not_found"}
+-    # remove and activate
+-    customer_info = waiting_customers.pop(idx)
++    idx = None
++    async with queue_lock:
++        for i, c in enumerate(waiting_customers):
++            if c.get("account_number") == account_number:
++                idx = i
++                break
++        if idx is None:
++            return {"status": "not_found"}
++        # remove and activate
++        customer_info = waiting_customers.pop(idx)
+@@
+-async def try_pickup_top(agent_call_id: str) -> dict:
+-    from .calls import waiting_customers, active_conversations as active_calls
+-    if not waiting_customers:
+-        return {"status": "not_found"}
+-    customer_info = waiting_customers.pop(0)
++async def try_pickup_top(agent_call_id: str) -> dict:
++    from .calls import waiting_customers, active_conversations as active_calls, queue_lock
++    async with queue_lock:
++        if not waiting_customers:
++            return {"status": "not_found"}
++        customer_info = waiting_customers.pop(0)
+*** End Patch

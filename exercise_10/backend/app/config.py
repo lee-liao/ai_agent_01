@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 class Settings(BaseSettings):
     # App
@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
+    REDIS_USERNAME: Optional[str] = None
+    REDIS_PASSWORD: Optional[str] = None
     
     # OpenAI
     OPENAI_API_KEY: str = ""

@@ -18,11 +18,19 @@ export interface CallStats {
 
 export const callAPI = {
   // Start a new call (agent or customer)
-  async startCall(userType: 'agent' | 'customer', userName: string): Promise<CallResponse> {
-    const response = await axios.post(`${API_URL}/api/calls/start`, {
+  async startCall(
+    userType: 'agent' | 'customer',
+    userName: string,
+    options?: { accountNumber?: string; targetAccountNumber?: string; available?: boolean }
+  ): Promise<CallResponse> {
+    const payload: any = {
       user_type: userType,
-      user_name: userName
-    });
+      user_name: userName,
+    };
+    if (options?.accountNumber) payload.account_number = options.accountNumber;
+    if (options?.targetAccountNumber) payload.target_account_number = options.targetAccountNumber;
+    if (typeof options?.available === 'boolean') payload.available = options.available;
+    const response = await axios.post(`${API_URL}/api/calls/start`, payload);
     return response.data;
   },
 

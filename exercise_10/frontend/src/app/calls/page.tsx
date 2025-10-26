@@ -19,8 +19,13 @@ export default function CallsPage() {
   const [muted, setMuted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
+  // Removed manual target account input; rely on WS queue
   const [ws, setWs] = useState<WebSocket | null>(null);
+  const [queueItems, setQueueItems] = useState<Array<{ customer_name?: string; account_number?: string; waiting_since?: string }>>([]);
   const [callDuration, setCallDuration] = useState(0);
+  const [showQueuePanel, setShowQueuePanel] = useState(true);
+  const [selectedCustomer, setSelectedCustomer] = useState<{ name?: string; account?: string; tier?: string; status?: string } | null>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<Array<{ text: string; timestamp: Date }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -56,6 +61,14 @@ export default function CallsPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Auto-connect (monitor mode) to subscribe to queue on page load
+  useEffect(() => {
+    if (user && !ws) {
+      startCall();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   // Call timer
   useEffect(() => {
     if (inCall) {
@@ -83,12 +96,16 @@ export default function CallsPage() {
   };
 
   const startCall = async () => {
-    setInCall(true);
+    // Do not set inCall until matched or call_started; keeps queue visible
     
     try {
       // Step 1: Request connection to backend matching service
       const callApiModule = await import('@/lib/callApi');
-      const response = await callApiModule.callAPI.startCall('agent', user?.username || 'Agent');
+      const response = await callApiModule.callAPI.startCall(
+        'agent',
+        user?.username || 'Agent',
+        { available: false }
+      );
       
       console.log('📞 Agent call response:', response);
       
@@ -108,8 +125,11 @@ export default function CallsPage() {
         // Show appropriate message based on match status
         if (response.matched && response.partner_name) {
           addMessage('system', `Connected to customer: ${response.partner_name}`);
+          setInCall(true);
         } else {
-          addMessage('system', `${response.message} Waiting for incoming calls...`);
+          addMessage('system', `${response.message} Waiting for incoming calls... (subscribed)`);
+          websocket.send(JSON.stringify({ type: 'subscribe_queue' }));
+          console.log('Agent subscribed to queue updates');
         }
       };
 
@@ -120,12 +140,46 @@ export default function CallsPage() {
           if (data.type === 'transcript' && data.speaker === 'customer') {
             addMessage('customer', data.text);
           } else if (data.type === 'ai_suggestion') {
-            addMessage('system', `AI Suggestion: ${data.suggestion} (conf: ${(data.confidence ?? 0).toFixed(2)})`);
-          } else if (data.type === 'call_ended') {
-            addMessage('system', 'Customer ended the call');
+            // Route AI suggestions to dedicated panel list (limit to 10)
+            setAiSuggestions(prev => [
+              { text: `${data.suggestion}`, timestamp: new Date() },
+              ...prev,
+            ].slice(0, 10));
+          } else if (data.type === 'conversation_ended') {
+            addMessage('system', 'Conversation ended');
             endCall();
-          } else if (data.type === 'call_started') {
-            addMessage('system', 'Customer connected to the call');
+          } else if (data.type === 'conversation_started') {
+            addMessage('system', 'Conversation started');
+            setInCall(true);
+          } else if (data.type === 'queue_update') {
+            console.log('Agent received queue_update:', data.items);
+            setQueueItems(Array.isArray(data.items) ? data.items : []);
+          } else if (data.type === 'pickup_result') {
+            if (data.status === 'success') {
+              addMessage('system', `Picked up ${data.customer_name || ''}`);
+              setMessages([]);
+              setInCall(true);
+              setSelectedCustomer({ name: data.customer_name, account: data.account_number });
+              if (data.account_number) {
+                import('@/lib/callApi').then(async (mod) => {
+                  try {
+                    const info = await mod.customerAPI.publicSearch(data.account_number);
+                    if (info) {
+                      setSelectedCustomer({
+                        name: info.name ?? data.customer_name,
+                        account: info.account_number ?? data.account_number,
+                        tier: info.tier,
+                        status: info.status,
+                      });
+                    }
+                  } catch (e) {
+                    console.warn('Agent: customer context lookup failed:', e);
+                  }
+                });
+              }
+            } else {
+              addMessage('system', `Pickup failed: ${data.status}`);
+            }
           }
         } catch (e) {
           console.error('Error parsing message:', e);
@@ -144,7 +198,7 @@ export default function CallsPage() {
       setWs(websocket);
       
     } catch (error: any) {
-      console.error('Failed to start call:', error);
+      console.error('Failed to start chat:', error);
       addMessage('system', `⚠️ Failed to connect: ${error.message || 'Please check if the server is running on port 8000.'}`);
       setInCall(false);
     }
@@ -162,6 +216,8 @@ export default function CallsPage() {
     setInCall(false);
     setWs(null);
     addMessage('system', 'Call ended');
+    // Keep queue panel visible (collapsed with count)
+    setShowQueuePanel(true);
   };
 
   const addMessage = (speaker: 'customer' | 'agent' | 'system', text: string) => {
@@ -242,8 +298,8 @@ export default function CallsPage() {
               {/* Call Status Bar */}
               <div className={`px-6 py-4 ${inCall ? 'bg-green-50 border-b border-green-200' : 'bg-gray-50 border-b border-gray-200'}`}>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {inCall ? (
+              <div className="flex items-center gap-3">
+                {inCall ? (
                       <>
                         <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
                         <span className="text-green-700 font-medium">In Call</span>
@@ -274,7 +330,7 @@ export default function CallsPage() {
                         className="flex items-center gap-2 bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition"
                       >
                         <Phone className="w-5 h-5" />
-                        Start Call
+                        Start Chat
                       </button>
                     ) : (
                       <button
@@ -282,12 +338,13 @@ export default function CallsPage() {
                         className="flex items-center gap-2 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition"
                       >
                         <PhoneOff className="w-5 h-5" />
-                        End Call
+                        End Chat
                       </button>
                     )}
                   </div>
                 </div>
               </div>
+              {/* Removed manual target account input */}
 
               {/* Audio Controls - Only show when in call */}
               {inCall && (
@@ -432,6 +489,58 @@ export default function CallsPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
+            {!inCall ? (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <User className="w-5 h-5" />
+                    Waiting Customers
+                  </h3>
+                  <button
+                    onClick={() => {
+                      if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'pickup' }));
+                      }
+                    }}
+                    disabled={!ws || ws.readyState !== WebSocket.OPEN || queueItems.length === 0}
+                    className="text-sm bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    Start Chat (Top)
+                  </button>
+                </div>
+                {queueItems.length === 0 ? (
+                  <p className="text-gray-400 text-sm">No customers waiting</p>
+                ) : (
+                  <div className="space-y-3">
+                    {queueItems.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between border border-gray-200 rounded-lg p-3">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{item.customer_name || 'Customer'}</p>
+                          <p className="text-xs text-gray-600">{item.account_number || '—'} · since {item.waiting_since?.split('T')[0]}</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (ws && ws.readyState === WebSocket.OPEN && item.account_number) {
+                              ws.send(JSON.stringify({ type: 'pickup', account_number: item.account_number }));
+                            }
+                          }}
+                          className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-700"
+                        >
+                          Pick Up
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg shadow p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-700">Waiting Customers</div>
+                  <div className="text-xs text-gray-500">{queueItems.length} waiting</div>
+                </div>
+              </div>
+            )}
             {/* Customer Info */}
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -442,20 +551,14 @@ export default function CallsPage() {
                 <div className="space-y-3 text-sm">
                   <div>
                     <span className="text-gray-600">Name:</span>
-                    <p className="font-medium">John Doe</p>
+                    <p className="font-medium">{selectedCustomer?.name || '—'}</p>
                   </div>
                   <div>
                     <span className="text-gray-600">Account:</span>
-                    <p className="font-medium">#ACC00001</p>
+                    <p className="font-medium">{selectedCustomer?.account || '—'}</p>
                   </div>
-                  <div>
-                    <span className="text-gray-600">Tier:</span>
-                    <p className="font-medium">🥇 Gold</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">LTV:</span>
-                    <p className="font-medium">$2,340</p>
-                  </div>
+                  {selectedCustomer?.tier && (<div><span className="text-gray-600">Tier:</span><p className="font-medium">{selectedCustomer.tier}</p></div>)}
+                  {selectedCustomer?.status && (<div><span className="text-gray-600">Status:</span><p className="font-medium">{selectedCustomer.status}</p></div>)}
                 </div>
               ) : (
                 <p className="text-gray-400 text-sm">Start a call to see customer information</p>
@@ -464,22 +567,26 @@ export default function CallsPage() {
 
             {/* AI Suggestions */}
             <div className="bg-white rounded-lg shadow-lg p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">
-                🤖 AI Suggestions
-              </h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-4">AI Suggestions</h3>
               {inCall ? (
-                <div className="space-y-3">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <p className="text-sm text-blue-900">
-                      💡 Customer seems satisfied with the service
-                    </p>
+                aiSuggestions.length > 0 ? (
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {aiSuggestions.map((s, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setInputMessage(s.text)}
+                        className={`w-full text-left rounded-lg p-3 border transition hover:opacity-90 ${idx % 2 === 0 ? 'bg-yellow-100 border-yellow-300' : 'bg-blue-50 border-blue-200'}`}
+                        title="Click to copy into chat input"
+                      >
+                        <p className="text-sm text-gray-900">{s.text}</p>
+                        <div className="text-[10px] text-gray-600 mt-1">{s.timestamp.toLocaleTimeString()}</div>
+                      </button>
+                    ))}
                   </div>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                    <p className="text-sm text-green-900">
-                      ✅ Consider offering premium upgrade
-                    </p>
-                  </div>
-                </div>
+                ) : (
+                  <p className="text-gray-400 text-sm">Suggestions will appear during calls</p>
+                )
               ) : (
                 <p className="text-gray-400 text-sm">AI suggestions will appear during calls</p>
               )}
@@ -508,4 +615,3 @@ export default function CallsPage() {
     </div>
   );
 }
-
