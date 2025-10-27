@@ -532,10 +532,10 @@ export default function CallsPage() {
                 <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                   {aiSuggestions.map((s, idx) => (
                     <button
-                      key={idx}
+                      key={s.timestamp.getTime()}
                       type="button"
                       onClick={() => setInputMessage(s.text)}
-                      className={`w-full text-left rounded-lg p-2 border transition hover:opacity-90 ${idx % 2 === 0 ? 'bg-yellow-100 border-yellow-300' : 'bg-blue-50 border-blue-200'}`}
+                      className={`w-full text-left rounded-lg p-2 border transition hover:opacity-90 ${Math.floor(s.timestamp.getTime() / 10000) % 2 === 0 ? 'bg-yellow-100 border-yellow-300' : 'bg-blue-50 border-blue-200'}`}
                       title="Click to copy into chat input"
                     >
                       <p className="text-sm text-gray-900">{s.text}</p>
