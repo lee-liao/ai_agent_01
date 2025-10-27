@@ -21,6 +21,7 @@ BUFFER_SIZE_BYTES = 16000 * 2 * BUFFER_SIZE_SECONDS  # 160,000 bytes
 from ..config import settings
 from .whisper_service import transcribe_audio
 from .ai_service import generate_suggestion
+from .context_manager import get_context
 
 import io
 import wave
@@ -269,6 +270,9 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
             del agent_queue_subscribers[call_id]
         if call_id in audio_buffers:
             del audio_buffers[call_id]
+        # Cleanup conversation context
+        from .context_manager import clear_context
+        clear_context(call_id)
 
 async def handle_start_call(call_id: str, message: dict, websocket: WebSocket):
     """Acknowledge connection without starting a call automatically."""
@@ -392,6 +396,10 @@ async def transcribe_and_broadcast(
             "timestamp": datetime.utcnow().isoformat()
         }
         
+        # Add transcript to conversation context
+        context = get_context(call_id)
+        context.add_message(speaker, text)
+        
         # Send to sender
         try:
             await sender_ws.send_json(transcript_msg)
@@ -439,6 +447,10 @@ async def handle_transcript(call_id: str, message: dict, websocket: WebSocket):
         "text": text,
         "timestamp": datetime.utcnow().isoformat()
     }
+    
+    # Add transcript to conversation context
+    context = get_context(call_id)
+    context.add_message(speaker, text)
     
     # Echo back to sender (for confirmation)
     await websocket.send_json(transcript_msg)
