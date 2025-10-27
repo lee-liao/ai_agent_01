@@ -10,13 +10,20 @@ active_connections: Dict[str, WebSocket] = {}
 # Agent queue subscribers (agent call_id -> True)
 agent_queue_subscribers: Dict[str, bool] = {}
 
+# Audio buffers for transcription (call_id -> bytearray)
+audio_buffers: Dict[str, bytearray] = {}
+
+# Buffer size: 5 seconds of audio at 16kHz, 16-bit
+BUFFER_SIZE_SECONDS = 5
+BUFFER_SIZE_BYTES = 16000 * 2 * BUFFER_SIZE_SECONDS  # 160,000 bytes
+
 # Services
 from ..config import settings
-from .whisper_service import WhisperService
-from .ai_service import AIAssistantService
+from .whisper_service import transcribe_audio
+from .ai_service import generate_suggestion
 
-whisper_service = WhisperService(settings.OPENAI_API_KEY)
-ai_service = AIAssistantService(settings.OPENAI_API_KEY)
+import io
+import wave
 
 @router.websocket("/ws/call/{call_id}")
 async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
@@ -34,6 +41,7 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
     """
     await websocket.accept()
     active_connections[call_id] = websocket
+    audio_buffers[call_id] = bytearray()  # Initialize audio buffer
 
     print(f"✅ WebSocket connected: {call_id}")
     
@@ -47,73 +55,22 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                 audio_chunk = data["bytes"]
                 print(f"📊 Received audio chunk: {len(audio_chunk)} bytes from {call_id}")
                 
-                # Simulate transcription (in production, send to Whisper API)
-                # For demo, we'll just acknowledge receipt
-                await websocket.send_json({
-                    "type": "audio_received",
-                    "size": len(audio_chunk),
-                    "timestamp": datetime.utcnow().isoformat()
-                })
-                
-                # Route audio to partner (for future real-time audio streaming)
+                # Route audio to partner (for real-time audio streaming)
                 from .calls import active_conversations as active_calls
                 partner_call_id = None
+                speaker = "customer"  # default
+                
+                # Find partner and determine speaker
                 for active_call_id, call_info in active_calls.items():
                     if call_id == call_info.get("agent_call_id"):
                         partner_call_id = call_info.get("customer_call_id")
+                        speaker = "agent"
                         break
                     elif call_id == call_info.get("customer_call_id"):
                         partner_call_id = call_info.get("agent_call_id")
+                        speaker = "customer"
                         break
 
-                # Transcribe audio and emit transcript/suggestion
-                transcript_text = ""
-                try:
-                    transcript_text = await whisper_service.transcribe_audio(audio_chunk)
-                except Exception as e:
-                    print(f"Whisper error: {e}")
-
-                if transcript_text:
-                    # Determine speaker based on mapping
-                    speaker = "customer"
-                    for _, cinfo in active_calls.items():
-                        if call_id == cinfo.get("agent_call_id"):
-                            speaker = "agent"
-                            break
-                        elif call_id == cinfo.get("customer_call_id"):
-                            speaker = "customer"
-                            break
-
-                    transcript_msg = {
-                        "type": "transcript",
-                        "speaker": speaker,
-                        "text": transcript_text,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-
-                    # Echo to sender
-                    await websocket.send_json(transcript_msg)
-
-                    # Forward to partner
-                    if partner_call_id and partner_call_id in active_connections:
-                        try:
-                            await active_connections[partner_call_id].send_json(transcript_msg)
-                        except Exception as e:
-                            print(f"Error routing transcript: {e}")
-
-                    # Generate AI suggestion for agent when customer spoke
-                    if speaker == "customer" and partner_call_id and partner_call_id in active_connections:
-                        suggestion = await ai_service.generate_suggestion(call_id=call_id, customer_message=transcript_text)
-                        try:
-                            await active_connections[partner_call_id].send_json({
-                                "type": "ai_suggestion",
-                                "suggestion": suggestion.get("suggestion", ""),
-                                "confidence": suggestion.get("confidence", 0.0),
-                                "timestamp": suggestion.get("timestamp", datetime.utcnow().isoformat())
-                            })
-                        except Exception as e:
-                            print(f"Error sending suggestion: {e}")
-                
                 # Forward audio to partner if connected
                 if partner_call_id and partner_call_id in active_connections:
                     try:
@@ -121,6 +78,30 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                         print(f"📤 Forwarded audio from {call_id} to {partner_call_id}")
                     except Exception as e:
                         print(f"Error forwarding audio: {e}")
+
+                # Buffer audio for transcription
+                if call_id in audio_buffers:
+                    audio_buffers[call_id].extend(audio_chunk)
+                else:
+                    # Initialize buffer if not exists
+                    audio_buffers[call_id] = bytearray(audio_chunk)
+                
+                # Check if buffer is full (5 seconds of audio)
+                if len(audio_buffers[call_id]) >= BUFFER_SIZE_BYTES:
+                    # Transcribe the buffered audio
+                    audio_data = bytes(audio_buffers[call_id])
+                    audio_buffers[call_id].clear()
+
+                    # Transcribe in background to avoid blocking
+                    asyncio.create_task(
+                        transcribe_and_broadcast(
+                            call_id, 
+                            audio_data, 
+                            speaker, 
+                            websocket, 
+                            partner_call_id
+                        )
+                    )
                 
             elif "text" in data:
                 # Control message received
@@ -174,6 +155,43 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                     # Push latest queue to all subscribers after any pickup attempt
                     await broadcast_queue_update()
 
+                elif message["type"] == "conversation_started":
+                    # Conversation started - trigger customer context fetch for agent
+                    from .calls import active_conversations as active_calls
+                    conversation_info = None
+                    for active_call_id, call_info in active_calls.items():
+                        if call_info.get("agent_call_id") == call_id or call_info.get("customer_call_id") == call_id:
+                            conversation_info = call_info
+                            break
+                    
+                    if conversation_info:
+                        # Send conversation_started back to sender
+                        await websocket.send_json({
+                            "type": "conversation_started",
+                            "call_id": call_id,
+                            "timestamp": datetime.utcnow().isoformat(),
+                            **conversation_info
+                        })
+                        
+                        # Fetch and send customer context to the agent
+                        partner_call_id = None
+                        for active_call_id, call_info in active_calls.items():
+                            if call_id == call_info.get("agent_call_id"):
+                                partner_call_id = call_info.get("customer_call_id")
+                                await send_customer_context(websocket, conversation_info.get("account_number"), conversation_info.get("customer_name"))
+                                break
+                            elif call_id == call_info.get("customer_call_id"):
+                                partner_call_id = call_info.get("agent_call_id")
+                                # Customer doesn't need context, but agent will get it when conversation starts
+                                break
+                    else:
+                        # Send basic conversation_started message
+                        await websocket.send_json({
+                            "type": "conversation_started",
+                            "call_id": call_id,
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+
                 elif message["type"] == "transcript":
                     # Manual transcript entry (for testing) or real transcription
                     await handle_transcript(call_id, message, websocket)
@@ -189,7 +207,7 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                                 partner_call_id = call_info.get("agent_call_id")
                                 break
                         if partner_call_id and partner_call_id in active_connections:
-                            suggestion = await ai_service.generate_suggestion(call_id=call_id, customer_message=message.get("text", ""))
+                            suggestion = await generate_suggestion(call_id=call_id, customer_message=message.get("text", ""))
                             try:
                                 await active_connections[partner_call_id].send_json({
                                     "type": "ai_suggestion",
@@ -249,6 +267,8 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
             del active_connections[call_id]
         if call_id in agent_queue_subscribers:
             del agent_queue_subscribers[call_id]
+        if call_id in audio_buffers:
+            del audio_buffers[call_id]
 
 async def handle_start_call(call_id: str, message: dict, websocket: WebSocket):
     """Acknowledge connection without starting a call automatically."""
@@ -326,6 +346,88 @@ async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
                 pass
     await websocket.close(code=1000)
 
+import asyncio
+
+async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str) -> str:
+    """Transcribe audio buffer using Whisper API"""
+    try:
+        # Convert raw PCM to WAV format using Python's built-in wave module
+        wav_buffer = io.BytesIO()
+        with wave.open(wav_buffer, 'wb') as wav_file:
+            wav_file.setnchannels(1)  # Mono
+            wav_file.setsampwidth(2)  # 16-bit
+            wav_file.setframerate(16000)  # 16kHz
+            wav_file.writeframes(audio_data)
+        
+        wav_buffer.seek(0)
+        
+        # Call Whisper API with the converted WAV data
+        transcript = await transcribe_audio(wav_buffer.read(), "audio.wav")
+        return transcript
+        
+    except Exception as e:
+        print(f"❌ Transcription error: {e}")
+        return None
+
+async def transcribe_and_broadcast(
+    call_id: str,
+    audio_data: bytes,
+    speaker: str,
+    sender_ws: WebSocket,
+    partner_call_id: str = None
+):
+    """Transcribe audio and send to both sender and partner"""
+    try:
+        # Transcribe the audio
+        text = await transcribe_audio_buffer(call_id, audio_data, speaker)
+        
+        if not text:
+            return
+        
+        # Create transcript message
+        transcript_msg = {
+            "type": "transcript",
+            "speaker": speaker,
+            "text": text,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        # Send to sender
+        try:
+            await sender_ws.send_json(transcript_msg)
+            print(f"📤 Sent transcript to sender ({speaker}): {text[:30]}...")
+        except Exception as e:
+            print(f"❌ Error sending to sender: {e}")
+
+        # Send to partner
+        if partner_call_id and partner_call_id in active_connections:
+            try:
+                await active_connections[partner_call_id].send_json(transcript_msg)
+                print(f"📤 Sent transcript to partner: {text[:30]}...")
+            except Exception as e:
+                print(f"❌ Error sending to partner: {e}")
+                # Remove dead connection
+                if partner_call_id in active_connections:
+                    del active_connections[partner_call_id]
+
+        # Generate AI suggestion for agent when customer speaks
+        # (keeping the same pattern from the original code)
+        from .ai_service import generate_suggestion
+        if speaker == "customer" and partner_call_id and partner_call_id in active_connections:
+            suggestion = await generate_suggestion(call_id=call_id, customer_message=text)
+            try:
+                await active_connections[partner_call_id].send_json({
+                    "type": "ai_suggestion",
+                    "suggestion": suggestion.get("suggestion", ""),
+                    "confidence": suggestion.get("confidence", 0.0),
+                    "timestamp": suggestion.get("timestamp", datetime.utcnow().isoformat())
+                })
+            except Exception as e:
+                print(f"Error sending suggestion: {e}")
+
+    except Exception as e:
+        print(f"❌ Error in transcribe_and_broadcast: {e}")
+
 async def handle_transcript(call_id: str, message: dict, websocket: WebSocket):
     """Handle transcript segment and route to partner"""
     speaker = message.get("speaker", "customer")
@@ -401,9 +503,11 @@ async def broadcast_queue_update():
 async def try_pickup_customer(agent_call_id: str, account_number: str) -> dict:
     from .calls import active_conversations as active_calls
     from .queue_service import dequeue_by_account_number
+    
     customer_info = await dequeue_by_account_number(account_number)
     if not customer_info:
-        return {"status": "not_found"}
+        return {"status": "not_found", "message": f"No customer found with account number {account_number}. Customer may have been served by another agent or disconnected."}
+    
     active_calls[agent_call_id] = {
         "agent_call_id": agent_call_id,
         "customer_call_id": customer_info["call_id"],
@@ -419,13 +523,115 @@ async def try_pickup_customer(agent_call_id: str, account_number: str) -> dict:
         "customer_name": customer_info.get("customer_name"),
         "account_number": customer_info.get("account_number"),
     }
+
+
+async def send_customer_context(websocket: WebSocket, account_number: str = None, customer_name: str = None):
+    """
+    Send customer context to the agent when a call starts.
+    Fetches customer details from the database and sends them via WebSocket.
+    """
+    try:
+        from sqlalchemy import select
+        from ..models import Customer, Order, Ticket
+        from ..database import async_session
+        
+        # Search by account number first, then by name
+        search_param = account_number or customer_name
+        if not search_param:
+            return
+        
+        async with async_session() as session:
+            # Query customer by account number or name
+            query = select(Customer).where(
+                (Customer.account_number == search_param) if account_number 
+                else (Customer.name.ilike(f"%{customer_name}%"))
+            )
+            
+            result = await session.execute(query)
+            customer = result.scalar_one_or_none()
+            
+            if not customer:
+                # Try a more flexible search if exact match fails
+                if account_number:
+                    query = select(Customer).where(Customer.account_number.ilike(f"%{account_number}%"))
+                else:
+                    query = select(Customer).where(Customer.name.ilike(f"%{customer_name}%"))
+                
+                result = await session.execute(query)
+                customer = result.scalar_one_or_none()
+            
+            if customer:
+                # Fetch related data
+                orders_query = select(Order).where(Order.customer_id == customer.id).order_by(Order.order_date.desc()).limit(10)
+                orders_result = await session.execute(orders_query)
+                orders = orders_result.scalars().all()
+                
+                tickets_query = select(Ticket).where(Ticket.customer_id == customer.id).order_by(Ticket.created_at.desc()).limit(5)
+                tickets_result = await session.execute(tickets_query)
+                tickets = tickets_result.scalars().all()
+                
+                # Build customer context response
+                customer_context = {
+                    "type": "customer_context",
+                    "customer": {
+                        "id": customer.id,
+                        "name": customer.name,
+                        "email": customer.email,
+                        "phone": customer.phone,
+                        "account_number": customer.account_number,
+                        "tier": customer.tier,
+                        "status": customer.status,
+                        "lifetime_value": float(customer.lifetime_value) if customer.lifetime_value else 0.0
+                    },
+                    "orders": [
+                        {
+                            "id": order.id,
+                            "order_number": order.order_number,
+                            "product_name": order.product_name,
+                            "amount": float(order.amount) if order.amount else 0.0,
+                            "status": order.status,
+                            "order_date": order.order_date.isoformat() if order.order_date else ""
+                        }
+                        for order in orders
+                    ],
+                    "tickets": [
+                        {
+                            "id": ticket.id,
+                            "ticket_number": ticket.ticket_number,
+                            "subject": ticket.subject,
+                            "status": ticket.status,
+                            "priority": ticket.priority,
+                            "created_at": ticket.created_at.isoformat() if ticket.created_at else ""
+                        }
+                        for ticket in tickets
+                    ],
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                
+                # Send customer context to agent
+                await websocket.send_json(customer_context)
+                
+    except Exception as e:
+        print(f"Error fetching customer context: {e}")
+        # Send a minimal response to indicate failure gracefully
+        try:
+            await websocket.send_json({
+                "type": "customer_context",
+                "error": "Failed to fetch customer details",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+        except Exception:
+            pass
+
 
 async def try_pickup_top(agent_call_id: str) -> dict:
     from .calls import active_conversations as active_calls
     from .queue_service import dequeue_top
+    
     customer_info = await dequeue_top()
     if not customer_info:
-        return {"status": "not_found"}
+        return {"status": "not_found", "message": "No customers available in queue. Queue may have been empty or item already processed."}
+    
     active_calls[agent_call_id] = {
         "agent_call_id": agent_call_id,
         "customer_call_id": customer_info["call_id"],
@@ -441,4 +647,3 @@ async def try_pickup_top(agent_call_id: str) -> dict:
         "customer_name": customer_info.get("customer_name"),
         "account_number": customer_info.get("account_number"),
     }
-

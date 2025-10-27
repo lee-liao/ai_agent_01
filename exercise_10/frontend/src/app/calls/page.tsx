@@ -24,7 +24,7 @@ export default function CallsPage() {
   const [queueItems, setQueueItems] = useState<Array<{ customer_name?: string; account_number?: string; waiting_since?: string }>>([]);
   const [callDuration, setCallDuration] = useState(0);
   const [showQueuePanel, setShowQueuePanel] = useState(true);
-  const [selectedCustomer, setSelectedCustomer] = useState<{ name?: string; account?: string; tier?: string; status?: string; orders?: any[]; tickets?: any[] } | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<{ name?: string; account?: string; tier?: string; status?: string; lifetime_value?: number; orders?: any[]; tickets?: any[] } | null>(null);
   const [aiSuggestions, setAiSuggestions] = useState<Array<{ text: string; timestamp: Date }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -162,9 +162,33 @@ export default function CallsPage() {
           } else if (data.type === 'conversation_started') {
             addMessage('system', 'Conversation started');
             setInCall(true);
+            // Update customer info if provided in conversation_started message
+            if (data.customer_name || data.account_number) {
+              setSelectedCustomer(prev => ({
+                ...prev,
+                name: data.customer_name || prev?.name,
+                account: data.account_number || prev?.account,
+              }));
+            }
           } else if (data.type === 'queue_update') {
             console.log('Agent received queue_update:', data.items);
             setQueueItems(Array.isArray(data.items) ? data.items : []);
+          } else if (data.type === 'customer_context') {
+            // Handle customer context data
+            if (data.customer) {
+              setSelectedCustomer({
+                name: data.customer.name,
+                account: data.customer.account_number,
+                tier: data.customer.tier,
+                status: data.customer.status,
+                lifetime_value: data.customer.lifetime_value,
+                orders: data.orders || [],
+                tickets: data.tickets || [],
+              });
+            } else if (data.error) {
+              console.warn('Customer context fetch error:', data.error);
+              addMessage('system', `⚠️ ${data.error}`);
+            }
           } else if (data.type === 'pickup_result') {
             if (data.status === 'success') {
               addMessage('system', `Picked up ${data.customer_name || ''}`);
@@ -193,7 +217,8 @@ export default function CallsPage() {
                 });
               }
             } else {
-              addMessage('system', `Pickup failed: ${data.status}`);
+              const errorMessage = data.message || data.status;
+              addMessage('system', `Pickup failed: ${errorMessage}`);
             }
           }
         } catch (e) {
@@ -596,6 +621,12 @@ export default function CallsPage() {
                   </div>
                   {selectedCustomer?.tier && (<div><span className="text-gray-600">Tier:</span><p className="font-medium">{selectedCustomer.tier}</p></div>)}
                   {selectedCustomer?.status && (<div><span className="text-gray-600">Status:</span><p className="font-medium">{selectedCustomer.status}</p></div>)}
+                  {selectedCustomer?.lifetime_value !== undefined && (
+                    <div>
+                      <span className="text-gray-600">Lifetime Value:</span>
+                      <p className="font-medium">${selectedCustomer.lifetime_value.toFixed(2)}</p>
+                    </div>
+                  )}
                   {selectedCustomer?.orders && selectedCustomer.orders.length > 0 ? (
                     <div className="mt-3">
                       <span className="text-gray-600">Recent Orders</span>

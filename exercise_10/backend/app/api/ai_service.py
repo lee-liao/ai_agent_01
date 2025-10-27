@@ -1,53 +1,44 @@
+import openai
 from datetime import datetime
-from typing import Dict, List, Optional
+from ..config import settings
 
-from openai import AsyncOpenAI
-
-
-class AIAssistantService:
-    def __init__(self, api_key: str):
-        self._api_key = api_key
-        self.client: Optional[AsyncOpenAI] = None
-        self.conversation_history: Dict[str, List[Dict]] = {}
-
-    async def generate_suggestion(self, call_id: str, customer_message: str) -> Dict:
-        """Generate agent suggestion based on customer transcript."""
-        # Basic fallback if not configured
-        if not self._api_key:
-            return {
-                "suggestion": "Acknowledge the issue, show empathy, and ask a clarifying question.",
-                "confidence": 0.5,
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-
-        # Track brief history (last 5 messages)
-        self.conversation_history.setdefault(call_id, [])
-        self.conversation_history[call_id].append({"role": "user", "content": customer_message})
-        history = self.conversation_history[call_id][-5:]
-
-        system_prompt = (
-            "You help call center agents. Given the customer's message, "
-            "suggest a concrete next step, with brief reasoning. Return concise text."
+async def generate_suggestion(call_id: str, customer_message: str) -> dict:
+    """
+    Generates a suggestion for the agent based on the customer's message.
+    """
+    try:
+        # Create a new client instance with the current API key
+        client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        
+        # Create a prompt for the AI assistant to generate suggestions
+        prompt = f"""
+        You are an AI assistant helping customer service agents.
+        A customer just said: "{customer_message}"
+        
+        Provide a helpful suggestion for the agent on how to respond to this customer message.
+        Be specific, actionable, and considerate of the customer's needs.
+        """
+        
+        # Call OpenAI API to generate a response using the new API format
+        response = await client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=150
         )
-
-        try:
-            if self.client is None:
-                self.client = AsyncOpenAI(api_key=self._api_key)
-            resp = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "system", "content": system_prompt}, *history],
-                temperature=0.7,
-                max_tokens=120,
-            )
-            content = resp.choices[0].message.content if resp.choices else ""
-            return {
-                "suggestion": content or "Ask a clarifying question and summarize the issue.",
-                "confidence": 0.8,
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-        except Exception:
-            return {
-                "suggestion": "Acknowledge the issue, show empathy, and ask a clarifying question.",
-                "confidence": 0.6,
-                "timestamp": datetime.utcnow().isoformat(),
-            }
+        
+        suggestion_text = response.choices[0].message.content.strip()
+        
+        return {
+            "suggestion": suggestion_text,
+            "confidence": 0.9,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        print(f"Error generating AI suggestion: {e}")
+        # Return a fallback suggestion if API call fails
+        return {
+            "suggestion": f"Consider responding to: '{customer_message}'",
+            "confidence": 0.5,
+            "timestamp": datetime.utcnow().isoformat()
+        }

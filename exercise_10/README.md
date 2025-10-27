@@ -1,20 +1,91 @@
-# Exercise 10: Real-Time AI Call Center Assistant 🎧
+## 🏃 Running with Docker (Recommended)
 
-**Class 7: Streaming UI & Real-Time Agentic Systems**
+### 1. Clone and Navigate
+```bash
+cd exercise_10
+```
 
----
+### 2. Set Up Environment Variables
+```bash
+# Copy example env file
+cp backend/env.example backend/.env
 
-## 🎯 Overview
+# Edit .env and add your OpenAI API key
+nano backend/.env  # or use your preferred editor
+```
 
-Build a **real-time call center assistance system** where an AI agent listens to live customer conversations via WebRTC and provides **streaming, contextual suggestions** to human agents in real-time. The system combines:
+**Required Environment Variables:**
+- `OPENAI_API_KEY` - Your OpenAI API key for Whisper transcription and GPT-4 suggestions
+- `DATABASE_URL` - PostgreSQL connection string (default works with Docker setup)
+- `REDIS_URL` - Redis connection string (default works with Docker setup)
+- `SECRET_KEY` - JWT secret for authentication
 
-- **WebRTC audio streaming** for live conversation capture
-- **Real-time speech-to-text** transcription
-- **Streaming AI responses** with live suggestions
-- **Database lookups** for customer history and context
-- **Live UI updates** showing conversation flow and AI hints
+### 3. Start All Services
+```bash
+# Start PostgreSQL and Redis
+docker-compose up -d postgres redis
 
----
+# Wait for services to be healthy (about 10 seconds)
+docker-compose ps
+
+# Start backend and frontend
+docker-compose up backend frontend
+```
+
+### 4. Seed the Database (in a new terminal)
+```bash
+# Enter backend container
+docker-compose exec backend bash
+
+# Run seeder
+python -m data.seed_data
+
+# Exit container
+exit
+```
+
+### 5. Access the Application
+- **Frontend:** http://localhost:3000
+- **Backend API:** http://localhost:8000
+- **API Docs:** http://localhost:8000/docs
+
+### 6. Login Credentials
+Use these default accounts:
+
+| Username   | Password   | Role       |
+|-----------|-----------|------------|
+| admin     | admin123  | Admin      |
+| supervisor | super123  | Supervisor |
+| agent1    | agent123  | Agent      |
+| agent2    | agent123  | Agent      |
+
+### 7. Real-Time AI Features
+Once running, you'll have access to:
+- **Real-time transcription** via OpenAI Whisper API
+- **AI suggestions** powered by GPT-4 for agents
+- **Customer context panel** with database lookups
+- **WebSocket streaming** for live audio and text updates
+
+### 8. Required API Keys & Configuration
+To use the AI features, you'll need to provide the following environment variables:
+
+**Backend (.env):**
+```
+OPENAI_API_KEY=your_openai_api_key_here
+DATABASE_URL=postgresql+asyncpg://admin:password@localhost:5432/callcenter
+REDIS_URL=redis://localhost:6379
+SECRET_KEY=your-super-secret-jwt-key-change-it
+```
+
+**Frontend (.env.local):**
+```
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_WS_URL=ws://localhost:8000
+```
+
+The `OPENAI_API_KEY` is required for both:
+- **Whisper API**: Real-time speech-to-text transcription of customer audio
+- **GPT-4 API**: AI-powered suggestions for agents based on customer conversations
 
 ## 🏗️ Architecture
 

@@ -124,15 +124,24 @@ async def start_call(request: StartCallRequest):
                     "started_at": datetime.utcnow().isoformat(),
                     "status": "active"
                 }
-                # Update queue and notify customer
+                # Update queue and notify customer and agent
                 try:
                     from .websocket import broadcast_queue_update, broadcast_to_call
                     import asyncio as _asyncio
                     _asyncio.create_task(broadcast_queue_update())
+                    # Notify customer that conversation started
                     _asyncio.create_task(broadcast_to_call(customer_info["call_id"], {
                         "type": "conversation_started",
                         "call_id": customer_info["call_id"],
                         "timestamp": datetime.utcnow().isoformat()
+                    }))
+                    # Notify agent that conversation started with customer context
+                    _asyncio.create_task(broadcast_to_call(call_id, {
+                        "type": "conversation_started",
+                        "call_id": call_id,
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "customer_name": customer_info.get("customer_name"),
+                        "account_number": customer_info.get("account_number")
                     }))
                 except Exception:
                     pass
@@ -169,10 +178,19 @@ async def start_call(request: StartCallRequest):
                 from .websocket import broadcast_queue_update, broadcast_to_call
                 import asyncio as _asyncio
                 _asyncio.create_task(broadcast_queue_update())
+                # Notify customer that conversation started
                 _asyncio.create_task(broadcast_to_call(customer_info["call_id"], {
                     "type": "conversation_started",
                     "call_id": customer_info["call_id"],
                     "timestamp": datetime.utcnow().isoformat()
+                }))
+                # Notify agent that conversation started with customer context
+                _asyncio.create_task(broadcast_to_call(call_id, {
+                    "type": "conversation_started",
+                    "call_id": call_id,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "customer_name": customer_info.get("customer_name"),
+                    "account_number": customer_info.get("account_number")
                 }))
             except Exception:
                 pass
@@ -295,6 +313,7 @@ async def get_partner_call_id(call_id: str):
 async def queue_health():
     """Verify Redis queue connectivity and basic stats"""
     try:
+        from .queue_service import get_redis, get_waiting_count
         r = get_redis()
         pong = await r.ping()
         count = await get_waiting_count()

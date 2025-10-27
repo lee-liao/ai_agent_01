@@ -112,9 +112,22 @@ export class AudioRecorder {
     }
     
     try {
-      // Use webm with opus codec for better compression
+      // Try formats in order of Whisper API compatibility
+      let mimeType = '';
+      
+      // Try various formats in order of preference
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus';  // Best compression, widely supported
+      } else if (MediaRecorder.isTypeSupported('audio/wav')) {
+        mimeType = 'audio/wav';  // Direct compatibility with Whisper API
+      } else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
+        mimeType = 'audio/mpeg';  // Alternative format
+      } else {
+        mimeType = 'audio/webm';  // Fallback
+      }
+      
       const options = {
-        mimeType: 'audio/webm;codecs=opus',
+        mimeType: mimeType,
         audioBitsPerSecond: 16000
       };
       

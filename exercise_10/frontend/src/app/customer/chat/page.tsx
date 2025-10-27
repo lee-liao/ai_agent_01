@@ -328,7 +328,7 @@ export default function CustomerChatPage() {
                         className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition"
                       >
                         <Mic className="w-4 h-4" />
-                        Start Voice Call
+                        Enable Voice
                       </button>
                     ) : (
                       <button

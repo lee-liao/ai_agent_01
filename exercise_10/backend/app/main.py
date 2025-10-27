@@ -10,14 +10,14 @@ from .api import auth_routes, customers, websocket, calls, queue_debug
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("🚀 Starting AI Call Center Assistant...")
+    print("Starting AI Call Center Assistant...")
     await init_db()
-    print("✅ Database initialized")
+    print("Database initialized")
     yield
     # Shutdown
-    print("👋 Shutting down...")
+    print("Shutting down...")
     await close_db()
-    print("✅ Database connections closed")
+    print("Database connections closed")
 
 # Create FastAPI app
 app = FastAPI(
