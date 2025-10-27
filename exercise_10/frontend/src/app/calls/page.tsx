@@ -148,14 +148,16 @@ export default function CallsPage() {
         try {
           const data = JSON.parse(event.data);
           
-          if (data.type === 'transcript' && data.speaker === 'customer') {
-            addMessage('customer', data.text);
           } else if (data.type === 'ai_suggestion') {
             // Route AI suggestions to dedicated panel list (limit to 10)
-            setAiSuggestions(prev => [
-              { text: `${data.suggestion}`, timestamp: new Date() },
-              ...prev,
-            ].slice(0, 10));
+            setAiSuggestions(prev => {
+              // Generate a sequential ID to maintain stable color alternation
+              const newId = (prev.length > 0 ? Math.max(...prev.map(s => s.idNum || 0)) : 0) + 1;
+              return [
+                { text: `${data.suggestion}`, timestamp: new Date(), idNum: newId },
+                ...prev,
+              ].slice(0, 10);
+            });
           } else if (data.type === 'conversation_ended') {
             addMessage('system', 'Conversation ended');
             endCall();
@@ -530,18 +532,23 @@ export default function CallsPage() {
               <div className="border-t border-gray-200 p-4 bg-gray-50">
                 <h4 className="text-sm font-semibold text-gray-800 mb-2">AI Suggestions</h4>
                 <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                  {aiSuggestions.map((s, idx) => (
-                    <button
-                      key={s.timestamp.getTime()}
-                      type="button"
-                      onClick={() => setInputMessage(s.text)}
-                      className={`w-full text-left rounded-lg p-2 border transition hover:opacity-90 ${Math.floor(s.timestamp.getTime() / 10000) % 2 === 0 ? 'bg-yellow-100 border-yellow-300' : 'bg-blue-50 border-blue-200'}`}
-                      title="Click to copy into chat input"
-                    >
-                      <p className="text-sm text-gray-900">{s.text}</p>
-                      <div className="text-[10px] text-gray-600 mt-1">{s.timestamp.toLocaleTimeString()}</div>
-                    </button>
-                  ))}
+                  {aiSuggestions.map((s, idx) => {
+                    // Color alternation: if total count is odd, start with yellow; if even, start with blue
+                    const isBaseColor = (aiSuggestions.length + idx) % 2 === 1;
+                    
+                    return (
+                      <button
+                        key={s.idNum || s.timestamp.getTime()}
+                        type="button"
+                        onClick={() => setInputMessage(s.text)}
+                        className={`w-full text-left rounded-lg p-2 border transition hover:opacity-90 ${isBaseColor ? 'bg-yellow-100 border-yellow-300' : 'bg-blue-50 border-blue-200'}`}
+                        title="Click to copy into chat input"
+                      >
+                        <p className="text-sm text-gray-900">{s.text}</p>
+                        <div className="text-[10px] text-gray-600 mt-1">{s.timestamp.toLocaleTimeString()}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
