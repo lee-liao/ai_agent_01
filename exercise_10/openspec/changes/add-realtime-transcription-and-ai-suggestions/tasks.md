@@ -5,8 +5,10 @@
 - [x] 1.4 Generate agent-only suggestions on customer transcript events
 - [x] 1.5 Add audio buffering mechanism to improve transcription accuracy and format compatibility
 - [x] 1.6 Update OpenAI library version for better format support
-- [ ] 1.7 Enhance customer lookup endpoint and invoke on call start
-- [ ] 1.8 Update frontend `src/app/calls/page.tsx` to render transcripts, suggestions, and customer info
+- [x] 1.7 Add customer transcript handling to customer chat page
+- [ ] 1.8 Enhance customer lookup endpoint and invoke on call start
+- [ ] 1.9 Update frontend `src/app/calls/page.tsx` to render transcripts, suggestions, and customer info
+- [ ] 1.10 Implement voice call interface specifications (visual indicators, controls)
 
 ## 2. Configuration
 - [ ] 2.1 Ensure `OPENAI_API_KEY` is read in backend settings
