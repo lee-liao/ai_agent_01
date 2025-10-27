@@ -22,6 +22,7 @@ export default function CustomerChatPage() {
   const [waitingForAgent, setWaitingForAgent] = useState(false);
   const [serverContext, setServerContext] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   
   // Audio call hook
   const {
@@ -79,14 +80,27 @@ export default function CustomerChatPage() {
 
   // Auto-scroll: only scroll if user is near bottom to avoid jumping when typing
   useEffect(() => {
-    const container = messagesEndRef.current?.parentElement;
-    if (!container) return;
-    const threshold = 120; // px from bottom considered "near bottom"
-    const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
-    if (nearBottom) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (chatContainerRef.current) {
+      const container = chatContainerRef.current;
+      const threshold = 120; // px from bottom considered "near bottom"
+      const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+      if (nearBottom) {
+        // Scroll to bottom of container
+        container.scrollTop = container.scrollHeight;
+      }
     }
   }, [messages]);
+  
+  // Function to force scroll to bottom (used when customer sends a message)
+  const scrollToBottom = () => {
+    // Use requestAnimationFrame to ensure DOM has updated before scrolling
+    requestAnimationFrame(() => {
+      if (chatContainerRef.current) {
+        // Scroll to bottom of container
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }
+    });
+  };
 
   const connectToAgent = async () => {
     setWaitingForAgent(true);
@@ -211,6 +225,9 @@ export default function CustomerChatPage() {
     }
 
     setInputMessage('');
+    
+    // Force scroll to bottom after sending message
+    scrollToBottom();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -396,7 +413,7 @@ export default function CustomerChatPage() {
             )}
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-6 space-y-4">
               {messages.length === 0 ? (
                 <div className="text-center text-gray-400 mt-20">
                   <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
