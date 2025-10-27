@@ -3,8 +3,10 @@
 - [x] 1.2 Integrate Whisper into `backend/app/api/websocket.py` for audio -> transcript
 - [x] 1.3 Create `backend/app/api/ai_service.py` for suggestions
 - [x] 1.4 Generate agent-only suggestions on customer transcript events
-- [ ] 1.5 Enhance customer lookup endpoint and invoke on call start
-- [ ] 1.6 Update frontend `src/app/calls/page.tsx` to render transcripts, suggestions, and customer info
+- [x] 1.5 Add audio buffering mechanism to improve transcription accuracy and format compatibility
+- [x] 1.6 Update OpenAI library version for better format support
+- [ ] 1.7 Enhance customer lookup endpoint and invoke on call start
+- [ ] 1.8 Update frontend `src/app/calls/page.tsx` to render transcripts, suggestions, and customer info
 
 ## 2. Configuration
 - [ ] 2.1 Ensure `OPENAI_API_KEY` is read in backend settings

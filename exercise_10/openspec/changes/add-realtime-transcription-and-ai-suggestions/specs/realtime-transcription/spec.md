@@ -8,6 +8,12 @@ The system SHALL transcribe incoming audio chunks to text in near real-time and 
 - THEN the backend transcribes the audio to text within 2 seconds
 - AND sends a `transcript` message with `speaker`, `text`, and `timestamp` back to sender and partner
 
+#### Scenario: Audio Buffering and Format Conversion
+- WHEN audio chunks are received via WebSocket
+- AND the buffer reaches the threshold (5 seconds of audio)
+- THEN the system converts the accumulated audio to WAV format
+- AND sends the WAV file to Whisper API for transcription
+
 #### Scenario: Transcription Error Handling
 - WHEN transcription fails (API error, invalid audio)
 - THEN the backend logs the error and sends a non-blocking status update
