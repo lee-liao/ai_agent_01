@@ -13,9 +13,8 @@ agent_queue_subscribers: Dict[str, bool] = {}
 # Audio buffers for transcription (call_id -> bytearray)
 audio_buffers: Dict[str, bytearray] = {}
 
-# Buffer size: 5 seconds of audio at 16kHz, 16-bit
-BUFFER_SIZE_SECONDS = 5
-BUFFER_SIZE_BYTES = 16000 * 2 * BUFFER_SIZE_SECONDS  # 160,000 bytes
+# Buffer size: 4 seconds of audio - balancing responsiveness with transcription quality
+BUFFER_SIZE_SECONDS = 4
 
 # Services
 from ..config import settings
@@ -25,6 +24,7 @@ from .context_manager import get_context
 
 import io
 import wave
+from pydub import AudioSegment
 
 @router.websocket("/ws/call/{call_id}")
 async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
@@ -80,29 +80,17 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                     except Exception as e:
                         print(f"Error forwarding audio: {e}")
 
-                # Buffer audio for transcription
-                if call_id in audio_buffers:
-                    audio_buffers[call_id].extend(audio_chunk)
-                else:
-                    # Initialize buffer if not exists
-                    audio_buffers[call_id] = bytearray(audio_chunk)
-                
-                # Check if buffer is full (5 seconds of audio)
-                if len(audio_buffers[call_id]) >= BUFFER_SIZE_BYTES:
-                    # Transcribe the buffered audio
-                    audio_data = bytes(audio_buffers[call_id])
-                    audio_buffers[call_id].clear()
-
-                    # Transcribe in background to avoid blocking
-                    asyncio.create_task(
-                        transcribe_and_broadcast(
-                            call_id, 
-                            audio_data, 
-                            speaker, 
-                            websocket, 
-                            partner_call_id
-                        )
+                # Process audio chunk for transcription (individual chunks for immediate feedback)
+                # Transcribe the audio chunk in background to avoid blocking
+                asyncio.create_task(
+                    transcribe_and_broadcast(
+                        call_id, 
+                        audio_chunk,  # Process the individual chunk
+                        speaker, 
+                        websocket, 
+                        partner_call_id
                     )
+                )
                 
             elif "text" in data:
                 # Control message received
@@ -353,24 +341,50 @@ async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
 import asyncio
 
 async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str) -> str:
-    """Transcribe audio buffer using Whisper API"""
+    """Transcribe audio buffer using Whisper API with proper format handling"""
     try:
-        # Convert raw PCM to WAV format using Python's built-in wave module
-        wav_buffer = io.BytesIO()
-        with wave.open(wav_buffer, 'wb') as wav_file:
-            wav_file.setnchannels(1)  # Mono
-            wav_file.setsampwidth(2)  # 16-bit
-            wav_file.setframerate(16000)  # 16kHz
-            wav_file.writeframes(audio_data)
+        print(f"🎵 About to transcribe audio for {speaker}, size: {len(audio_data)} bytes")
         
-        wav_buffer.seek(0)
+        # Use pydub to handle the WebM format properly
+        # Note: concatenated WebM chunks are still not valid WebM files
+        # Better approach: try to send as WAV after conversion or send as WebM if Whisper supports it directly
         
-        # Call Whisper API with the converted WAV data
-        transcript = await transcribe_audio(wav_buffer.read(), "audio.wav")
-        return transcript
+        # Try to process directly with Whisper if it supports WebM
+        transcript = await transcribe_audio(audio_data, "audio.webm")
+        
+        if transcript:
+            print(f"✅ Transcription successful for {speaker}: {transcript[:50]}...")
+            return transcript
+        else:
+            print(f"⚠️ Whisper API could not transcribe, trying format conversion...")
+            
+            # If direct processing fails, try to use pydub for format conversion
+            try:
+                # Create an audio segment from the WebM data
+                audio_segment = AudioSegment.from_file(io.BytesIO(audio_data), format="webm")
+                
+                # Export as WAV in memory
+                wav_io = io.BytesIO()
+                audio_segment.export(wav_io, format="wav")
+                wav_io.seek(0)
+                
+                # Now call Whisper API with WAV format
+                transcript = await transcribe_audio(wav_io.read(), "audio.wav")
+                
+                if transcript:
+                    print(f"✅ Transcription successful (after conversion) for {speaker}: {transcript[:50]}...")
+                    return transcript
+                else:
+                    print(f"⚠️ Still no transcription after format conversion for {speaker}")
+                    return None
+            except Exception as format_error:
+                print(f"❌ Format conversion failed: {format_error}")
+                return None
         
     except Exception as e:
-        print(f"❌ Transcription error: {e}")
+        print(f"❌ Transcription error for {speaker}: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 async def transcribe_and_broadcast(
@@ -386,7 +400,10 @@ async def transcribe_and_broadcast(
         text = await transcribe_audio_buffer(call_id, audio_data, speaker)
         
         if not text:
+            print(f"⚠️ No transcription result for {speaker} audio")
             return
+        
+        print(f"📝 Transcription result for {speaker}: {text[:50]}...")
         
         # Create transcript message
         transcript_msg = {
@@ -405,7 +422,7 @@ async def transcribe_and_broadcast(
             await sender_ws.send_json(transcript_msg)
             print(f"📤 Sent transcript to sender ({speaker}): {text[:30]}...")
         except Exception as e:
-            print(f"❌ Error sending to sender: {e}")
+            print(f"❌ Error sending transcript to sender: {e}")
 
         # Send to partner
         if partner_call_id and partner_call_id in active_connections:
@@ -413,7 +430,7 @@ async def transcribe_and_broadcast(
                 await active_connections[partner_call_id].send_json(transcript_msg)
                 print(f"📤 Sent transcript to partner: {text[:30]}...")
             except Exception as e:
-                print(f"❌ Error sending to partner: {e}")
+                print(f"❌ Error sending transcript to partner: {e}")
                 # Remove dead connection
                 if partner_call_id in active_connections:
                     del active_connections[partner_call_id]
@@ -430,6 +447,7 @@ async def transcribe_and_broadcast(
                     "confidence": suggestion.get("confidence", 0.0),
                     "timestamp": suggestion.get("timestamp", datetime.utcnow().isoformat())
                 })
+                print(f"🤖 Sent AI suggestion to agent: {suggestion.get('suggestion', '')[:30]}...")
             except Exception as e:
                 print(f"Error sending suggestion: {e}")
 

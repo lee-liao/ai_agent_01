@@ -26,6 +26,8 @@ export default function CallsPage() {
   const [showQueuePanel, setShowQueuePanel] = useState(true);
   const [selectedCustomer, setSelectedCustomer] = useState<{ name?: string; account?: string; tier?: string; status?: string; lifetime_value?: number; orders?: any[]; tickets?: any[] } | null>(null);
   const [aiSuggestions, setAiSuggestions] = useState<Array<{ text: string; timestamp: Date }>>([]);
+  const [nextTopSuggestionColor, setNextTopSuggestionColor] = useState<'yellow' | 'blue'>('yellow'); // Track color for next top suggestion
+  const [isTranscribing, setIsTranscribing] = useState(false); // Track when audio is being transcribed
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -115,7 +117,7 @@ export default function CallsPage() {
       const response = await callApiModule.callAPI.startCall(
         'agent',
         user?.username || 'Agent',
-        { available: false }
+        { available: true }
       );
       
       console.log('📞 Agent call response:', response);
@@ -148,16 +150,22 @@ export default function CallsPage() {
         try {
           const data = JSON.parse(event.data);
           
+          if (data.type === 'transcript' && data.speaker === 'customer') {
+            setIsTranscribing(true);
+            setTimeout(() => setIsTranscribing(false), 2000); // Show active state for 2 seconds
+            addMessage('customer', data.text);
+          } else if (data.type === 'transcript' && data.speaker === 'agent') {
+            setIsTranscribing(true);
+            setTimeout(() => setIsTranscribing(false), 2000); // Show active state for 2 seconds
+            addMessage('agent', data.text);
           } else if (data.type === 'ai_suggestion') {
             // Route AI suggestions to dedicated panel list (limit to 10)
-            setAiSuggestions(prev => {
-              // Generate a sequential ID to maintain stable color alternation
-              const newId = (prev.length > 0 ? Math.max(...prev.map(s => s.idNum || 0)) : 0) + 1;
-              return [
-                { text: `${data.suggestion}`, timestamp: new Date(), idNum: newId },
-                ...prev,
-              ].slice(0, 10);
-            });
+            // Flip the color for the next top suggestion
+            setNextTopSuggestionColor(prev => prev === 'yellow' ? 'blue' : 'yellow');
+            setAiSuggestions(prev => [
+              { text: `${data.suggestion}`, timestamp: new Date() },
+              ...prev,
+            ].slice(0, 10));
           } else if (data.type === 'conversation_ended') {
             addMessage('system', 'Conversation ended');
             endCall();
@@ -458,12 +466,12 @@ export default function CallsPage() {
                   </div>
                   
                   {/* Status message */}
-                  {isAudioEnabled && (
-                    <div className="mt-2 text-xs text-blue-600 flex items-center gap-2">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                      {isMuted ? 'Microphone muted' : 'Listening... Speak to the customer'}
-                    </div>
-                  )}
+                      {isAudioEnabled && (
+                        <div className="mt-2 text-xs text-blue-600 flex items-center gap-2">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                          {isMuted ? 'Microphone muted' : isTranscribing ? 'Processing voice input...' : 'Listening... Speak to the customer'}
+                        </div>
+                      )}
                 </div>
               )}
 
@@ -533,15 +541,33 @@ export default function CallsPage() {
                 <h4 className="text-sm font-semibold text-gray-800 mb-2">AI Suggestions</h4>
                 <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                   {aiSuggestions.map((s, idx) => {
-                    // Color alternation: if total count is odd, start with yellow; if even, start with blue
-                    const isBaseColor = (aiSuggestions.length + idx) % 2 === 1;
+                    // Determine color based on position and the color of the top suggestion
+                    // If this is the top suggestion (idx === 0), use the tracked color
+                    // Otherwise, alternate based on distance from top
+                    const isTopSuggestion = idx === 0;
+                    let bgColor = '';
+                    let borderColor = '';
+                    
+                    if (isTopSuggestion) {
+                      bgColor = nextTopSuggestionColor === 'yellow' ? 'bg-yellow-100' : 'bg-blue-50';
+                      borderColor = nextTopSuggestionColor === 'yellow' ? 'border-yellow-300' : 'border-blue-200';
+                    } else {
+                      // For non-top items, alternate based on distance from top
+                      const distanceFromTop = idx;
+                      const colorForThisItem = (nextTopSuggestionColor === 'yellow') ? 
+                        (distanceFromTop % 2 === 1 ? 'blue' : 'yellow') :  // If top is yellow: blue, yellow, blue...
+                        (distanceFromTop % 2 === 1 ? 'yellow' : 'blue');   // If top is blue: yellow, blue, yellow...
+                      
+                      bgColor = colorForThisItem === 'yellow' ? 'bg-yellow-100' : 'bg-blue-50';
+                      borderColor = colorForThisItem === 'yellow' ? 'border-yellow-300' : 'border-blue-200';
+                    }
                     
                     return (
                       <button
-                        key={s.idNum || s.timestamp.getTime()}
+                        key={s.timestamp.getTime()}
                         type="button"
                         onClick={() => setInputMessage(s.text)}
-                        className={`w-full text-left rounded-lg p-2 border transition hover:opacity-90 ${isBaseColor ? 'bg-yellow-100 border-yellow-300' : 'bg-blue-50 border-blue-200'}`}
+                        className={`w-full text-left rounded-lg p-2 border transition hover:opacity-90 ${bgColor} ${borderColor}`}
                         title="Click to copy into chat input"
                       >
                         <p className="text-sm text-gray-900">{s.text}</p>

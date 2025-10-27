@@ -21,6 +21,7 @@ export default function CustomerChatPage() {
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [waitingForAgent, setWaitingForAgent] = useState(false);
   const [serverContext, setServerContext] = useState<any>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false); // Track when audio is being transcribed
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   
@@ -150,7 +151,13 @@ export default function CustomerChatPage() {
           const data = JSON.parse(event.data);
 
           if (data.type === 'transcript' && data.speaker === 'agent') {
+            setIsTranscribing(true);
+            setTimeout(() => setIsTranscribing(false), 2000); // Show active state for 2 seconds
             addMessage('agent', data.text);
+          } else if (data.type === 'transcript' && data.speaker === 'customer') {
+            setIsTranscribing(true);
+            setTimeout(() => setIsTranscribing(false), 2000); // Show active state for 2 seconds
+            addMessage('customer', data.text);
           } else if (data.type === 'conversation_ended') {
             addMessage('system', 'Conversation ended. Thank you for contacting us!');
             disconnectFromAgent();
@@ -403,12 +410,12 @@ export default function CustomerChatPage() {
                 </div>
                 
                 {/* Status message */}
-                {isAudioEnabled && (
-                  <div className="mt-2 text-xs text-primary-600 flex items-center gap-2">
-                    <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
-                    {isMuted ? 'Microphone muted' : 'Voice call active - speak naturally'}
-                  </div>
-                )}
+                    {isAudioEnabled && (
+                      <div className="mt-2 text-xs text-primary-600 flex items-center gap-2">
+                        <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
+                        {isMuted ? 'Microphone muted' : isTranscribing ? 'Processing voice input...' : 'Voice call active - speak naturally'}
+                      </div>
+                    )}
               </div>
             )}
 
