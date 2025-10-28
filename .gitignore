@@ -33,6 +33,7 @@ exercise_* copy/
 
 .github/
 .gemini/
+.wucai-clipboard/
 .wucai/
 exercise_8/backend/logs/
 exercise_8/backend/app/logs/
