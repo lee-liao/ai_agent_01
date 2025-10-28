@@ -94,11 +94,10 @@ export default function CallsPage() {
 
   // Auto-connect (monitor mode) to subscribe to queue on page load
   useEffect(() => {
-    if (user && !ws) {
+    if (user && ws === null) {
       connectAgent();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, ws]);
 
   // WS heartbeat: send ping every 25s when connected
   useEffect(() => {
@@ -139,6 +138,7 @@ export default function CallsPage() {
 
   // Initialize agent connection (monitoring mode only)
   const connectAgent = async () => {
+    console.log('DEBUG: connectAgent called, current ws:', !!ws, 'current inCall:', inCall);
     if (ws) return; // Already connected
     
     try {
@@ -200,6 +200,7 @@ export default function CallsPage() {
             setTimeout(() => setIsTranscribing(false), 2000); // Show active state for 2 seconds
             addMessage('agent', data.text);
           } else if (data.type === 'ai_suggestion') {
+            console.log('DEBUG: Received ai_suggestion:', data.suggestion);
             // Route AI suggestions to dedicated panel list (limit to 10)
             // Flip the color for the next top suggestion
             setNextTopSuggestionColor(prev => prev === 'yellow' ? 'blue' : 'yellow');
@@ -208,9 +209,13 @@ export default function CallsPage() {
               ...prev,
             ].slice(0, 10));
           } else if (data.type === 'conversation_ended') {
+            console.log('DEBUG: Received conversation_ended message, setting inCall to false');
             addMessage('system', 'Conversation ended');
             setInCall(false);
+            // Ensure queue panel remains visible after call ends
+            setShowQueuePanel(true);
           } else if (data.type === 'conversation_started') {
+            console.log('DEBUG: Received conversation_started message, setting inCall to true');
             addMessage('system', 'Conversation started');
             setInCall(true);
             // Update customer info if provided in conversation_started message
@@ -222,11 +227,14 @@ export default function CallsPage() {
               }));
             }
           } else if (data.type === 'queue_update') {
-            console.log('Agent received queue_update:', data.items);
+            console.log('DEBUG: Agent received queue_update:', data.items);
+            console.log('DEBUG: Current queue items before update:', queueItems.length);
             setQueueItems(Array.isArray(data.items) ? data.items : []);
+            console.log('DEBUG: New queue items after update:', Array.isArray(data.items) ? data.items.length : 0);
             // Update queue panel visibility based on items
             setShowQueuePanel(Array.isArray(data.items) && data.items.length > 0);
           } else if (data.type === 'customer_context') {
+            console.log('DEBUG: Received customer_context:', data.customer);
             // Handle customer context data
             if (data.customer) {
               setSelectedCustomer({
@@ -238,12 +246,15 @@ export default function CallsPage() {
                 orders: data.orders || [],
               });
             }
+          } else if (data.type === 'pickup_result') {
+            console.log('DEBUG: Received pickup_result:', data);
+            addMessage('system', `Pickup result: ${data.status || data.message}`);
           } else if (data.type === 'availability_ignored') {
             // In the simplified model, agents don't use availability states
             // They remain in monitoring mode and manually pick customers
-            console.log('Availability state not used in simplified model:', data.message);
+            console.log('DEBUG: Availability state not used in simplified model:', data.message);
           } else {
-            console.log('Received unknown message type:', data.type);
+            console.log('DEBUG: Received unknown message type:', data.type, 'with data:', data);
           }
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
@@ -256,7 +267,7 @@ export default function CallsPage() {
       };
 
       websocket.onclose = () => {
-        console.log('WebSocket closed');
+        console.log('DEBUG: WebSocket closed, clearing ws reference');
         setWs(null);
       };
 
@@ -269,15 +280,23 @@ export default function CallsPage() {
   };
 
   const endCall = () => {
-    if (ws) {
+    console.log('DEBUG: Agent calling endCall, current inCall state:', inCall);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      console.log('DEBUG: Sending end_call message to server via WebSocket');
       ws.send(JSON.stringify({
         type: 'end_call',
         user_type: 'agent',
         timestamp: new Date().toISOString()
       }));
+    } else {
+      console.log('DEBUG: WebSocket not available or not open, readyState:', ws?.readyState);
     }
     
+    // Set inCall to false immediately for better UX feedback
+    // But keep in mind that server confirmation via 'conversation_ended' is the authoritative state
+    console.log('DEBUG: Setting inCall to false locally');
     setInCall(false);
+    
     addMessage('system', 'Call ended');
     // Keep queue panel visible (collapsed with count)
     setShowQueuePanel(true);
@@ -602,8 +621,18 @@ export default function CallsPage() {
                 </h3>
                 <button
                   onClick={() => {
+                    console.log('DEBUG: Take Top button clicked');
+                    console.log('DEBUG: Current state - ws exists:', !!ws, 'WebSocket readyState:', ws?.readyState, 'inCall:', inCall, 'queueItems.length:', queueItems.length);
+                    
                     if (ws && ws.readyState === WebSocket.OPEN && !inCall) {
+                      console.log('DEBUG: Sending pickup (top) message to server');
                       ws.send(JSON.stringify({ type: 'pickup' }));
+                    } else {
+                      console.log('DEBUG: Take Top conditions not met, pickup not sent. Details:');
+                      console.log('- ws exists:', !!ws);
+                      console.log('- ws is OPEN:', ws?.readyState === WebSocket.OPEN);
+                      console.log('- !inCall:', !inCall);
+                      console.log('- queueItems.length > 0:', queueItems.length > 0);
                     }
                   }}
                   disabled={!ws || ws.readyState !== WebSocket.OPEN || queueItems.length === 0 || inCall}
@@ -624,11 +653,21 @@ export default function CallsPage() {
                       </div>
                       <button
                         onClick={() => {
+                          console.log('DEBUG: Pick Up button clicked for account:', item.account_number);
+                          console.log('DEBUG: Current state - ws exists:', !!ws, 'WebSocket readyState:', ws?.readyState, 'inCall:', inCall);
+                          console.log('DEBUG: Conditions - ws && ws.OPEN:', ws && ws.readyState === WebSocket.OPEN, '!inCall:', !inCall);
+                          
                           if (ws && ws.readyState === WebSocket.OPEN && !inCall) {
+                            console.log('DEBUG: Sending pickup message to server for account:', item.account_number);
                             ws.send(JSON.stringify({ 
                               type: 'pickup', 
                               account_number: item.account_number 
                             }));
+                          } else {
+                            console.log('DEBUG: Conditions not met, pickup not sent. Details:');
+                            console.log('- ws exists:', !!ws);
+                            console.log('- ws is OPEN:', ws?.readyState === WebSocket.OPEN);
+                            console.log('- !inCall:', !inCall);
                           }
                         }}
                         disabled={!ws || ws.readyState !== WebSocket.OPEN || inCall}

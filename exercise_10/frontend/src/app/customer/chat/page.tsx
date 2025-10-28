@@ -175,7 +175,7 @@ export default function CustomerChatPage() {
             addMessage('customer', data.text);
           } else if (data.type === 'conversation_ended') {
             addMessage('system', 'Conversation ended. Thank you for contacting us!');
-            disconnectFromAgent();
+            setConnected(false);
           } else if (data.type === 'conversation_started') {
             addMessage('system', 'Agent has joined the chat!');
             setConnected(true);
