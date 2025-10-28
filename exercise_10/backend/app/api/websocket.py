@@ -115,6 +115,18 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                         pass
                     await send_queue_update(target_ws=websocket)
 
+                elif message["type"] == "agent_availability_update":
+                    # In the simplified model, agents don't use availability states
+                    # They remain in monitoring mode and manually pick customers
+                    print(f"⚠️ Agent availability update received but not used in simplified model: {call_id}")
+                    
+                    # Send a message back indicating the simplified model
+                    await websocket.send_json({
+                        "type": "availability_ignored",
+                        "message": "In simplified model, agents remain in monitoring mode. Use pickup actions to get customers.",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+
                 elif message["type"] == "pickup":
                     # Agent requests to pick up a customer. If account_number absent, pick top of queue (FIFO)
                     account_number = message.get("account_number")
@@ -124,13 +136,29 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                         result = await try_pickup_customer(agent_call_id=call_id, account_number=account_number)
                     print(f"[WS] Pickup requested by {call_id} for {account_number}: {result}")
                     await websocket.send_json({"type": "pickup_result", **result})
-                    # If success, notify both ends of conversation start
+                    # If success, notify both ends of conversation start and send customer context to agent
                     if result.get("status") == "success":
+                        # Send conversation started to agent
                         await websocket.send_json({
                             "type": "conversation_started",
                             "call_id": call_id,
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "customer_name": result.get("customer_name"),
+                            "account_number": result.get("account_number")
                         })
+                        
+                        # Send customer context to agent for Customer Info panel
+                        if result.get("account_number"):
+                            try:
+                                # Use the existing send_customer_context function
+                                await send_customer_context(websocket, account_number=result["account_number"])
+                            except Exception as e:
+                                print(f"❌ Failed to fetch customer context for {result.get('account_number')}: {e}")
+                        
+                        # Send immediate queue update to the agent who just picked up customer
+                        # This ensures their UI shows the current queue state (likely empty)
+                        await send_queue_update(target_ws=websocket)
+                        
                         customer_call_id = result.get("customer_call_id")
                         if customer_call_id and customer_call_id in active_connections:
                             try:
@@ -139,10 +167,8 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                                     "call_id": customer_call_id,
                                     "timestamp": datetime.utcnow().isoformat()
                                 })
-                            except Exception:
-                                pass
-                    # Push latest queue to all subscribers after any pickup attempt
-                    await broadcast_queue_update()
+                            except Exception as e:
+                                print(f"❌ Failed to send conversation_started to {customer_call_id}: {e}")
 
                 elif message["type"] == "conversation_started":
                     # Conversation started - trigger customer context fetch for agent
@@ -218,7 +244,9 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
         print(f"ℹ️ WebSocket disconnected: {call_id}")
     
     except Exception as e:
+        import traceback
         print(f"❌ WebSocket error: {e}")
+        traceback.print_exc()
     
     finally:
         # If an active conversation exists for this call_id, notify partner before cleanup
@@ -236,6 +264,7 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                     key_to_delete = active_key
                     break
             if key_to_delete:
+                print(f"[cleanup] Deleting active conversation with key: {key_to_delete} for call_id: {call_id}")
                 try:
                     del active_calls[key_to_delete]
                 except Exception:
@@ -279,7 +308,7 @@ async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
         "timestamp": datetime.utcnow().isoformat()
     })
     # Try to remove from active conversations and notify partner
-    from .calls import active_conversations as active_calls, waiting_customers, available_agents
+    from .calls import active_conversations as active_calls, available_agents
     partner_call_id = None
     key_to_delete = None
     for active_key, call_info in list(active_calls.items()):
@@ -292,6 +321,7 @@ async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
             key_to_delete = active_key
             break
     if key_to_delete:
+        print(f"[handle_end_call] Deleting active conversation with key: {key_to_delete} for call_id: {call_id}")
         try:
             del active_calls[key_to_delete]
         except Exception:
@@ -315,28 +345,39 @@ async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
             await _rm(call_id)
             removed_waiting = True
         except Exception:
-            # Fallback to in-memory cleanup for legacy state
-            try:
-                from .calls import waiting_customers, available_agents
-                for i in range(len(waiting_customers) - 1, -1, -1):
-                    if waiting_customers[i].get("call_id") == call_id:
-                        waiting_customers.pop(i)
-                        removed_waiting = True
-                        break
-                for i in range(len(available_agents) - 1, -1, -1):
-                    if available_agents[i].get("call_id") == call_id:
-                        available_agents.pop(i)
-                        removed_agents = True
-                        break
-            except Exception:
-                pass
+            pass # No fallback, as in-memory queue is deprecated
+        
+        # In-memory cleanup for available_agents (legacy)
+        try:
+            for i in range(len(available_agents) - 1, -1, -1):
+                if available_agents[i].get("call_id") == call_id:
+                    available_agents.pop(i)
+                    removed_agents = True
+                    break
+        except Exception:
+            pass
+
         # If queues changed, broadcast updated queue to subscribers
         if removed_waiting or removed_agents:
             try:
                 await broadcast_queue_update()
-            except Exception:
-                pass
-    await websocket.close(code=1000)
+            except Exception as e:
+                print(f"Error in broadcast_queue_update: {e}")
+                import traceback
+                traceback.print_exc()
+    try:
+        # After call ends, send the current queue state to the agent so they can see available customers
+        print(f"DEBUG: About to send queue update to agent {call_id} after call ended")
+        await send_queue_update(target_ws=websocket)
+        print(f"DEBUG: Successfully sent queue update to agent {call_id}")
+    except Exception as e:
+        print(f"Error sending queue update after call end: {e}")
+        import traceback
+        traceback.print_exc()
+        # Don't close connection - continue with the function
+    user_type = message.get("user_type")
+    if user_type != 'agent':
+        await websocket.close()
 
 import asyncio
 
@@ -439,17 +480,29 @@ async def transcribe_and_broadcast(
         # (keeping the same pattern from the original code)
         from .ai_service import generate_suggestion
         if speaker == "customer" and partner_call_id and partner_call_id in active_connections:
+            print(f"💡 Generating AI suggestion for agent {partner_call_id} based on customer message: {text[:50]}...")
             suggestion = await generate_suggestion(call_id=call_id, customer_message=text)
+            print(f"💡 AI suggestion generated: {suggestion}")
             try:
-                await active_connections[partner_call_id].send_json({
+                ai_suggestion_msg = {
                     "type": "ai_suggestion",
                     "suggestion": suggestion.get("suggestion", ""),
                     "confidence": suggestion.get("confidence", 0.0),
                     "timestamp": suggestion.get("timestamp", datetime.utcnow().isoformat())
-                })
-                print(f"🤖 Sent AI suggestion to agent: {suggestion.get('suggestion', '')[:30]}...")
+                }
+                await active_connections[partner_call_id].send_json(ai_suggestion_msg)
+                print(f"🤖 Sent AI suggestion to agent {partner_call_id}: {suggestion.get('suggestion', '')[:30]}...")
             except Exception as e:
-                print(f"Error sending suggestion: {e}")
+                print(f"❌ Error sending AI suggestion to agent {partner_call_id}: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            if speaker != "customer":
+                print(f"💬 Speaker is '{speaker}', not generating AI suggestion (only generated for customer messages)")
+            elif not partner_call_id:
+                print(f"💬 No partner found for customer {call_id}, not generating AI suggestion")
+            elif partner_call_id not in active_connections:
+                print(f"💬 Partner {partner_call_id} not in active connections, not generating AI suggestion")
 
     except Exception as e:
         print(f"❌ Error in transcribe_and_broadcast: {e}")
@@ -466,6 +519,8 @@ async def handle_transcript(call_id: str, message: dict, websocket: WebSocket):
         "timestamp": datetime.utcnow().isoformat()
     }
     
+    print(f"📝 Transcript received from {call_id} (speaker: {speaker}): {text[:50]}...")
+    
     # Add transcript to conversation context
     context = get_context(call_id)
     context.add_message(speaker, text)
@@ -477,23 +532,83 @@ async def handle_transcript(call_id: str, message: dict, websocket: WebSocket):
     # Import from calls.py to check active connections
     from .calls import active_conversations as active_calls
     
-    # Find partner's call_id
-    partner_call_id = None
-    for active_call_id, call_info in active_calls.items():
-        if call_id == call_info.get("agent_call_id"):
-            partner_call_id = call_info.get("customer_call_id")
-            break
-        elif call_id == call_info.get("customer_call_id"):
-            partner_call_id = call_info.get("agent_call_id")
-            break
+    print(f"🔍 Looking for partner of {call_id} in {len(active_calls)} active conversations")
     
-    # Send to partner if connected
-    if partner_call_id and partner_call_id in active_connections:
+    # Find partner's call_id - search in both keys and values
+    partner_call_id = None
+    
+    # First, check if this call_id is directly in the keys and has the partner in its value
+    if call_id in active_calls:
+        call_info = active_calls[call_id]
+        if "agent_call_id" in call_info and "customer_call_id" in call_info:
+            if call_id == call_info["agent_call_id"]:
+                partner_call_id = call_info.get("customer_call_id")
+                print(f"👤 Found partner (direct key match): agent {call_id} -> customer {partner_call_id}")
+            elif call_id == call_info["customer_call_id"]:
+                partner_call_id = call_info.get("agent_call_id")
+                print(f"👤 Found partner (direct key match): customer {call_id} -> agent {partner_call_id}")
+    
+    # If not found yet, search through all conversation values
+    if partner_call_id is None:
+        for active_call_id, call_info in active_calls.items():
+            print(f"  Checking conversation: {active_call_id} -> {call_info}")
+            if "agent_call_id" in call_info and "customer_call_id" in call_info:
+                # Check if this conversation contains our call_id
+                if call_id == call_info["agent_call_id"]:
+                    partner_call_id = call_info["customer_call_id"]
+                    print(f"👤 Found partner (in conversation value): agent {call_id} -> customer {partner_call_id}")
+                    break
+                elif call_id == call_info["customer_call_id"]:
+                    partner_call_id = call_info["agent_call_id"]
+                    print(f"👤 Found partner (in conversation value): customer {call_id} -> agent {partner_call_id}")
+                    break
+
+    print(f"🔍 Final partner result: {partner_call_id}")
+    
+    if partner_call_id:
+        print(f"📡 Attempting to route message to {partner_call_id}, connection exists: {partner_call_id in active_connections}")
+        # Send to partner if connected
+        if partner_call_id and partner_call_id in active_connections:
+            try:
+                await active_connections[partner_call_id].send_json(transcript_msg)
+                print(f"📤 Successfully routed message from {call_id} (speaker: {speaker}) to {partner_call_id}")
+            except Exception as e:
+                print(f"❌ Error routing message from {call_id} to {partner_call_id}: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print(f"⚠️ Partner {partner_call_id} not connected in active_connections (available keys: {list(active_connections.keys())})")
+    else:
+        print(f"⚠️ No partner found for {call_id}")
+        print(f"  Active conversations: {active_calls}")
+    
+    # Generate AI suggestion for agent when customer speaks
+    # (keeping the same pattern from the original code)
+    from .ai_service import generate_suggestion
+    if speaker == "customer" and partner_call_id and partner_call_id in active_connections:
+        print(f"💡 Generating AI suggestion for agent {partner_call_id} based on customer message: {text[:50]}...")
+        suggestion = await generate_suggestion(call_id=call_id, customer_message=text)
+        print(f"💡 AI suggestion generated: {suggestion}")
         try:
-            await active_connections[partner_call_id].send_json(transcript_msg)
-            print(f"📤 Routed message from {call_id} to {partner_call_id}")
+            ai_suggestion_msg = {
+                "type": "ai_suggestion",
+                "suggestion": suggestion.get("suggestion", ""),
+                "confidence": suggestion.get("confidence", 0.0),
+                "timestamp": suggestion.get("timestamp", datetime.utcnow().isoformat())
+            }
+            await active_connections[partner_call_id].send_json(ai_suggestion_msg)
+            print(f"🤖 Sent AI suggestion to agent {partner_call_id}: {suggestion.get('suggestion', '')[:30]}...")
         except Exception as e:
-            print(f"Error routing message: {e}")
+            print(f"❌ Error sending AI suggestion to agent {partner_call_id}: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        if speaker != "customer":
+            print(f"💬 Speaker is '{speaker}', not generating AI suggestion (only generated for customer messages)")
+        elif not partner_call_id:
+            print(f"💬 No partner found for customer {call_id}, not generating AI suggestion")
+        elif partner_call_id not in active_connections:
+            print(f"💬 Partner {partner_call_id} not in active connections, not generating AI suggestion")
 
 async def broadcast_to_call(call_id: str, message: dict):
     """Broadcast a message to a specific call's WebSocket"""
@@ -563,14 +678,14 @@ async def send_customer_context(websocket: WebSocket, account_number: str = None
     try:
         from sqlalchemy import select
         from ..models import Customer, Order, Ticket
-        from ..database import async_session
+        from ..database import async_session_maker
         
         # Search by account number first, then by name
         search_param = account_number or customer_name
         if not search_param:
             return
         
-        async with async_session() as session:
+        async with async_session_maker() as session:
             # Query customer by account number or name
             query = select(Customer).where(
                 (Customer.account_number == search_param) if account_number 

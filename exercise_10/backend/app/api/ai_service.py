@@ -23,9 +23,10 @@ async def generate_suggestion(call_id: str, customer_message: str) -> dict:
         
         The customer just said: "{customer_message}"
         
-        Based on the conversation history and the customer's latest message, provide a direct, actionable response suggestion that the agent can use as-is.
-        Respond ONLY with the suggested response text - no explanations, no meta-comments about the response.
-        The response should be conversational, professional, and directly address the customer's message in the context of the conversation.
+        Your response should be a direct, actionable message that the agent can use as-is to reply to the customer.
+        Provide ONLY the response text without any prefix like "Sure, here is a suggested response:" or "Consider saying:".
+        Keep your response conversational, professional, and focused solely on addressing the customer's message.
+        Do not include any explanations, meta-comments, or framing text.
         """
         
         # Call OpenAI API to generate a response using the new API format

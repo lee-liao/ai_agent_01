@@ -118,7 +118,22 @@ export default function CustomerChatPage() {
       console.log('📞 Call response:', response);
 
       // Step 2: Connect WebSocket with assigned call_id
-      const websocket = new WebSocket(`ws://localhost:8000/ws/call/${response.call_id}`);
+      // Determine WebSocket backend URL based on environment variable
+      // This ensures the WebSocket connects to the same backend server as API calls
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8000`;
+      
+      // Extract hostname and port from API URL to build WebSocket URL
+      let wsUrl;
+      if (apiBaseUrl.startsWith('http://')) {
+        wsUrl = apiBaseUrl.replace('http://', 'ws://');
+      } else if (apiBaseUrl.startsWith('https://')) {
+        wsUrl = apiBaseUrl.replace('https://', 'wss://');
+      } else {
+        // Fallback for malformed URL
+        wsUrl = `ws://${apiBaseUrl}`;
+      }
+      
+      const websocket = new WebSocket(`${wsUrl}/ws/call/${response.call_id}`);
 
       websocket.onopen = () => {
         console.log('✅ WebSocket connected with call_id:', response.call_id);
@@ -181,6 +196,7 @@ export default function CustomerChatPage() {
       websocket.onclose = () => {
         console.log('WebSocket closed');
         setConnected(false);
+        setWs(null);
       };
 
       setWs(websocket);
@@ -195,13 +211,12 @@ export default function CustomerChatPage() {
     if (ws) {
       ws.send(JSON.stringify({
         type: 'end_call',
+        user_type: 'customer',
         timestamp: new Date().toISOString()
       }));
-      ws.close();
     }
     
     setConnected(false);
-    setWs(null);
     addMessage('system', 'Disconnected from support');
   };
 
@@ -218,10 +233,7 @@ export default function CustomerChatPage() {
   const sendMessage = () => {
     if (!inputMessage.trim()) return;
 
-    // Add to UI
-    addMessage('customer', inputMessage);
-
-    // Send via WebSocket
+    // Send via WebSocket (the WebSocket response will add the message to UI)
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: 'transcript',
@@ -232,9 +244,6 @@ export default function CustomerChatPage() {
     }
 
     setInputMessage('');
-    
-    // Force scroll to bottom after sending message
-    scrollToBottom();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -279,7 +288,7 @@ export default function CustomerChatPage() {
                   disconnectFromAgent();
                 }
                 localStorage.removeItem('customer');
-                window.location.href = 'http://localhost:3000/customer';
+                router.push('/customer');
               }}
               className="text-sm text-gray-600 hover:text-gray-900"
             >

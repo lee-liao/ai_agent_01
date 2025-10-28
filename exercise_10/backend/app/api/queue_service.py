@@ -32,33 +32,55 @@ async def enqueue_waiting_customer(customer_name: str, account_number: Optional[
 
 
 async def dequeue_top() -> Optional[Dict]:
-    r = get_redis()
-    # Lua script: atomically LPOP id, read hash, delete hash, and return full item
+    """Remove and return the first waiting customer from the queue (FIFO)"""
+    print(f"🔄 dequeue_top() called - attempting to remove top customer from queue")
+    r = get_redis()  # This was missing!
     script = """
-    local list = KEYS[1]
-    local prefix = ARGV[1]
-    local id = redis.call('LPOP', list)
-    if not id then return nil end
-    local key = prefix .. id
-    local data = redis.call('HGETALL', key)
-    redis.call('DEL', key)
-    local result = {id}
-    for i=1,#data do table.insert(result, data[i]) end
+    local queue_key = KEYS[1]
+    local item_base = ARGV[1]
+    
+    -- Get the call_id of the first item in the queue
+    local call_id = redis.call('lpop', queue_key)
+    if not call_id then
+        return nil
+    end
+    
+    -- Get the item details
+    local fields = redis.call('hgetall', item_base .. call_id)
+    
+    -- Convert to map
+    local result = {}
+    for i = 1, #fields, 2 do
+        result[fields[i]] = fields[i + 1]
+    end
+    result['call_id'] = call_id
+    
+    -- Delete the item hash
+    redis.call('del', item_base .. call_id)
+    
     return result
     """
+    
     res = await r.eval(script, 1, QUEUE_LIST_KEY, "queue:item:")
-    if not res:
-        return None
-    # Redis returns a flat array: [id, field1, value1, field2, value2, ...]
-    call_id = res[0]
-    fields = res[1:]
-    item: Dict[str, str] = {fields[i]: fields[i+1] for i in range(0, len(fields), 2)} if fields else {}
-    if call_id:
-        item["call_id"] = call_id
-    return item
+    
+    if res:
+        print(f"✅ Top customer {res.get('call_id', 'unknown')} dequeued from queue")
+        # Add to active conversations to prevent duplicate matches
+        from .calls import active_conversations
+        active_conversations[res['call_id']] = {
+            "customer_call_id": res['call_id'],
+            "customer_name": res.get('customer_name'),
+            "account_number": res.get('account_number'),
+            "status": "matched"
+        }
+    else:
+        print(f"⚠️ No customers found in queue to dequeue")
+    
+    return res
 
 
 async def dequeue_by_account_number(account_number: str) -> Optional[Dict]:
+    print(f"🔄 dequeue_by_account_number() called for account {account_number}")
     r = get_redis()
     # Lua script: scan list, find first id whose hash field account_number matches, remove and return full item
     script = """
@@ -81,15 +103,27 @@ async def dequeue_by_account_number(account_number: str) -> Optional[Dict]:
     return nil
     """
     res = await r.eval(script, 1, QUEUE_LIST_KEY, "queue:item:", account_number)
-    if not res:
+    
+    if res:
+        call_id = res[0]
+        print(f"✅ Customer with account {account_number} ({call_id}) dequeued by account number")
+        # Redis returns a flat array: [id, field1, value1, field2, value2, ...]
+        fields = res[1:]
+        item: Dict[str, str] = {fields[i]: fields[i+1] for i in range(0, len(fields), 2)} if fields else {}
+        if call_id:
+            item["call_id"] = call_id
+        # Add to active conversations to prevent duplicate matches
+        from .calls import active_conversations
+        active_conversations[call_id] = {
+            "customer_call_id": call_id,
+            "customer_name": item.get('customer_name'),
+            "account_number": item.get('account_number'),
+            "status": "matched"
+        }
+        return item
+    else:
+        print(f"⚠️ No customer found with account number {account_number} to dequeue")
         return None
-    # Redis returns a flat array: [id, field1, value1, field2, value2, ...]
-    call_id = res[0]
-    fields = res[1:]
-    item: Dict[str, str] = {fields[i]: fields[i+1] for i in range(0, len(fields), 2)} if fields else {}
-    if call_id:
-        item["call_id"] = call_id
-    return item
 
 
 async def remove_from_queue(call_id: str) -> None:

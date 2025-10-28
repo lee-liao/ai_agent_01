@@ -48,173 +48,65 @@ async def start_call(request: StartCallRequest):
     call_id = f"call_{uuid.uuid4().hex[:12]}"
     
     if request.user_type == "customer":
-        # Customer wants to connect - check if any agents available
-        if available_agents:
-            # Match with first available agent
-            agent_info = available_agents.pop(0)
-            
-            # Create active conversation session
-            active_conversations[call_id] = {
-                "agent_call_id": agent_info["call_id"],
-                "customer_call_id": call_id,
-                "agent_name": agent_info["agent_name"],
-                "customer_name": request.user_name,
-                "account_number": request.account_number,
-                "started_at": datetime.utcnow().isoformat(),
-                "status": "active"
-            }
-            
-            return CallResponse(
-                call_id=call_id,
-                status="matched",
-                message=f"Connected to agent {agent_info['agent_name']}",
-                matched=True,
-                partner_name=agent_info["agent_name"]
-            )
-        else:
-            # No agents available - ensure single active/queued chat per customer/account
-            if request.account_number:
-                # Guard 1: active conversation already exists
-                for _, conv in active_conversations.items():
-                    if conv.get("account_number") == request.account_number or conv.get("customer_name") == request.user_name:
-                        return CallResponse(
-                            call_id=call_id,
-                            status="duplicate",
-                            message="You already have an active conversation.",
-                            matched=False
-                        )
-                # Guard 2: queued item already exists in Redis
-                existing_cid = await find_call_id_by_account(request.account_number)
-                if existing_cid:
+        # Customer wants to connect - always add to the queue
+        # (agents will manually pick customers from queue)
+        print(f"📥 Customer {request.user_name} attempting to connect, going to queue")
+        
+        if request.account_number:
+            # Guard 1: active conversation already exists
+            for _, conv in active_conversations.items():
+                if conv.get("account_number") == request.account_number or conv.get("customer_name") == request.user_name:
+                    print(f"⚠️ Customer {request.user_name} already has active conversation, rejecting")
+                    print(f"Active conversations: {active_conversations}")
                     return CallResponse(
-                        call_id=existing_cid,
+                        call_id=call_id,
                         status="duplicate",
-                        message="You already have a pending request in the queue.",
+                        message="You already have an active conversation.",
                         matched=False
                     )
-            # Add to Redis-backed queue
-            await enqueue_waiting_customer(request.user_name, request.account_number, call_id)
-            # Notify subscribed agents of new waiting customer
-            try:
-                from .websocket import broadcast_queue_update
-                # Fire and forget; if it fails, continue
-                import asyncio as _asyncio
-                _asyncio.create_task(broadcast_queue_update())
-            except Exception:
-                pass
+            # Guard 2: queued item already exists in Redis
+            existing_cid = await find_call_id_by_account(request.account_number)
+            if existing_cid:
+                print(f"⚠️ Customer {request.user_name} already has queued request, rejecting")
+                return CallResponse(
+                    call_id=existing_cid,
+                    status="duplicate",
+                    message="You already have a pending request in the queue.",
+                    matched=False
+                )
+        # Add to Redis-backed queue (regardless of available agents)
+        await enqueue_waiting_customer(request.user_name, request.account_number, call_id)
+        print(f"✅ Customer {request.user_name} added to queue with call_id {call_id}")
+        
+        # Notify subscribed agents of new waiting customer
+        try:
+            from .websocket import broadcast_queue_update
+            # Fire and forget; if it fails, continue
+            import asyncio as _asyncio
+            _asyncio.create_task(broadcast_queue_update())
+            print(f"📢 Queue update broadcast sent after adding customer {call_id}")
+        except Exception as e:
+            print(f"❌ Failed to broadcast queue update: {e}")
+            pass
 
-            return CallResponse(
-                call_id=call_id,
-                status="waiting",
-                message="Waiting for available agent...",
-                matched=False
-            )
+        return CallResponse(
+            call_id=call_id,
+            status="waiting",
+            message="Waiting for an agent to pick up your request...",
+            matched=False
+        )
     
     elif request.user_type == "agent":
-        # If agent specified a target account, try to match that first (Redis-backed)
-        if request.target_account_number:
-            customer_info = await dequeue_by_account_number(request.target_account_number)
-            if customer_info:
-                active_conversations[call_id] = {
-                    "agent_call_id": call_id,
-                    "customer_call_id": customer_info["call_id"],
-                    "agent_name": request.user_name,
-                    "customer_name": customer_info.get("customer_name"),
-                    "account_number": customer_info.get("account_number"),
-                    "started_at": datetime.utcnow().isoformat(),
-                    "status": "active"
-                }
-                # Update queue and notify customer and agent
-                try:
-                    from .websocket import broadcast_queue_update, broadcast_to_call
-                    import asyncio as _asyncio
-                    _asyncio.create_task(broadcast_queue_update())
-                    # Notify customer that conversation started
-                    _asyncio.create_task(broadcast_to_call(customer_info["call_id"], {
-                        "type": "conversation_started",
-                        "call_id": customer_info["call_id"],
-                        "timestamp": datetime.utcnow().isoformat()
-                    }))
-                    # Notify agent that conversation started with customer context
-                    _asyncio.create_task(broadcast_to_call(call_id, {
-                        "type": "conversation_started",
-                        "call_id": call_id,
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "customer_name": customer_info.get("customer_name"),
-                        "account_number": customer_info.get("account_number")
-                    }))
-                except Exception:
-                    pass
-                return CallResponse(
-                    call_id=call_id,
-                    status="matched",
-                    message=f"Connected to customer {customer_info.get('customer_name')}",
-                    matched=True,
-                    partner_name=customer_info.get("customer_name")
-                )
-
-        # If agent is monitoring only, do not auto-match or mark available
-        if request.available is False:
-            return CallResponse(
-                call_id=call_id,
-                status="monitoring",
-                message="Monitoring waiting queue...",
-                matched=False
-            )
-
-        # Match with first waiting customer (Redis-backed)
-        customer_info = await dequeue_top()
-        if customer_info:
-            active_conversations[call_id] = {
-                "agent_call_id": call_id,
-                "customer_call_id": customer_info["call_id"],
-                "agent_name": request.user_name,
-                "customer_name": customer_info.get("customer_name"),
-                "account_number": customer_info.get("account_number"),
-                "started_at": datetime.utcnow().isoformat(),
-                "status": "active"
-            }
-            try:
-                from .websocket import broadcast_queue_update, broadcast_to_call
-                import asyncio as _asyncio
-                _asyncio.create_task(broadcast_queue_update())
-                # Notify customer that conversation started
-                _asyncio.create_task(broadcast_to_call(customer_info["call_id"], {
-                    "type": "conversation_started",
-                    "call_id": customer_info["call_id"],
-                    "timestamp": datetime.utcnow().isoformat()
-                }))
-                # Notify agent that conversation started with customer context
-                _asyncio.create_task(broadcast_to_call(call_id, {
-                    "type": "conversation_started",
-                    "call_id": call_id,
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "customer_name": customer_info.get("customer_name"),
-                    "account_number": customer_info.get("account_number")
-                }))
-            except Exception:
-                pass
-            return CallResponse(
-                call_id=call_id,
-                status="matched",
-                message=f"Connected to customer {customer_info.get('customer_name')}",
-                matched=True,
-                partner_name=customer_info.get("customer_name")
-            )
-        else:
-            # No customers waiting - mark agent as available
-            available_agents.append({
-                "agent_name": request.user_name,
-                "call_id": call_id,
-                "timestamp": datetime.utcnow().isoformat()
-            })
-            
-            return CallResponse(
-                call_id=call_id,
-                status="waiting",
-                message="Waiting for customer...",
-                matched=False
-            )
+        print(f"👤 Agent {request.user_name} connecting in monitoring mode (no auto-assignment)")
+        
+        # Agent always connects in monitoring mode - no auto-assignment of customers
+        # Customers can only be assigned manually via "Take Top" or "Pick Up" buttons
+        return CallResponse(
+            call_id=call_id,
+            status="monitoring",
+            message="Connected in monitoring mode. Use 'Take Top' or 'Pick Up' to manually select customers.",
+            matched=False
+        )
     
     raise HTTPException(status_code=400, detail="Invalid user_type")
 

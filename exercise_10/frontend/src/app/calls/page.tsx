@@ -30,6 +30,8 @@ export default function CallsPage() {
   const [isTranscribing, setIsTranscribing] = useState(false); // Track when audio is being transcribed
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const aiSuggestionsRef = useRef<HTMLDivElement>(null);
   
   // Audio call hook
   const {
@@ -58,15 +60,42 @@ export default function CallsPage() {
     setUser(JSON.parse(userData));
   }, [router]);
 
-  // Auto-scroll to latest message
+  // Auto-scroll to latest message only if user is near bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const chatContainer = chatContainerRef.current;
+    if (!chatContainer) return;
+    
+    // Only auto-scroll if user is within 100px of the bottom
+    const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop <= chatContainer.clientHeight + 100;
+    
+    if (isNearBottom) {
+      // Use setTimeout to ensure the scroll happens after DOM updates
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 0);
+    }
   }, [messages]);
+
+  // Auto-scroll AI suggestions panel only if user is near bottom
+  useEffect(() => {
+    const suggestionsContainer = aiSuggestionsRef.current;
+    if (!suggestionsContainer) return;
+    
+    // Only auto-scroll if user is within 20px of the bottom
+    const isNearBottom = suggestionsContainer.scrollHeight - suggestionsContainer.scrollTop <= suggestionsContainer.clientHeight + 20;
+    
+    if (isNearBottom) {
+      // Scroll to top since new suggestions are added at the beginning
+      setTimeout(() => {
+        suggestionsContainer.scrollTop = 0;
+      }, 0);
+    }
+  }, [aiSuggestions]);
 
   // Auto-connect (monitor mode) to subscribe to queue on page load
   useEffect(() => {
     if (user && !ws) {
-      startCall();
+      connectAgent();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -108,22 +137,38 @@ export default function CallsPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const startCall = async () => {
-    // Do not set inCall until matched or call_started; keeps queue visible
+  // Initialize agent connection (monitoring mode only)
+  const connectAgent = async () => {
+    if (ws) return; // Already connected
     
     try {
       // Step 1: Request connection to backend matching service
       const callApiModule = await import('@/lib/callApi');
       const response = await callApiModule.callAPI.startCall(
         'agent',
-        user?.username || 'Agent',
-        { available: true }
+        user?.username || 'Agent'
+        // No availability parameter needed in simplified model
       );
       
       console.log('📞 Agent call response:', response);
       
       // Step 2: Connect WebSocket with assigned call_id
-      const websocket = new WebSocket(`ws://localhost:8000/ws/call/${response.call_id}`);
+      // Determine WebSocket backend URL based on environment variable
+      // This ensures the WebSocket connects to the same backend server as API calls
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8000`;
+      
+      // Extract hostname and port from API URL to build WebSocket URL
+      let wsUrl;
+      if (apiBaseUrl.startsWith('http://')) {
+        wsUrl = apiBaseUrl.replace('http://', 'ws://');
+      } else if (apiBaseUrl.startsWith('https://')) {
+        wsUrl = apiBaseUrl.replace('https://', 'wss://');
+      } else {
+        // Fallback for malformed URL
+        wsUrl = `ws://${apiBaseUrl}`;
+      }
+      
+      const websocket = new WebSocket(`${wsUrl}/ws/call/${response.call_id}`);
       
       websocket.onopen = () => {
         console.log('✅ Agent WebSocket connected with call_id:', response.call_id);
@@ -135,15 +180,11 @@ export default function CallsPage() {
           timestamp: new Date().toISOString()
         }));
         
-        // Show appropriate message based on match status
-        if (response.matched && response.partner_name) {
-          addMessage('system', `Connected to customer: ${response.partner_name}`);
-          setInCall(true);
-        } else {
-          addMessage('system', `${response.message} Waiting for incoming conversation... (subscribed)`);
-          websocket.send(JSON.stringify({ type: 'subscribe_queue' }));
-          console.log('Agent subscribed to queue updates');
-        }
+        // Subscribe to queue updates (monitoring mode)
+        websocket.send(JSON.stringify({ type: 'subscribe_queue' }));
+        console.log('Agent subscribed to queue updates');
+        
+        addMessage('system', 'Agent connected. Use "Take Top" or "Pick Up" to manually select customers.');
       };
 
       websocket.onmessage = (event) => {
@@ -168,7 +209,7 @@ export default function CallsPage() {
             ].slice(0, 10));
           } else if (data.type === 'conversation_ended') {
             addMessage('system', 'Conversation ended');
-            endCall();
+            setInCall(false);
           } else if (data.type === 'conversation_started') {
             addMessage('system', 'Conversation started');
             setInCall(true);
@@ -183,6 +224,8 @@ export default function CallsPage() {
           } else if (data.type === 'queue_update') {
             console.log('Agent received queue_update:', data.items);
             setQueueItems(Array.isArray(data.items) ? data.items : []);
+            // Update queue panel visibility based on items
+            setShowQueuePanel(Array.isArray(data.items) && data.items.length > 0);
           } else if (data.type === 'customer_context') {
             // Handle customer context data
             if (data.customer) {
@@ -193,46 +236,17 @@ export default function CallsPage() {
                 status: data.customer.status,
                 lifetime_value: data.customer.lifetime_value,
                 orders: data.orders || [],
-                tickets: data.tickets || [],
               });
-            } else if (data.error) {
-              console.warn('Customer context fetch error:', data.error);
-              addMessage('system', `⚠️ ${data.error}`);
             }
-          } else if (data.type === 'pickup_result') {
-            if (data.status === 'success') {
-              addMessage('system', `Picked up ${data.customer_name || ''}`);
-              setMessages([]);
-              setInCall(true);
-              setSelectedCustomer({ name: data.customer_name, account: data.account_number });
-              if (data.account_number || data.customer_name) {
-                import('@/lib/callApi').then(async (mod) => {
-                  try {
-                    const q = data.account_number || data.customer_name;
-                    const info = await mod.customerAPI.publicSearch(q);
-                    if (info) {
-                      setSelectedCustomer(prev => ({
-                        ...prev,
-                        name: info.name ?? prev?.name,
-                        account: info.account_number ?? prev?.account,
-                        tier: info.tier ?? prev?.tier,
-                        status: info.status ?? prev?.status,
-                        orders: info.orders ?? [],
-                        tickets: info.tickets ?? [],
-                      }));
-                    }
-                  } catch (e) {
-                    console.warn('Agent: customer context lookup failed:', e);
-                  }
-                });
-              }
-            } else {
-              const errorMessage = data.message || data.status;
-              addMessage('system', `Pickup failed: ${errorMessage}`);
-            }
+          } else if (data.type === 'availability_ignored') {
+            // In the simplified model, agents don't use availability states
+            // They remain in monitoring mode and manually pick customers
+            console.log('Availability state not used in simplified model:', data.message);
+          } else {
+            console.log('Received unknown message type:', data.type);
           }
-        } catch (e) {
-          console.error('Error parsing message:', e);
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
         }
       };
 
@@ -243,14 +257,14 @@ export default function CallsPage() {
 
       websocket.onclose = () => {
         console.log('WebSocket closed');
+        setWs(null);
       };
 
       setWs(websocket);
       
     } catch (error: any) {
-      console.error('Failed to start chat:', error);
+      console.error('Failed to connect agent:', error);
       addMessage('system', `⚠️ Failed to connect: ${error.message || 'Please check if the server is running on port 8000.'}`);
-      setInCall(false);
     }
   };
 
@@ -258,13 +272,12 @@ export default function CallsPage() {
     if (ws) {
       ws.send(JSON.stringify({
         type: 'end_call',
+        user_type: 'agent',
         timestamp: new Date().toISOString()
       }));
-      ws.close();
     }
     
     setInCall(false);
-    setWs(null);
     addMessage('system', 'Call ended');
     // Keep queue panel visible (collapsed with count)
     setShowQueuePanel(true);
@@ -283,10 +296,7 @@ export default function CallsPage() {
   const sendMessage = () => {
     if (!inputMessage.trim()) return;
 
-    // Add to UI
-    addMessage('agent', inputMessage);
-
-    // Send via WebSocket
+    // Send via WebSocket (the WebSocket response will add the message to UI)
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: 'transcript',
@@ -329,8 +339,11 @@ export default function CallsPage() {
             </div>
             <button
               onClick={() => {
+                if (inCall) {
+                  endCall();
+                }
                 localStorage.removeItem('user');
-                router.push('/');
+                router.push('/auth/signin');
               }}
               className="text-sm text-gray-600 hover:text-gray-900"
             >
@@ -375,13 +388,11 @@ export default function CallsPage() {
                     )}
                     
                     {!inCall ? (
-                      <button
-                        onClick={startCall}
-                        className="flex items-center gap-2 bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition"
-                      >
-                        <Phone className="w-5 h-5" />
-                        Ready to Assist
-                      </button>
+                      // No button needed in idle state - agent is always ready to pick customers
+                      <div className="text-gray-600">
+                        <Phone className="w-5 h-5 inline mr-2" />
+                        Monitoring Queue
+                      </div>
                     ) : (
                       <button
                         onClick={endCall}
@@ -476,7 +487,7 @@ export default function CallsPage() {
               )}
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4" ref={chatContainerRef}>
                 {messages.length === 0 ? (
                   <div className="text-center text-gray-400 mt-20">
                     <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -539,7 +550,7 @@ export default function CallsPage() {
             {aiSuggestions.length > 0 && (
               <div className="border-t border-gray-200 p-4 bg-gray-50">
                 <h4 className="text-sm font-semibold text-gray-800 mb-2">AI Suggestions</h4>
-                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-1" ref={aiSuggestionsRef}>
                   {aiSuggestions.map((s, idx) => {
                     // Determine color based on position and the color of the top suggestion
                     // If this is the top suggestion (idx === 0), use the tracked color
@@ -583,59 +594,53 @@ export default function CallsPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {!inCall ? (
-              <div className="bg-white rounded-lg shadow-lg p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <User className="w-5 h-5" />
-                    Waiting Customers
-                  </h3>
-                  <button
-                    onClick={() => {
-                      if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({ type: 'pickup' }));
-                      }
-                    }}
-                    disabled={!ws || ws.readyState !== WebSocket.OPEN || queueItems.length === 0}
-                    className="text-sm bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    Take Top
-                  </button>
-                </div>
-                {queueItems.length === 0 ? (
-                  <p className="text-gray-400 text-sm">No customers waiting</p>
-                ) : (
-                  <div className="space-y-3">
-                    {queueItems.map((item, idx) => (
-                      <div key={idx} className="flex items-center justify-between border border-gray-200 rounded-lg p-3">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{item.customer_name || 'Customer'}</p>
-                          <p className="text-xs text-gray-600">{item.account_number || '—'} · since {item.waiting_since?.split('T')[0]}</p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            if (ws && ws.readyState === WebSocket.OPEN && item.account_number) {
-                              ws.send(JSON.stringify({ type: 'pickup', account_number: item.account_number }));
-                            }
-                          }}
-                          disabled={!ws || ws.readyState !== WebSocket.OPEN || !item.account_number}
-                          className="text-sm px-3 py-2 rounded-lg transition disabled:opacity-50 disabled:bg-gray-300 disabled:text-gray-500 bg-blue-600 text-white hover:bg-blue-700"
-                        >
-                          Pick Up
-                        </button>
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <User className="w-5 h-5" />
+                  Waiting Customers
+                </h3>
+                <button
+                  onClick={() => {
+                    if (ws && ws.readyState === WebSocket.OPEN && !inCall) {
+                      ws.send(JSON.stringify({ type: 'pickup' }));
+                    }
+                  }}
+                  disabled={!ws || ws.readyState !== WebSocket.OPEN || queueItems.length === 0 || inCall}
+                  className="text-sm bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Take Top
+                </button>
+              </div>
+              {queueItems.length === 0 ? (
+                <p className="text-gray-400 text-sm">No customers waiting</p>
+              ) : (
+                <div className="space-y-3">
+                  {queueItems.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between border border-gray-200 rounded-lg p-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{item.customer_name || 'Customer'}</p>
+                        <p className="text-xs text-gray-600">{item.account_number || '—'} · since {item.waiting_since?.split('T')[0]}</p>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="bg-white rounded-lg shadow p-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-700">Waiting Customers</div>
-                  <div className="text-xs text-gray-500">{queueItems.length} waiting</div>
+                      <button
+                        onClick={() => {
+                          if (ws && ws.readyState === WebSocket.OPEN && !inCall) {
+                            ws.send(JSON.stringify({ 
+                              type: 'pickup', 
+                              account_number: item.account_number 
+                            }));
+                          }
+                        }}
+                        disabled={!ws || ws.readyState !== WebSocket.OPEN || inCall}
+                        className="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:opacity-50"
+                      >
+                        Pick Up
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
             {/* Customer Info */}
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
