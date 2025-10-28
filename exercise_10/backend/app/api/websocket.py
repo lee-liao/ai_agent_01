@@ -49,7 +49,15 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
     try:
         while True:
             # Receive data from client
-            data = await websocket.receive()
+            try:
+                data = await websocket.receive()
+            except RuntimeError as e:
+                if "Cannot call" in str(e) and "disconnect message" in str(e):
+                    print(f"ℹ️ WebSocket {call_id} already disconnected: {e}")
+                    break
+                else:
+                    print(f"❌ Unexpected RuntimeError for {call_id}: {e}")
+                    raise
             
             if "bytes" in data:
                 # Audio data received
@@ -95,15 +103,23 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
             elif "text" in data:
                 # Control message received
                 message = json.loads(data["text"])
+                print(f"📡 [WS-{call_id}] Received message type: {message['type']}")
 
                 if message["type"] == "start_call":
                     print(f"▶️ Call started: {call_id}")
                     await handle_start_call(call_id, message, websocket)
 
                 elif message["type"] == "end_call":
-                    print(f"⏹️ Call ended: {call_id}")
+                    print(f"⏹️ Call ended: {call_id}, user_type: {message.get('user_type', 'unknown')}")
+                    from .calls import active_conversations as active_calls
+                    print(f"📋 [DEBUG] Active conversations before end_call: {dict(active_calls)}")
+                    user_type = message.get("user_type")
                     await handle_end_call(call_id, message, websocket)
-                    return
+                    print(f"📋 [DEBUG] Active conversations after end_call: {dict(active_calls)}")
+                    if user_type != 'agent':
+                        # Only close WebSocket connection for non-agents (customers)
+                        return
+                    # For agents, continue listening for more messages (like pickup requests)
 
                 elif message["type"] == "subscribe_queue":
                     # Mark this agent connection as a queue subscriber and send initial snapshot
@@ -130,14 +146,16 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                 elif message["type"] == "pickup":
                     # Agent requests to pick up a customer. If account_number absent, pick top of queue (FIFO)
                     account_number = message.get("account_number")
+                    print(f"📥 [WS-{call_id}] Pickup requested for account: {account_number}")
                     if not account_number:
                         result = await try_pickup_top(agent_call_id=call_id)
                     else:
                         result = await try_pickup_customer(agent_call_id=call_id, account_number=account_number)
-                    print(f"[WS] Pickup requested by {call_id} for {account_number}: {result}")
+                    print(f"[WS-{call_id}] Pickup result for {account_number}: {result}")
                     await websocket.send_json({"type": "pickup_result", **result})
                     # If success, notify both ends of conversation start and send customer context to agent
                     if result.get("status") == "success":
+                        print(f"✅ [WS-{call_id}] Successful pickup, sending conversation_started")
                         # Send conversation started to agent
                         await websocket.send_json({
                             "type": "conversation_started",
@@ -157,6 +175,7 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                         
                         # Send immediate queue update to the agent who just picked up customer
                         # This ensures their UI shows the current queue state (likely empty)
+                        print(f"📋 [WS-{call_id}] Sending queue update after successful pickup")
                         await send_queue_update(target_ws=websocket)
                         
                         customer_call_id = result.get("customer_call_id")
@@ -167,8 +186,11 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                                     "call_id": customer_call_id,
                                     "timestamp": datetime.utcnow().isoformat()
                                 })
+                                print(f"✅ [WS-{call_id}] Sent conversation_started to customer {customer_call_id}")
                             except Exception as e:
                                 print(f"❌ Failed to send conversation_started to {customer_call_id}: {e}")
+                    else:
+                        print(f"❌ [WS-{call_id}] Pickup failed for {account_number}")
 
                 elif message["type"] == "conversation_started":
                     # Conversation started - trigger customer context fetch for agent
@@ -249,47 +271,104 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
         traceback.print_exc()
     
     finally:
+        print(f"🧹 [finally] Starting cleanup for call_id: {call_id}")
         # If an active conversation exists for this call_id, notify partner before cleanup
         try:
             from .calls import active_conversations as active_calls
             partner_call_id = None
-            key_to_delete = None
+            keys_to_delete = []
+            
+            # Find the conversation that contains this call_id - this might be stored as key or in the data
+            # First, find the conversation that has this call_id
+            target_conversation = None
+            conversation_keys = []
+            
             for active_key, call_info in list(active_calls.items()):
-                if call_id == call_info.get("agent_call_id"):
-                    partner_call_id = call_info.get("customer_call_id")
-                    key_to_delete = active_key
-                    break
-                elif call_id == call_info.get("customer_call_id"):
-                    partner_call_id = call_info.get("agent_call_id")
-                    key_to_delete = active_key
-                    break
-            if key_to_delete:
+                if call_id == active_key or call_id == call_info.get("agent_call_id") or call_id == call_info.get("customer_call_id"):
+                    # This call_id is part of this conversation
+                    if call_info.get("agent_call_id") and call_info.get("customer_call_id"):
+                        # This is a matched conversation with both parties
+                        # Find all entries that represent the same logical conversation
+                        target_conversation = call_info
+                        # Add this key to potential deletions
+                        conversation_keys.append(active_key)
+                        # Also get the partner if not already set
+                        if not partner_call_id:
+                            if call_id == call_info.get("agent_call_id"):
+                                partner_call_id = call_info.get("customer_call_id")
+                            elif call_id == call_info.get("customer_call_id"):
+                                partner_call_id = call_info.get("agent_call_id")
+                    elif call_info.get("customer_call_id") == active_key and not call_info.get("agent_call_id"):
+                        # This looks like a customer-side entry that might be part of the same conversation
+                        # Check if it's part of the same logical conversation as others
+                        conversation_keys.append(active_key)
+            
+            # Now identify all keys that belong to the same conversation
+            if target_conversation and target_conversation.get("agent_call_id") and target_conversation.get("customer_call_id"):
+                # Find all entries that relate to this specific agent-customer pairing
+                agent_call_id = target_conversation["agent_call_id"]
+                customer_call_id = target_conversation["customer_call_id"]
+                
+                for active_key, call_info in list(active_calls.items()):
+                    # Check if this entry is part of the same conversation
+                    if (active_key == agent_call_id or 
+                        active_key == customer_call_id or
+                        call_info.get("agent_call_id") == agent_call_id or 
+                        call_info.get("customer_call_id") == customer_call_id):
+                        keys_to_delete.append(active_key)
+            else:
+                # If we couldn't identify a clear conversation, just remove entries that directly match
+                for active_key, call_info in list(active_calls.items()):
+                    if call_id == active_key or call_id == call_info.get("agent_call_id") or call_id == call_info.get("customer_call_id"):
+                        keys_to_delete.append(active_key)
+                        # Set partner if not already set
+                        if not partner_call_id:
+                            if call_id == call_info.get("agent_call_id"):
+                                partner_call_id = call_info.get("customer_call_id")
+                            elif call_id == call_info.get("customer_call_id"):
+                                partner_call_id = call_info.get("agent_call_id")
+
+            # Remove all related conversation entries
+            for key_to_delete in set(keys_to_delete):  # Use set to avoid duplicates
                 print(f"[cleanup] Deleting active conversation with key: {key_to_delete} for call_id: {call_id}")
                 try:
                     del active_calls[key_to_delete]
-                except Exception:
-                    pass
-                if partner_call_id and partner_call_id in active_connections:
-                    try:
-                        await active_connections[partner_call_id].send_json({
-                            "type": "conversation_ended",
-                            "call_id": partner_call_id,
-                            "timestamp": datetime.utcnow().isoformat()
-                        })
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+                    print(f"🧹 [cleanup] Successfully removed {key_to_delete} from active_conversations")
+                except Exception as e:
+                    print(f"❌ [cleanup] Error removing active conversation: {e}")
+            
+            # Notify partner if connected
+            if partner_call_id and partner_call_id in active_connections:
+                try:
+                    await active_connections[partner_call_id].send_json({
+                        "type": "conversation_ended",
+                        "call_id": partner_call_id,
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                    print(f"✅ [cleanup] Sent conversation_ended to partner {partner_call_id}")
+                except Exception as e:
+                    print(f"❌ [cleanup] Error sending conversation_ended to partner: {e}")
+            else:
+                print(f"ℹ️ [cleanup] No partner found for {call_id}, partner_call_id: {partner_call_id}")
+                
+        except Exception as e:
+            print(f"❌ [cleanup] Exception in main cleanup: {e}")
+            import traceback
+            traceback.print_exc()
         # Cleanup connection maps
         if call_id in active_connections:
             del active_connections[call_id]
+            print(f"🧹 [cleanup] Removed {call_id} from active_connections")
         if call_id in agent_queue_subscribers:
             del agent_queue_subscribers[call_id]
+            print(f"🧹 [cleanup] Removed {call_id} from agent_queue_subscribers")
         if call_id in audio_buffers:
             del audio_buffers[call_id]
+            print(f"🧹 [cleanup] Removed {call_id} from audio_buffers")
         # Cleanup conversation context
         from .context_manager import clear_context
         clear_context(call_id)
+        print(f"🧹 [cleanup] Cleared context for {call_id}")
 
 async def handle_start_call(call_id: str, message: dict, websocket: WebSocket):
     """Acknowledge connection without starting a call automatically."""
@@ -310,32 +389,83 @@ async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
     # Try to remove from active conversations and notify partner
     from .calls import active_conversations as active_calls, available_agents
     partner_call_id = None
-    key_to_delete = None
+    keys_to_delete = []
+    
+    # Find the conversation that contains this call_id - this might be stored as key or in the data
+    # First, find the conversation that has this call_id
+    target_conversation = None
+    conversation_keys = []
+    
     for active_key, call_info in list(active_calls.items()):
-        if call_id == call_info.get("agent_call_id"):
-            partner_call_id = call_info.get("customer_call_id")
-            key_to_delete = active_key
-            break
-        elif call_id == call_info.get("customer_call_id"):
-            partner_call_id = call_info.get("agent_call_id")
-            key_to_delete = active_key
-            break
-    if key_to_delete:
+        if call_id == active_key or call_id == call_info.get("agent_call_id") or call_id == call_info.get("customer_call_id"):
+            # This call_id is part of this conversation
+            if call_info.get("agent_call_id") and call_info.get("customer_call_id"):
+                # This is a matched conversation with both parties
+                # Find all entries that represent the same logical conversation
+                target_conversation = call_info
+                # Add this key to potential deletions
+                conversation_keys.append(active_key)
+                # Also get the partner if not already set
+                if not partner_call_id:
+                    if call_id == call_info.get("agent_call_id"):
+                        partner_call_id = call_info.get("customer_call_id")
+                    elif call_id == call_info.get("customer_call_id"):
+                        partner_call_id = call_info.get("agent_call_id")
+            elif call_info.get("customer_call_id") == active_key and not call_info.get("agent_call_id"):
+                # This looks like a customer-side entry that might be part of the same conversation
+                # Check if it's part of the same logical conversation as others
+                conversation_keys.append(active_key)
+    
+    # Now identify all keys that belong to the same conversation
+    if target_conversation and target_conversation.get("agent_call_id") and target_conversation.get("customer_call_id"):
+        # Find all entries that relate to this specific agent-customer pairing
+        agent_call_id = target_conversation["agent_call_id"]
+        customer_call_id = target_conversation["customer_call_id"]
+        
+        for active_key, call_info in list(active_calls.items()):
+            # Check if this entry is part of the same conversation
+            if (active_key == agent_call_id or 
+                active_key == customer_call_id or
+                call_info.get("agent_call_id") == agent_call_id or 
+                call_info.get("customer_call_id") == customer_call_id):
+                keys_to_delete.append(active_key)
+    else:
+        # If we couldn't identify a clear conversation, just remove entries that directly match
+        for active_key, call_info in list(active_calls.items()):
+            if call_id == active_key or call_id == call_info.get("agent_call_id") or call_id == call_info.get("customer_call_id"):
+                keys_to_delete.append(active_key)
+                # Set partner if not already set
+                if not partner_call_id:
+                    if call_id == call_info.get("agent_call_id"):
+                        partner_call_id = call_info.get("customer_call_id")
+                    elif call_id == call_info.get("customer_call_id"):
+                        partner_call_id = call_info.get("agent_call_id")
+
+    # Remove all related conversation entries
+    for key_to_delete in set(keys_to_delete):  # Use set to avoid duplicates
         print(f"[handle_end_call] Deleting active conversation with key: {key_to_delete} for call_id: {call_id}")
         try:
             del active_calls[key_to_delete]
-        except Exception:
-            pass
-        if partner_call_id and partner_call_id in active_connections:
-            try:
-                await active_connections[partner_call_id].send_json({
-                    "type": "conversation_ended",
-                    "call_id": partner_call_id,
-                    "timestamp": datetime.utcnow().isoformat()
-                })
-            except Exception:
-                pass
+            print(f"🧹 [handle_end_call] Successfully removed {key_to_delete} from active_conversations")
+        except Exception as e:
+            print(f"❌ [handle_end_call] Error removing active conversation: {e}")
+    
+    # Notify partner if connected
+    if partner_call_id and partner_call_id in active_connections:
+        try:
+            await active_connections[partner_call_id].send_json({
+                "type": "conversation_ended",
+                "call_id": partner_call_id,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            print(f"✅ [handle_end_call] Sent conversation_ended to partner {partner_call_id}")
+        except Exception as e:
+            print(f"❌ [handle_end_call] Error sending conversation_ended to partner {partner_call_id}: {e}")
     else:
+        print(f"ℹ️ [handle_end_call] No partner found for {call_id}, partner_call_id: {partner_call_id}")
+        
+    if not keys_to_delete:
+        print(f"ℹ️ [handle_end_call] Call {call_id} not in active conversations, removing from waiting queue")
         # Not in active conversation: remove from waiting (Redis) and available list
         removed_waiting = False
         removed_agents = False
@@ -344,7 +474,9 @@ async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
             from .queue_service import remove_from_queue as _rm
             await _rm(call_id)
             removed_waiting = True
-        except Exception:
+            print(f"🧹 [handle_end_call] Removed {call_id} from waiting queue")
+        except Exception as e:
+            print(f"❌ [handle_end_call] Error removing from waiting queue: {e}")
             pass # No fallback, as in-memory queue is deprecated
         
         # In-memory cleanup for available_agents (legacy)

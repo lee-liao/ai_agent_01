@@ -53,6 +53,8 @@ async def start_call(request: StartCallRequest):
         print(f"📥 Customer {request.user_name} attempting to connect, going to queue")
         
         if request.account_number:
+            print(f"📋 [DEBUG] Checking for duplicate for account: {request.account_number}, user: {request.user_name}")
+            print(f"📋 [DEBUG] Current active conversations: {dict(active_conversations)}")
             # Guard 1: active conversation already exists
             for _, conv in active_conversations.items():
                 if conv.get("account_number") == request.account_number or conv.get("customer_name") == request.user_name:
@@ -66,6 +68,7 @@ async def start_call(request: StartCallRequest):
                     )
             # Guard 2: queued item already exists in Redis
             existing_cid = await find_call_id_by_account(request.account_number)
+            print(f"📋 [DEBUG] Found existing CID in queue for {request.account_number}: {existing_cid}")
             if existing_cid:
                 print(f"⚠️ Customer {request.user_name} already has queued request, rejecting")
                 return CallResponse(
@@ -146,15 +149,15 @@ async def get_call_status(call_id: str):
 async def end_call(call_id: str):
     """End a call session"""
     
-    # Remove from active conversations
-    call_to_remove = None
+    # Remove all related conversation entries from active conversations
+    keys_to_remove = []
     for active_conv_id, conv_info in active_conversations.items():
         if call_id in [conv_info.get("agent_call_id"), conv_info.get("customer_call_id")]:
-            call_to_remove = active_conv_id
-            break
+            keys_to_remove.append(active_conv_id)
     
-    if call_to_remove:
-        del active_conversations[call_to_remove]
+    if keys_to_remove:
+        for key in keys_to_remove:
+            del active_conversations[key]
         return {"status": "ended", "message": "Call ended successfully"}
     
     # Remove from waiting queue (Redis) and available list

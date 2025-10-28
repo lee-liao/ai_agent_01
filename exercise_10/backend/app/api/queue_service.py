@@ -33,35 +33,83 @@ async def enqueue_waiting_customer(customer_name: str, account_number: Optional[
 
 async def dequeue_top() -> Optional[Dict]:
     """Remove and return the first waiting customer from the queue (FIFO)"""
-    print(f"🔄 dequeue_top() called - attempting to remove top customer from queue")
-    r = get_redis()  # This was missing!
+    r = get_redis()
+    # First, check how many items are in the queue before attempting to dequeue
+    queue_size = await r.llen(QUEUE_LIST_KEY)
+    print(f"🔄 dequeue_top() called - queue size before: {queue_size}")
+    
+    # Also get the actual call IDs in the queue for debugging
+    if queue_size > 0:
+        queue_ids = await r.lrange(QUEUE_LIST_KEY, 0, -1)
+        print(f"📋 Queue contents before dequeue: {queue_ids}")
+        
+        # Check the hash data for each queue item before dequeue
+        for qid in queue_ids:
+            hash_data = await r.hgetall(f"queue:item:{qid}")
+            print(f"📋 Queue item {qid} hash data: {hash_data}")
+    
+    # Before running the Lua script
+    print(f"🔍 About to execute Lua script for dequeue_top...")
+    
     script = """
     local queue_key = KEYS[1]
     local item_base = ARGV[1]
     
     -- Get the call_id of the first item in the queue
     local call_id = redis.call('lpop', queue_key)
+    
     if not call_id then
         return nil
     end
     
-    -- Get the item details
+    -- Create result as an array to ensure proper return to Python
+    local result = {'call_id', call_id}
+    
+    -- Get hash fields and add them to the result array
     local fields = redis.call('hgetall', item_base .. call_id)
-    
-    -- Convert to map
-    local result = {}
     for i = 1, #fields, 2 do
-        result[fields[i]] = fields[i + 1]
+        local field_name = fields[i]
+        local field_value = fields[i + 1]
+        if field_name and field_value then
+            table.insert(result, field_name)
+            table.insert(result, field_value)
+        end
     end
-    result['call_id'] = call_id
     
-    -- Delete the item hash
+    -- Delete the hash entry to clean up
     redis.call('del', item_base .. call_id)
     
     return result
     """
     
+    print(f"🔍 About to execute Lua script for dequeue_top...")
     res = await r.eval(script, 1, QUEUE_LIST_KEY, "queue:item:")
+    print(f"🔍 Lua script returned: {res}")
+    
+    # Convert the result from alternating array format to dictionary if needed
+    # Lua script returns ['key1', 'val1', 'key2', 'val2', ...] which needs to be converted
+    if isinstance(res, list) and len(res) > 0 and len(res) % 2 == 0:
+        # Convert alternating key-value list to dictionary
+        converted_res = {}
+        for i in range(0, len(res), 2):
+            if i + 1 < len(res):
+                converted_res[res[i]] = res[i + 1]
+        res = converted_res
+        print(f"🔍 Converted Lua result to dictionary: {res}")
+    elif res is None or (isinstance(res, list) and len(res) == 0):
+        # None or empty list means no item was found
+        pass
+    else:
+        print(f"🔍 Lua result is unexpected format: {res}")
+    
+    queue_size_after = await r.llen(QUEUE_LIST_KEY)
+    print(f"📊 Queue size after dequeue attempt: {queue_size_after}")
+    
+    # Check if the hash still exists after the Lua script runs
+    if queue_size > 0:
+        for qid in await r.lrange(QUEUE_LIST_KEY, 0, -1):  # what's left in queue
+            remaining_hash = await r.hgetall(f"queue:item:{qid}")
+            print(f"📋 Remaining queue item {qid} hash data: {remaining_hash}")
     
     if res:
         print(f"✅ Top customer {res.get('call_id', 'unknown')} dequeued from queue")
@@ -74,7 +122,15 @@ async def dequeue_top() -> Optional[Dict]:
             "status": "matched"
         }
     else:
-        print(f"⚠️ No customers found in queue to dequeue")
+        print(f"⚠️ No customers found in queue to dequeue (despite showing {queue_size} items before)")
+        print(f"   The queue item may have been removed by another process or there's a Redis/Lua script issue.")
+        # Let's check if the hash still exists (maybe it wasn't deleted properly)
+        if queue_size > 0:
+            leftover_hash = await r.hgetall(f"queue:item:{queue_ids[0]}")
+            print(f"🔍 Leftover hash data for expected call_id {queue_ids[0]}: {leftover_hash}")
+        # Let's check if the customer might be in active conversations already
+        from .calls import active_conversations
+        print(f"📋 Current active conversations: {list(active_conversations.keys())}")
     
     return res
 
@@ -135,16 +191,20 @@ async def remove_from_queue(call_id: str) -> None:
 async def list_queue_items() -> List[Dict]:
     r = get_redis()
     ids: List[str] = await r.lrange(QUEUE_LIST_KEY, 0, -1)
+    print(f"🔍 list_queue_items: found {len(ids)} items in queue: {ids}")
     items: List[Dict] = []
     for cid in ids:
         info = await r.hgetall(f"queue:item:{cid}")
         if info:
-            items.append({
+            item = {
                 "customer_name": info.get("customer_name"),
                 "account_number": info.get("account_number"),
                 "waiting_since": info.get("timestamp"),
                 "call_id": info.get("call_id"),
-            })
+            }
+            items.append(item)
+            print(f"🔍 Queue item {cid}: {item}")
+    print(f"📋 list_queue_items returning {len(items)} items")
     return items
 
 
