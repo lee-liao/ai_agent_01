@@ -88,3 +88,10 @@ class DailyStatistics(Base):
     def __repr__(self):
         return f"<DailyStats {self.date}: {self.total_trucks} trucks>"
 
+
+
+
+
+
+
+

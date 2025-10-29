@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from .config import settings
 from .database import init_db, close_db
-from .api import auth_routes, customers, websocket, calls
+from .api import auth_routes, customers, websocket, calls, sse
 
 # Lifespan context manager
 @asynccontextmanager
@@ -41,6 +41,7 @@ app.include_router(auth_routes.router)
 app.include_router(customers.router)
 app.include_router(calls.router)
 app.include_router(websocket.router)
+app.include_router(sse.router)
 
 # Root endpoint
 @app.get("/")

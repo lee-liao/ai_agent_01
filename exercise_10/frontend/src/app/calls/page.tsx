@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Phone, PhoneOff, Mic, MicOff, User, Clock, MessageSquare, Volume2 } from 'lucide-react';
 import { useAudioCall } from '@/lib/useAudioCall';
+import { playAudioChunk } from '@/lib/audioUtils';
+import useWebRTCAudio from '@/lib/useWebRTCAudio';
+import AISuggestions from '@/components/AISuggestions';
 
 interface Message {
   id: string;
@@ -20,6 +23,7 @@ export default function CallsPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [ws, setWs] = useState<WebSocket | null>(null);
+  const [callId, setCallId] = useState<string>('');
   const [callDuration, setCallDuration] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -40,6 +44,9 @@ export default function CallsPage() {
       addMessage(speaker === 'agent' ? 'agent' : 'customer', `[Voice] ${text}`);
     }
   });
+
+  // WebRTC audio (agent acts as responder)
+  const rtc = useWebRTCAudio({ role: 'responder', ws });
 
   // Check authentication
   useEffect(() => {
@@ -94,6 +101,7 @@ export default function CallsPage() {
       
       // Step 2: Connect WebSocket with assigned call_id
       const websocket = new WebSocket(`ws://localhost:8000/ws/call/${response.call_id}`);
+      websocket.binaryType = 'arraybuffer';
       
       websocket.onopen = () => {
         console.log('✅ Agent WebSocket connected with call_id:', response.call_id);
@@ -114,19 +122,34 @@ export default function CallsPage() {
       };
 
       websocket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          if (data.type === 'transcript' && data.speaker === 'customer') {
-            addMessage('customer', data.text);
-          } else if (data.type === 'call_ended') {
-            addMessage('system', 'Customer ended the call');
-            endCall();
-          } else if (data.type === 'call_started') {
-            addMessage('system', 'Customer connected to the call');
+        if (typeof event.data === 'string') {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'rtc_offer' || data.type === 'rtc_answer' || data.type === 'ice_candidate') {
+              rtc.handleSignal(data);
+              return;
+            }
+            if (data.type === 'transcript' && data.speaker === 'customer') {
+              addMessage('customer', data.text);
+            } else if (data.type === 'call_ended') {
+              addMessage('system', 'Customer ended the call');
+              endCall();
+            } else if (data.type === 'call_started') {
+              addMessage('system', 'Customer connected to the call');
+            }
+          } catch (e) {
+            console.error('Error parsing message:', e);
           }
-        } catch (e) {
-          console.error('Error parsing message:', e);
+          return;
+        }
+        // Legacy binary audio (not used with WebRTC)
+        if (event.data instanceof Blob) {
+          playAudioChunk(event.data);
+          return;
+        }
+        if (event.data instanceof ArrayBuffer) {
+          playAudioChunk(new Blob([event.data], { type: 'audio/webm;codecs=opus' }));
+          return;
         }
       };
 
@@ -140,6 +163,7 @@ export default function CallsPage() {
       };
 
       setWs(websocket);
+      setCallId(response.call_id);
       
     } catch (error: any) {
       console.error('Failed to start call:', error);
@@ -461,27 +485,14 @@ export default function CallsPage() {
             </div>
 
             {/* AI Suggestions */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">
-                🤖 AI Suggestions
-              </h3>
-              {inCall ? (
-                <div className="space-y-3">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <p className="text-sm text-blue-900">
-                      💡 Customer seems satisfied with the service
-                    </p>
-                  </div>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                    <p className="text-sm text-green-900">
-                      ✅ Consider offering premium upgrade
-                    </p>
-                  </div>
-                </div>
-              ) : (
+            {inCall ? (
+              <AISuggestions callId={callId} />
+            ) : (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-2">🤖 AI Suggestions</h3>
                 <p className="text-gray-400 text-sm">AI suggestions will appear during calls</p>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Quick Actions */}
             <div className="bg-white rounded-lg shadow-lg p-6">

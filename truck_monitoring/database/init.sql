@@ -14,3 +14,10 @@ USE truck_monitoring;
 
 -- Note: Tables will be created automatically by SQLAlchemy when the app starts
 
+
+
+
+
+
+
+

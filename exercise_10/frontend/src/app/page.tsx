@@ -29,7 +29,7 @@ export default function HomePage() {
             icon={<Users className="w-8 h-8" />}
             title="Customers"
             description="Search and view customer information"
-            href="/customers"
+            href="/customer"
             color="bg-green-500"
           />
           <FeatureCard

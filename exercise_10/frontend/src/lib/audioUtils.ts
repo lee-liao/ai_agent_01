@@ -185,8 +185,15 @@ export class AudioRecorder {
 export function playAudioChunk(audioData: Blob) {
   try {
     const audio = new Audio();
-    audio.src = URL.createObjectURL(audioData);
-    audio.play();
+    audio.autoplay = true;
+    audio.muted = false;
+    const url = URL.createObjectURL(audioData);
+    audio.src = url;
+    audio.onended = () => URL.revokeObjectURL(url);
+    audio.play().catch((err) => {
+      // Some browsers require a user gesture; log for debugging
+      console.warn('Autoplay prevented, attempting resume on gesture:', err);
+    });
   } catch (error) {
     console.error('Error playing audio:', error);
   }

@@ -124,3 +124,6 @@ async def get_trucks_by_date(
               .all()
     return trucks
 
+
+
+

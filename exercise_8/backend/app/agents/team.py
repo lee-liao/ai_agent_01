@@ -277,3 +277,4 @@ class Team:
             "agents": [agent.get_info() for agent in self.agents],
             "capabilities": self.get_capabilities()
         }
+

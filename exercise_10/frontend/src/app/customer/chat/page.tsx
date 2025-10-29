@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Phone, PhoneOff, MessageSquare, User, Send, Mic, MicOff, Volume2 } from 'lucide-react';
 import { useAudioCall } from '@/lib/useAudioCall';
+import { playAudioChunk } from '@/lib/audioUtils';
+import useWebRTCAudio from '@/lib/useWebRTCAudio';
 
 interface Message {
   id: string;
@@ -39,6 +41,9 @@ export default function CustomerChatPage() {
     }
   });
 
+  // WebRTC audio (customer initiates)
+  const rtc = useWebRTCAudio({ role: 'initiator', ws });
+
   // Check if customer is logged in
   useEffect(() => {
     const customerData = localStorage.getItem('customer');
@@ -66,6 +71,7 @@ export default function CustomerChatPage() {
       
       // Step 2: Connect WebSocket with assigned call_id
       const websocket = new WebSocket(`ws://localhost:8000/ws/call/${response.call_id}`);
+      websocket.binaryType = 'arraybuffer';
       
       websocket.onopen = () => {
         console.log('✅ WebSocket connected with call_id:', response.call_id);
@@ -90,19 +96,35 @@ export default function CustomerChatPage() {
       };
 
       websocket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          if (data.type === 'transcript' && data.speaker === 'agent') {
-            addMessage('agent', data.text);
-          } else if (data.type === 'call_ended') {
-            addMessage('system', 'Agent ended the call. Thank you for contacting us!');
-            disconnectFromAgent();
-          } else if (data.type === 'call_started') {
-            addMessage('system', 'Agent has joined the chat!');
+        // Prefer signaling messages
+        if (typeof event.data === 'string') {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'rtc_offer' || data.type === 'rtc_answer' || data.type === 'ice_candidate') {
+              rtc.handleSignal(data);
+              return;
+            }
+            if (data.type === 'transcript' && data.speaker === 'agent') {
+              addMessage('agent', data.text);
+            } else if (data.type === 'call_ended') {
+              addMessage('system', 'Agent ended the call. Thank you for contacting us!');
+              disconnectFromAgent();
+            } else if (data.type === 'call_started') {
+              addMessage('system', 'Agent has joined the chat!');
+            }
+          } catch (e) {
+            console.error('Error parsing message:', e);
           }
-        } catch (e) {
-          console.error('Error parsing message:', e);
+          return;
+        }
+        // Legacy binary audio (not used with WebRTC)
+        if (event.data instanceof Blob) {
+          playAudioChunk(event.data);
+          return;
+        }
+        if (event.data instanceof ArrayBuffer) {
+          playAudioChunk(new Blob([event.data], { type: 'audio/webm;codecs=opus' }));
+          return;
         }
       };
 
@@ -273,9 +295,9 @@ export default function CustomerChatPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     {/* Audio toggle button */}
-                    {!isAudioEnabled ? (
+                    {!rtc.isAudioEnabled ? (
                       <button
-                        onClick={startAudio}
+                        onClick={rtc.start}
                         className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition"
                       >
                         <Mic className="w-4 h-4" />
@@ -283,7 +305,7 @@ export default function CustomerChatPage() {
                       </button>
                     ) : (
                       <button
-                        onClick={stopAudio}
+                        onClick={rtc.stop}
                         className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition"
                       >
                         <PhoneOff className="w-4 h-4" />
@@ -292,28 +314,28 @@ export default function CustomerChatPage() {
                     )}
                     
                     {/* Mute toggle */}
-                    {isAudioEnabled && (
+                    {rtc.isAudioEnabled && (
                       <button
-                        onClick={toggleMute}
+                        onClick={rtc.toggleMute}
                         className={`p-2 rounded-lg transition ${
-                          isMuted 
+                          rtc.isMuted 
                             ? 'bg-red-100 text-red-700 hover:bg-red-200' 
                             : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                         }`}
-                        title={isMuted ? 'Unmute' : 'Mute'}
+                        title={rtc.isMuted ? 'Unmute' : 'Mute'}
                       >
-                        {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                        {rtc.isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                       </button>
                     )}
                     
                     {/* Audio level indicator */}
-                    {isAudioEnabled && (
+                    {rtc.isAudioEnabled && (
                       <div className="flex items-center gap-2">
                         <Volume2 className="w-4 h-4 text-gray-500" />
                         <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
                           <div 
                             className="h-full bg-purple-500 transition-all duration-100"
-                            style={{ width: `${Math.min(audioLevel * 100, 100)}%` }}
+                            style={{ width: `${Math.min(rtc.audioLevel * 100, 100)}%` }}
                           />
                         </div>
                       </div>

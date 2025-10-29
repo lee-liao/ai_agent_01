@@ -133,6 +133,63 @@ GET  /api/statistics/weekly       - Weekly trend
 GET  /api/statistics/types        - Statistics by truck type
 ```
 
+### Edge Computer (No Authentication Required)
+
+```
+POST /api/truck-count       - Receive truck detection from edge device
+POST /api/media/upload      - Upload image/video for truck
+GET  /uploads/{type}/{file} - Access uploaded media files
+```
+
+#### Edge API - Complete Workflow
+
+**Step 1: Post Truck Detection**
+```bash
+curl -X POST http://localhost:8095/api/truck-count \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": 1,
+    "timestamp": "2025-10-16T14:30:45",
+    "length_mm": 8500,
+    "height_mm": 2800,
+    "is_truck": true,
+    "classification_confidence": 0.87,
+    "image_path": "test.jpg",
+    "video_path": "",
+    "direction": 0,
+    "speed_kmh": 0.0
+  }'
+```
+
+**Response:** Returns `truck_id: 1753`
+
+**Step 2: Upload Media Files**
+```bash
+curl -X POST http://localhost:8095/api/media/upload \
+  -F "truck_id=1753" \
+  -F "image=@truck_image.jpg" \
+  -F "video=@truck_video.mp4"
+```
+
+**Direction codes:**
+- 0: Unknown
+- 1: Northbound
+- 2: Southbound
+- 3: Eastbound
+- 4: Westbound
+
+**Features:**
+- ✅ No authentication required (for edge devices)
+- ✅ Automatic truck classification by length
+- ✅ Confidence threshold filtering (>= 0.5)
+- ✅ Automatic daily statistics updates
+- ✅ Rejects non-truck detections
+- ✅ **NEW:** Media file upload (images + videos)
+- ✅ **NEW:** Unique filename generation
+- ✅ **NEW:** Static file serving
+
+**Complete Guide:** See [MEDIA_UPLOAD_GUIDE.md](MEDIA_UPLOAD_GUIDE.md)
+
 ## 💾 Database Schema
 
 ### Users Table
@@ -372,4 +429,7 @@ For issues or questions, please check:
 ---
 
 **Happy Monitoring! 🚛📊**
+
+
+
 

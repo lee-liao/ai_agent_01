@@ -2,6 +2,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import Dict
 import json
 from datetime import datetime
+from ..state import append_transcript, generate_and_enqueue_suggestion
 
 router = APIRouter(tags=["WebSocket"])
 
@@ -80,6 +81,37 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                 elif message["type"] == "transcript":
                     # Manual transcript entry (for testing) or real transcription
                     await handle_transcript(call_id, message, websocket)
+                    # Record transcript to state and trigger suggestion generation
+                    speaker = message.get("speaker", "customer")
+                    text = message.get("text", "")
+                    append_transcript(call_id, speaker, text, datetime.utcnow().isoformat())
+                    # Fire and forget suggestion generation
+                    try:
+                        import asyncio
+                        asyncio.create_task(generate_and_enqueue_suggestion(call_id, speaker))
+                    except Exception as e:
+                        print(f"Error scheduling suggestion generation: {e}")
+
+                # --- WebRTC signaling routing ---
+                elif message["type"] in ("rtc_offer", "rtc_answer", "ice_candidate"):
+                    # Find partner and forward signaling message as-is
+                    try:
+                        from .calls import active_calls
+                        partner_call_id = None
+                        for active_call_id, call_info in active_calls.items():
+                            if call_id == call_info.get("agent_call_id"):
+                                partner_call_id = call_info.get("customer_call_id")
+                                break
+                            elif call_id == call_info.get("customer_call_id"):
+                                partner_call_id = call_info.get("agent_call_id")
+                                break
+                        if partner_call_id and partner_call_id in active_connections:
+                            await active_connections[partner_call_id].send_json(message)
+                            print(f"📤 Routed signaling {message['type']} from {call_id} to {partner_call_id}")
+                        else:
+                            print(f"No partner to route signaling for {call_id}")
+                    except Exception as e:
+                        print(f"Error routing signaling: {e}")
     
     except WebSocketDisconnect:
         print(f"❌ WebSocket disconnected: {call_id}")

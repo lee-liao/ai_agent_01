@@ -380,3 +380,4 @@ class RedlineGeneratorAgent(Agent):
             "rationale": "Proposed change to mitigate risk",
             "variant": "conservative"
         }
+
