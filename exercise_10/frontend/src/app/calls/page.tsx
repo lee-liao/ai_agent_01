@@ -60,20 +60,23 @@ export default function CallsPage() {
     setUser(JSON.parse(userData));
   }, [router]);
 
-  // Auto-scroll to latest message only if user is near bottom
+  // Auto-scroll to latest message - scroll to bottom when new messages arrive
   useEffect(() => {
-    const chatContainer = chatContainerRef.current;
-    if (!chatContainer) return;
+    // Use requestAnimationFrame to ensure DOM is updated before scrolling
+    const scrollToBottom = () => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    };
     
-    // Only auto-scroll if user is within 100px of the bottom
-    const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop <= chatContainer.clientHeight + 100;
+    // Try immediate scroll first
+    scrollToBottom();
     
-    if (isNearBottom) {
-      // Use setTimeout to ensure the scroll happens after DOM updates
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 0);
-    }
+    // Also try after a small delay to ensure DOM is fully updated
+    const timer = setTimeout(scrollToBottom, 50);
+    
+    // Cleanup timer
+    return () => clearTimeout(timer);
   }, [messages]);
 
   // Auto-scroll AI suggestions panel only if user is near bottom

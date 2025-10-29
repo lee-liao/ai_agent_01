@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Transcription Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        button {
+            padding: 12px 24px;
+            margin: 10px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        button.recording {
+            background-color: #dc3545;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+            min-height: 20px;
+        }
+        .transcript {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            min-height: 50px;
+            font-style: italic;
+        }
+        .audio-visualizer {
+            margin: 20px 0;
+            height: 100px;
+            background-color: #000;
+            border-radius: 5px;
+            position: relative;
+            overflow: hidden;
+        }
+        .bar {
+            position: absolute;
+            bottom: 0;
+            width: 3px;
+            background-color: #00ff00;
+            transition: height 0.1s;
+        }
+        .file-upload {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px dashed #ccc;
+            border-radius: 5px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Audio Transcription Test</h1>
+        
+        <div class="controls">
+            <button id="startBtn">Start Recording</button>
+            <button id="stopBtn" disabled>Stop Recording</button>
+            <button id="uploadBtn">Upload Audio File</button>
+            <input type="file" id="audioFile" accept="audio/*" style="display: none;">
+        </div>
+        
+        <div class="audio-visualizer" id="visualizer"></div>
+        
+        <div class="status" id="status">
+            Ready to start recording. Please grant microphone access when prompted.
+        </div>
+        
+        <div class="file-upload" id="fileUploadArea" style="display: none;">
+            <p>Drag and drop an audio file or click to select</p>
+            <input type="file" id="fileInput" accept="audio/*" style="display: none;">
+        </div>
+        
+        <div class="transcript" id="transcript">
+            Transcription will appear here...
+        </div>
+    </div>
+
+    <script>
+        let audioContext;
+        let mediaRecorder;
+        let audioChunks = [];
+        let analyser;
+        let javascriptNode;
+        let stream;
+        let bars = [];
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const audioFile = document.getElementById('audioFile');
+        const statusEl = document.getElementById('status');
+        const transcriptEl = document.getElementById('transcript');
+        const visualizer = document.getElementById('visualizer');
+        const fileUploadArea = document.getElementById('fileUploadArea');
+
+        // Create visualizer bars
+        function initVisualizer() {
+            visualizer.innerHTML = '';
+            bars = [];
+            const width = visualizer.offsetWidth;
+            const barCount = Math.floor(width / 4); // 3px bar + 1px gap
+            
+            for (let i = 0; i < barCount; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'bar';
+                bar.style.left = (i * 4) + 'px';
+                bar.style.height = '0px';
+                visualizer.appendChild(bar);
+                bars.push(bar);
+            }
+        }
+
+        // Update visualizer based on audio data
+        function updateVisualizer(data) {
+            const avg = data.reduce((sum, value) => sum + value, 0) / data.length;
+            const height = Math.min(100, avg * 2); // Scale for visibility
+            
+            // Move bars to create moving effect
+            const lastBar = bars.pop();
+            bars.unshift(lastBar);
+            
+            // Update bar heights
+            bars.forEach((bar, i) => {
+                if (i === 0) {
+                    bar.style.height = height + 'px';
+                    bar.style.backgroundColor = '#00ff00';
+                } else {
+                    // Fade other bars
+                    const fadeFactor = 0.7 - (i * 0.05);
+                    bar.style.height = Math.max(2, bars[i].originalHeight || 1) + 'px';
+                    bar.style.backgroundColor = `rgba(0, 255, 0, ${Math.max(0.1, fadeFactor)})`;
+                }
+            });
+        }
+
+        // Start audio recording
+        async function startRecording() {
+            try {
+                statusEl.textContent = 'Accessing microphone...';
+                
+                // Request microphone access
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                
+                // Create audio context and nodes
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                
+                // Create analyser for visualizer
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                
+                // Create javascript node for processing audio data
+                javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+                analyser.connect(javascriptNode);
+                javascriptNode.connect(audioContext.destination);
+                
+                // Set up the visualizer update
+                javascriptNode.onaudioprocess = function() {
+                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.getByteFrequencyData(dataArray);
+                    updateVisualizer(Array.from(dataArray));
+                };
+                
+                // Create media recorder
+                mediaRecorder = new MediaRecorder(stream);
+                
+                mediaRecorder.ondataavailable = function(event) {
+                    audioChunks.push(event.data);
+                };
+                
+                mediaRecorder.onstop = async function() {
+                    statusEl.textContent = 'Processing audio...';
+                    
+                    // Create audio blob from chunks
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    
+                    // Convert to ArrayBuffer for backend compatibility
+                    const arrayBuffer = await audioBlob.arrayBuffer();
+                    const audioBytes = new Uint8Array(arrayBuffer);
+                    
+                    // Display audio info
+                    statusEl.textContent = `Recorded ${audioBlob.size} bytes. Transcribing...`;
+                    
+                    // Send to backend for transcription (function that calls backend API)
+                    await sendForTranscription(audioBlob);
+                    
+                    // Reset chunks
+                    audioChunks = [];
+                };
+                
+                // Start recording
+                mediaRecorder.start();
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                startBtn.classList.remove('recording');
+                startBtn.textContent = 'Recording...';
+                startBtn.classList.add('recording');
+                
+                statusEl.textContent = 'Recording... Speak into your microphone.';
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                statusEl.textContent = `Error accessing microphone: ${error.message}`;
+            }
+        }
+
+        // Stop recording
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                stream.getTracks().forEach(track => track.stop()); // Stop all tracks
+                
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                startBtn.textContent = 'Start Recording';
+                startBtn.classList.remove('recording');
+                
+                // Clear visualizer
+                bars.forEach(bar => bar.style.height = '0px');
+                
+                statusEl.textContent = 'Processing audio for transcription...';
+            }
+        }
+
+        // Send audio for transcription (function that calls backend API)
+        async function sendForTranscription(audioBlob) {
+            const formData = new FormData();
+            formData.append('file', audioBlob, 'recording.webm');
+            
+            // Show that transcription is happening
+            transcriptEl.textContent = 'Transcribing...';
+            
+            try {
+                // Use current origin for the API call
+                const apiUrl = `${window.location.origin}/api/transcription/transcribe`;
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    transcriptEl.textContent = result.transcript;
+                    statusEl.textContent = `Transcription completed: "${result.transcript.substring(0, 30)}..."`;
+                } else {
+                    transcriptEl.textContent = 'Transcription failed';
+                    statusEl.textContent = `Error: ${result.error || 'Unknown error'}`;
+                }
+            } catch (error) {
+                console.error('Transcription error:', error);
+                transcriptEl.textContent = `Transcription failed: ${error.message}`;
+                statusEl.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Handle file upload
+        function handleFileUpload() {
+            audioFile.click();
+        }
+
+        // Handle selected file
+        audioFile.addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                const file = e.target.files[0];
+                statusEl.textContent = `Selected file: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+                
+                // For a real implementation, you would read the file and send it to your backend
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const arrayBuffer = e.target.result;
+                    const audioBlob = new Blob([new Uint8Array(arrayBuffer)], { type: file.type });
+                    
+                    // Simulate transcription of uploaded file
+                    statusEl.textContent = `Transcribing uploaded file...`;
+                    sendForTranscription(audioBlob);
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        // Initialize the visualizer when page loads
+        window.addEventListener('load', function() {
+            initVisualizer();
+            
+            // Also reinitialize when window resizes
+            window.addEventListener('resize', initVisualizer);
+        });
+
+        // Event listeners
+        startBtn.addEventListener('click', startRecording);
+        stopBtn.addEventListener('click', stopRecording);
+        uploadBtn.addEventListener('click', handleFileUpload);
+    </script>
+</body>
+</html>

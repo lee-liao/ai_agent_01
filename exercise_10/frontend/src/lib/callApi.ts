@@ -1,6 +1,8 @@
 import axios from 'axios';
 
+// Explicitly log the API URL for debugging
 const API_URL = process.env.NEXT_PUBLIC_API_URL || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8000`;
+console.log('Using API URL:', API_URL);
 
 export interface CallResponse {
   call_id: string;
@@ -30,8 +32,15 @@ export const callAPI = {
     if (options?.accountNumber) payload.account_number = options.accountNumber;
     if (options?.targetAccountNumber) payload.target_account_number = options.targetAccountNumber;
     if (typeof options?.available === 'boolean') payload.available = options.available;
-    const response = await axios.post(`${API_URL}/api/calls/start`, payload);
-    return response.data;
+    
+    console.log('Making API call to:', `${API_URL}/api/calls/start`);
+    try {
+      const response = await axios.post(`${API_URL}/api/calls/start`, payload);
+      return response.data;
+    } catch (error) {
+      console.error('API call failed:', error);
+      throw error;
+    }
   },
 
   // Get call status
