@@ -107,30 +107,26 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                     except Exception as e:
                         print(f"Error forwarding audio: {e}")
 
-                # Accumulate audio chunk for smart transcription processing with VAD
-                # Instead of processing individual chunks, accumulate them for better accuracy
-                should_process = await accumulate_audio_data(call_id, audio_chunk)
+                # Browser MediaRecorder (with 3-second timeslice) sends COMPLETE WebM files
+                # Each chunk is a standalone, properly encoded WebM/Opus file
+                # Process each chunk individually - NO accumulation needed!
                 
-                # Process accumulated audio buffer if VAD indicates it's time
-                if should_process:
-                    audio_data = await process_audio_buffer(call_id)
-                    if audio_data and len(audio_data) > 0:
-                        # Process accumulated audio with timestamp
-                        asyncio.create_task(
-                            transcribe_and_broadcast(
-                                call_id, 
-                                audio_data,  # Process the accumulated buffer
-                                speaker, 
-                                websocket, 
-                                partner_call_id
-                            )
+                # Filter out tiny chunks (silence/noise - should be rare with 3s chunks)
+                MIN_CHUNK_SIZE = 5000  # 5 KB minimum (3s of WebM is typically 10-15 KB)
+                if len(audio_chunk) >= MIN_CHUNK_SIZE:
+                    print(f"🎵 Received complete WebM chunk: {len(audio_chunk)} bytes (~{len(audio_chunk)/5000:.1f}s estimated)")
+                    # Process this complete WebM chunk immediately
+                    asyncio.create_task(
+                        transcribe_and_broadcast(
+                            call_id, 
+                            audio_chunk,  # Send the complete WebM file as-is
+                            speaker, 
+                            websocket, 
+                            partner_call_id
                         )
-                    else:
-                        print(f"⚠️ No accumulated audio data to process for {call_id}")
+                    )
                 else:
-                    # For immediate feedback, also process small chunks (optional, can be removed for cleaner approach)
-                    # This maintains the responsive feel while building up to smarter chunks
-                    pass  # Removed debug logging for production
+                    print(f"⚠️ Skipping small chunk: {len(audio_chunk)} bytes (likely silence/noise)")
                 
             elif "text" in data:
                 # Control message received
@@ -559,70 +555,31 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
     try:
         print(f"🎵 About to transcribe audio for {speaker}, size: {len(audio_data)} bytes")
         
-        # CRITICAL: Reject buffers that are too small to avoid "you" noise transcriptions
-        # Minimum 1 second of audio required for meaningful transcription
-        MIN_AUDIO_SIZE = 32000  # 1.0 second at 16kHz, 16-bit = 32,000 bytes
+        # Browser MediaRecorder sends complete WebM/Opus files (3-second chunks)
+        # These are properly encoded, complete audio files - NOT raw PCM!
+        
+        # Minimum size check (3s of WebM is typically 10-15 KB)
+        MIN_AUDIO_SIZE = 5000  # 5 KB minimum
         if len(audio_data) < MIN_AUDIO_SIZE:
-            print(f"⚠️ Buffer too small for transcription ({len(audio_data)} bytes < {MIN_AUDIO_SIZE} bytes, {len(audio_data)/32000:.2f}s) - skipping to avoid noise")
+            print(f"⚠️ Chunk too small ({len(audio_data)} bytes < {MIN_AUDIO_SIZE} bytes) - skipping")
             return None
         
-        # CRITICAL: Check if audio contains actual speech or just silence
-        # Calculate energy level of the entire buffer
-        energy_level = calculate_audio_energy(audio_data)
-        SPEECH_ENERGY_THRESHOLD = 0.01  # Minimum energy to be considered speech (0-1 scale)
-        
-        if energy_level < SPEECH_ENERGY_THRESHOLD:
-            print(f"🔇 Buffer is mostly silence (energy: {energy_level:.4f} < {SPEECH_ENERGY_THRESHOLD}) - skipping to avoid hallucinations")
-            # DEBUG: Save the silence buffer for analysis
-            import os
-            from datetime import datetime
-            os.makedirs("audio_samples", exist_ok=True)
-            debug_file = f"audio_samples/silence_{datetime.now().strftime('%H%M%S')}_{len(audio_data)}.pcm"
-            with open(debug_file, "wb") as f:
-                f.write(audio_data)
-            print(f"   💾 Saved silence buffer to {debug_file}")
-            return None
-        else:
-            print(f"🎤 Speech detected (energy: {energy_level:.4f}) - proceeding with transcription")
-        
-        # Strategy 1: Try WebM directly (browser MediaRecorder sends WebM with Opus codec)
-        # This works as proven by the test page!
+        # Send complete WebM file directly to Whisper (no conversion needed!)
         try:
-            print(f"   Trying WebM format first...")
+            print(f"   Sending {len(audio_data)} bytes complete WebM file to Whisper...")
             transcript = await transcribe_audio(audio_data, "audio.webm")
             
             if transcript:
-                print(f"✅ Transcription successful (WebM) for {speaker}: {transcript[:50]}...")
+                print(f"✅ Transcription successful for {speaker}: {transcript[:50]}...")
                 return transcript
             else:
-                print(f"   WebM returned no result, trying WAV conversion...")
-        except Exception as webm_error:
-            print(f"   WebM failed: {webm_error}, trying WAV conversion...")
-        
-        # Strategy 2: If WebM fails, try converting to WAV
-        # (This assumes the data might be raw PCM)
-        try:
-            wav_buffer = io.BytesIO()
-            with wave.open(wav_buffer, 'wb') as wav_file:
-                wav_file.setnchannels(1)      # Mono
-                wav_file.setsampwidth(2)      # 16-bit (2 bytes per sample)
-                wav_file.setframerate(16000)  # 16kHz sample rate
-                wav_file.writeframes(audio_data)
-            
-            wav_buffer.seek(0)
-            
-            # Call Whisper API with WAV format
-            transcript = await transcribe_audio(wav_buffer.read(), "audio.wav")
-            
-            if transcript:
-                print(f"✅ Transcription successful (WAV) for {speaker}: {transcript[:50]}...")
-                return transcript
-            else:
-                print(f"⚠️ No transcription result for {speaker}")
+                print(f"⚠️ Whisper returned empty transcription")
                 return None
                 
-        except Exception as conversion_error:
-            print(f"❌ WAV conversion also failed: {conversion_error}")
+        except Exception as transcription_error:
+            print(f"❌ Transcription failed: {transcription_error}")
+            import traceback
+            traceback.print_exc()
             return None
         
     except Exception as e:

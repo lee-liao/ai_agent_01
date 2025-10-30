@@ -162,7 +162,7 @@ export class AudioRecorder {
         }
       };
       
-      this.mediaRecorder.start(1000); // Capture in 1-second chunks
+      this.mediaRecorder.start(3000); // Capture in 3-second chunks (complete WebM files)
       console.log('🎙️ Recording started');
       return true;
       
