@@ -562,30 +562,16 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
     try:
         print(f"🎵 About to transcribe audio for {speaker}, size: {len(audio_data)} bytes")
         
-        # Reject chunks that are too small (less than 0.5 seconds)
+        # Reject chunks that are too small (less than 1 second)
         # These are usually noise and Whisper transcribes them as "You"
-        MIN_AUDIO_SIZE = 16000  # 0.5 seconds at 16kHz, 16-bit
+        MIN_AUDIO_SIZE = 32000  # 1.0 seconds at 16kHz, 16-bit
         if len(audio_data) < MIN_AUDIO_SIZE:
-            print(f"⚠️ Audio chunk too small ({len(audio_data)} bytes < {MIN_AUDIO_SIZE}), skipping...")
+            print(f"⚠️ Audio chunk too small ({len(audio_data)} bytes < {MIN_AUDIO_SIZE} bytes, {len(audio_data)/32000:.2f}s), skipping...")
             return None
         
-        # Strategy 1: Try WebM directly (browser MediaRecorder sends WebM with Opus codec)
-        # This works as proven by the test page!
+        # Browser sends raw PCM audio chunks, convert to WAV format using wave module
         try:
-            print(f"   Trying WebM format first...")
-            transcript = await transcribe_audio(audio_data, "audio.webm")
-            
-            if transcript:
-                print(f"✅ Transcription successful (WebM) for {speaker}: {transcript[:50]}...")
-                return transcript
-            else:
-                print(f"   WebM returned no result, trying WAV conversion...")
-        except Exception as webm_error:
-            print(f"   WebM failed: {webm_error}, trying WAV conversion...")
-        
-        # Strategy 2: If WebM fails, try converting to WAV
-        # (This assumes the data might be raw PCM)
-        try:
+            print(f"   Converting {len(audio_data)} bytes PCM to WAV...")
             wav_buffer = io.BytesIO()
             with wave.open(wav_buffer, 'wb') as wav_file:
                 wav_file.setnchannels(1)      # Mono
@@ -664,16 +650,16 @@ async def accumulate_audio_data(call_id: str, audio_chunk: bytes) -> bool:
         # Calculate time since last processing
         time_since_last = (current_time - audio_processing_times.get(call_id, 0.0)) * 1000  # ms
         
-        # Minimum buffer requirements (more lenient now)
+        # Minimum buffer requirements
         min_buffer_size = 32000 * 2  # 2 seconds at 16kHz, 16-bit = 64,000 bytes
         max_wait_time_ms = 8000  # Process after 8 seconds regardless
         
         # Check if we have enough audio accumulated
         if len(audio_buffers[call_id]) < min_buffer_size:
-            # Simple approach: if we have at least 0.8s of audio, process it after enough time
+            # Simple approach: if we have at least 1s of audio, process it after enough time
             # This ensures short utterances don't get stuck, but filters out tiny noise
-            ABSOLUTE_MIN_SIZE = 25600  # 0.8 seconds minimum to avoid "You" noise
-            if len(audio_buffers[call_id]) >= ABSOLUTE_MIN_SIZE and time_since_last >= 3000:
+            ABSOLUTE_MIN_SIZE = 32000  # 1.0 seconds minimum to avoid "You" noise
+            if len(audio_buffers[call_id]) >= ABSOLUTE_MIN_SIZE and time_since_last >= 4000:
                 print(f"   ⏰ Time threshold reached with partial audio! Processing {total_buffer} bytes...")
                 return True
             
