@@ -12,7 +12,7 @@ import os
 from ..config import settings
 from .whisper_service import transcribe_audio
 
-router = APIRouter(tags=["Audio Test"])
+router = APIRouter(prefix="/api", tags=["Audio Test"])
 
 @router.get("/test/audio", response_class=HTMLResponse)
 async def audio_test_page():
