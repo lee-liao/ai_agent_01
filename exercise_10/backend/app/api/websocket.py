@@ -559,6 +559,13 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
     try:
         print(f"🎵 About to transcribe audio for {speaker}, size: {len(audio_data)} bytes")
         
+        # CRITICAL: Reject buffers that are too small to avoid "you" noise transcriptions
+        # Minimum 1 second of audio required for meaningful transcription
+        MIN_AUDIO_SIZE = 32000  # 1.0 second at 16kHz, 16-bit = 32,000 bytes
+        if len(audio_data) < MIN_AUDIO_SIZE:
+            print(f"⚠️ Buffer too small for transcription ({len(audio_data)} bytes < {MIN_AUDIO_SIZE} bytes, {len(audio_data)/32000:.2f}s) - skipping to avoid noise")
+            return None
+        
         # Strategy 1: Try WebM directly (browser MediaRecorder sends WebM with Opus codec)
         # This works as proven by the test page!
         try:
