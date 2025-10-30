@@ -111,11 +111,12 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                         print(f"Error forwarding audio: {e}")
 
                 # Browser MediaRecorder sends complete WebM chunks every 1 second
-                # Each chunk is a standalone encoded audio file
+                # Each chunk is a standalone encoded audio file (WebM/Opus compressed)
+                # Opus compression: 1 second of speech = ~1.5-2 KB (very efficient!)
                 # Process each chunk individually - DO NOT concatenate WebM files!
                 
-                # Filter out tiny chunks (noise)
-                MIN_CHUNK_SIZE = 10000  # 10 KB minimum
+                # Filter out tiny chunks (noise/silence)
+                MIN_CHUNK_SIZE = 1000  # 1 KB minimum (allows for Opus compressed audio)
                 if len(audio_chunk) >= MIN_CHUNK_SIZE:
                     print(f"🎵 Processing individual WebM chunk: {len(audio_chunk)} bytes")
                     # Process this chunk immediately
@@ -559,8 +560,8 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
         print(f"🎵 About to transcribe audio for {speaker}, size: {len(audio_data)} bytes")
         
         # Reject chunks that are too small
-        # Browser MediaRecorder sends 1-second WebM chunks (typically 15-30 KB)
-        MIN_AUDIO_SIZE = 10000  # 10 KB minimum to filter noise
+        # Browser MediaRecorder sends 1-second WebM chunks with Opus compression (~1.5-2 KB per second)
+        MIN_AUDIO_SIZE = 1000  # 1 KB minimum to filter noise
         if len(audio_data) < MIN_AUDIO_SIZE:
             print(f"⚠️ Audio chunk too small ({len(audio_data)} bytes < {MIN_AUDIO_SIZE} bytes), skipping...")
             return None
