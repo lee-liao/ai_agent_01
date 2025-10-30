@@ -573,6 +573,14 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
         
         if energy_level < SPEECH_ENERGY_THRESHOLD:
             print(f"🔇 Buffer is mostly silence (energy: {energy_level:.4f} < {SPEECH_ENERGY_THRESHOLD}) - skipping to avoid hallucinations")
+            # DEBUG: Save the silence buffer for analysis
+            import os
+            from datetime import datetime
+            os.makedirs("audio_samples", exist_ok=True)
+            debug_file = f"audio_samples/silence_{datetime.now().strftime('%H%M%S')}_{len(audio_data)}.pcm"
+            with open(debug_file, "wb") as f:
+                f.write(audio_data)
+            print(f"   💾 Saved silence buffer to {debug_file}")
             return None
         else:
             print(f"🎤 Speech detected (energy: {energy_level:.4f}) - proceeding with transcription")
