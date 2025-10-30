@@ -566,6 +566,17 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
             print(f"⚠️ Buffer too small for transcription ({len(audio_data)} bytes < {MIN_AUDIO_SIZE} bytes, {len(audio_data)/32000:.2f}s) - skipping to avoid noise")
             return None
         
+        # CRITICAL: Check if audio contains actual speech or just silence
+        # Calculate energy level of the entire buffer
+        energy_level = calculate_audio_energy(audio_data)
+        SPEECH_ENERGY_THRESHOLD = 0.01  # Minimum energy to be considered speech (0-1 scale)
+        
+        if energy_level < SPEECH_ENERGY_THRESHOLD:
+            print(f"🔇 Buffer is mostly silence (energy: {energy_level:.4f} < {SPEECH_ENERGY_THRESHOLD}) - skipping to avoid hallucinations")
+            return None
+        else:
+            print(f"🎤 Speech detected (energy: {energy_level:.4f}) - proceeding with transcription")
+        
         # Strategy 1: Try WebM directly (browser MediaRecorder sends WebM with Opus codec)
         # This works as proven by the test page!
         try:
