@@ -41,7 +41,7 @@ from .context_manager import get_context
 
 import io
 import wave
-from pydub import AudioSegment
+# No longer need pydub - using Python's wave module instead!
 
 @router.websocket("/ws/call/{call_id}")
 async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
@@ -558,37 +558,31 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
     """Transcribe audio buffer using Whisper API with proper format handling"""
     try:
         print(f"🎵 About to transcribe audio for {speaker}, size: {len(audio_data)} bytes")
-        # Try to process directly with Whisper if it supports WebM
-        transcript = await transcribe_audio(audio_data, "audio.webm")
         
-        if transcript:
-#             print(f"✅ Transcription successful for {speaker}: {transcript[:50]}...")
-            return transcript
-        else:
-            print(f"⚠️ Whisper API could not transcribe, trying format conversion...")
+        # Convert raw PCM audio to WAV format using Python's wave module (no ffmpeg needed!)
+        try:
+            wav_buffer = io.BytesIO()
+            with wave.open(wav_buffer, 'wb') as wav_file:
+                wav_file.setnchannels(1)      # Mono
+                wav_file.setsampwidth(2)      # 16-bit (2 bytes per sample)
+                wav_file.setframerate(16000)  # 16kHz sample rate
+                wav_file.writeframes(audio_data)
             
-            # If direct processing fails, try to use pydub for format conversion
-            try:
-                # Create an audio segment from the WebM data
-                audio_segment = AudioSegment.from_file(io.BytesIO(audio_data), format="webm")
-                
-                # Export as WAV in memory
-                wav_io = io.BytesIO()
-                audio_segment.export(wav_io, format="wav")
-                wav_io.seek(0)
-                
-                # Now call Whisper API with WAV format
-                transcript = await transcribe_audio(wav_io.read(), "audio.wav")
-                
-                if transcript:
-#                     print(f"✅ Transcription successful (after conversion) for {speaker}: {transcript[:50]}...")
-                    return transcript
-                else:
-                    print(f"⚠️ Still no transcription after format conversion for {speaker}")
-                    return None
-            except Exception as format_error:
-                print(f"❌ Format conversion failed: {format_error}")
+            wav_buffer.seek(0)
+            
+            # Call Whisper API with WAV format
+            transcript = await transcribe_audio(wav_buffer.read(), "audio.wav")
+            
+            if transcript:
+                print(f"✅ Transcription successful for {speaker}: {transcript[:50]}...")
+                return transcript
+            else:
+                print(f"⚠️ No transcription result for {speaker}")
                 return None
+                
+        except Exception as conversion_error:
+            print(f"❌ WAV conversion failed: {conversion_error}")
+            return None
         
     except Exception as e:
         print(f"❌ Transcription error for {speaker}: {e}")
