@@ -562,6 +562,13 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
     try:
         print(f"🎵 About to transcribe audio for {speaker}, size: {len(audio_data)} bytes")
         
+        # Reject chunks that are too small (less than 0.5 seconds)
+        # These are usually noise and Whisper transcribes them as "You"
+        MIN_AUDIO_SIZE = 16000  # 0.5 seconds at 16kHz, 16-bit
+        if len(audio_data) < MIN_AUDIO_SIZE:
+            print(f"⚠️ Audio chunk too small ({len(audio_data)} bytes < {MIN_AUDIO_SIZE}), skipping...")
+            return None
+        
         # Strategy 1: Try WebM directly (browser MediaRecorder sends WebM with Opus codec)
         # This works as proven by the test page!
         try:
@@ -663,9 +670,10 @@ async def accumulate_audio_data(call_id: str, audio_chunk: bytes) -> bool:
         
         # Check if we have enough audio accumulated
         if len(audio_buffers[call_id]) < min_buffer_size:
-            # Simple approach: if we have at least 0.5s of audio, process it after enough time
-            # This ensures short utterances don't get stuck
-            if len(audio_buffers[call_id]) > 16000 and time_since_last >= 3000:
+            # Simple approach: if we have at least 0.8s of audio, process it after enough time
+            # This ensures short utterances don't get stuck, but filters out tiny noise
+            ABSOLUTE_MIN_SIZE = 25600  # 0.8 seconds minimum to avoid "You" noise
+            if len(audio_buffers[call_id]) >= ABSOLUTE_MIN_SIZE and time_since_last >= 3000:
                 print(f"   ⏰ Time threshold reached with partial audio! Processing {total_buffer} bytes...")
                 return True
             
