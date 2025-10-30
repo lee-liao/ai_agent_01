@@ -30,6 +30,9 @@ audio_energy_levels: Dict[str, List[float]] = {}
 # Last processing times for VAD (call_id -> last processing timestamp)
 audio_processing_times: Dict[str, float] = {}
 
+# Last audio chunk arrival times (call_id -> timestamp)
+audio_last_chunk_times: Dict[str, float] = {}
+
 # Buffer size: 4 seconds of audio - balancing responsiveness with transcription quality
 BUFFER_SIZE_SECONDS = 4
 
@@ -645,6 +648,9 @@ async def accumulate_audio_data(call_id: str, audio_chunk: bytes) -> bool:
         total_buffer = len(audio_buffers[call_id])
         print(f"📊 Audio buffer: {total_buffer:,} bytes ({total_buffer/32000:.2f}s of audio) for {call_id}")
         
+        # Update last chunk arrival time (after adding to buffer)
+        audio_last_chunk_times[call_id] = current_time
+        
         # Check if we should process the accumulated buffer
         # Strategy: Balance between enough audio for accuracy and responsive feedback
         
@@ -657,6 +663,12 @@ async def accumulate_audio_data(call_id: str, audio_chunk: bytes) -> bool:
         
         # Check if we have enough audio accumulated
         if len(audio_buffers[call_id]) < min_buffer_size:
+            # Simple approach: if we have at least 0.5s of audio, process it after enough time
+            # This ensures short utterances don't get stuck
+            if len(audio_buffers[call_id]) > 16000 and time_since_last >= 3000:
+                print(f"   ⏰ Time threshold reached with partial audio! Processing {total_buffer} bytes...")
+                return True
+            
             # Don't process yet - not enough audio accumulated
             print(f"   ⏳ Waiting for more audio... ({total_buffer}/{min_buffer_size} bytes, {total_buffer/min_buffer_size*100:.1f}%)")
             return False
