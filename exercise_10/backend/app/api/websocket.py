@@ -30,9 +30,6 @@ audio_energy_levels: Dict[str, List[float]] = {}
 # Last processing times for VAD (call_id -> last processing timestamp)
 audio_processing_times: Dict[str, float] = {}
 
-# Last audio chunk arrival times (call_id -> timestamp)
-audio_last_chunk_times: Dict[str, float] = {}
-
 # Buffer size: 4 seconds of audio - balancing responsiveness with transcription quality
 BUFFER_SIZE_SECONDS = 4
 
@@ -110,15 +107,15 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                     except Exception as e:
                         print(f"Error forwarding audio: {e}")
 
-                # Accumulate audio chunks for better transcription
-                # The chunks are raw PCM audio data from the browser
+                # Accumulate audio chunk for smart transcription processing with VAD
+                # Instead of processing individual chunks, accumulate them for better accuracy
                 should_process = await accumulate_audio_data(call_id, audio_chunk)
                 
-                # Process accumulated audio buffer if threshold reached
+                # Process accumulated audio buffer if VAD indicates it's time
                 if should_process:
                     audio_data = await process_audio_buffer(call_id)
                     if audio_data and len(audio_data) > 0:
-                        # Process accumulated audio
+                        # Process accumulated audio with timestamp
                         asyncio.create_task(
                             transcribe_and_broadcast(
                                 call_id, 
@@ -131,7 +128,9 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                     else:
                         print(f"⚠️ No accumulated audio data to process for {call_id}")
                 else:
-                    pass  # Continue accumulating
+                    # For immediate feedback, also process small chunks (optional, can be removed for cleaner approach)
+                    # This maintains the responsive feel while building up to smarter chunks
+                    pass  # Removed debug logging for production
                 
             elif "text" in data:
                 # Control message received
@@ -560,17 +559,23 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
     try:
         print(f"🎵 About to transcribe audio for {speaker}, size: {len(audio_data)} bytes")
         
-        # Reject chunks that are too small (less than 0.8 seconds)
-        # Accumulated raw PCM audio from browser
-        MIN_AUDIO_SIZE = 25600  # 0.8 seconds at 16kHz, 16-bit
-        if len(audio_data) < MIN_AUDIO_SIZE:
-            print(f"⚠️ Audio chunk too small ({len(audio_data)} bytes < {MIN_AUDIO_SIZE} bytes), skipping...")
-            return None
-        
-        # Convert accumulated raw PCM audio to WAV format using wave module
-        # This approach was proven to work!
+        # Strategy 1: Try WebM directly (browser MediaRecorder sends WebM with Opus codec)
+        # This works as proven by the test page!
         try:
-            print(f"   Converting {len(audio_data)} bytes PCM to WAV...")
+            print(f"   Trying WebM format first...")
+            transcript = await transcribe_audio(audio_data, "audio.webm")
+            
+            if transcript:
+                print(f"✅ Transcription successful (WebM) for {speaker}: {transcript[:50]}...")
+                return transcript
+            else:
+                print(f"   WebM returned no result, trying WAV conversion...")
+        except Exception as webm_error:
+            print(f"   WebM failed: {webm_error}, trying WAV conversion...")
+        
+        # Strategy 2: If WebM fails, try converting to WAV
+        # (This assumes the data might be raw PCM)
+        try:
             wav_buffer = io.BytesIO()
             with wave.open(wav_buffer, 'wb') as wav_file:
                 wav_file.setnchannels(1)      # Mono
@@ -584,14 +589,14 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
             transcript = await transcribe_audio(wav_buffer.read(), "audio.wav")
             
             if transcript:
-                print(f"✅ Transcription successful for {speaker}: {transcript[:50]}...")
+                print(f"✅ Transcription successful (WAV) for {speaker}: {transcript[:50]}...")
                 return transcript
             else:
                 print(f"⚠️ No transcription result for {speaker}")
                 return None
                 
         except Exception as conversion_error:
-            print(f"❌ WAV conversion failed: {conversion_error}")
+            print(f"❌ WAV conversion also failed: {conversion_error}")
             return None
         
     except Exception as e:
@@ -640,33 +645,39 @@ async def accumulate_audio_data(call_id: str, audio_chunk: bytes) -> bool:
         total_buffer = len(audio_buffers[call_id])
         print(f"📊 Audio buffer: {total_buffer:,} bytes ({total_buffer/32000:.2f}s of audio) for {call_id}")
         
-        # Update last chunk arrival time (after adding to buffer)
-        audio_last_chunk_times[call_id] = current_time
-        
         # Check if we should process the accumulated buffer
         # Strategy: Balance between enough audio for accuracy and responsive feedback
         
         # Calculate time since last processing
         time_since_last = (current_time - audio_processing_times.get(call_id, 0.0)) * 1000  # ms
         
-        # Minimum buffer requirements (use same as transcribe_audio_buffer)
-        min_buffer_size = 25600  # 0.8 seconds minimum to avoid "You" noise
-        max_wait_time_ms = 3000  # Process after 3 seconds of accumulation
+        # Minimum buffer requirements (more lenient now)
+        min_buffer_size = 32000 * 2  # 2 seconds at 16kHz, 16-bit = 64,000 bytes
+        max_wait_time_ms = 8000  # Process after 8 seconds regardless
         
-        # Check if we have enough audio accumulated OR enough time has passed
-        if len(audio_buffers[call_id]) >= min_buffer_size:
-            # We have enough audio, check if it's time to process
-            if time_since_last >= max_wait_time_ms:
-                print(f"   ⏰ Time threshold reached! Processing {total_buffer} bytes...")
-                return True
-            else:
-                # Keep accumulating for better context
-                print(f"   ✅ Buffer ready ({total_buffer} bytes), waiting for VAD or timeout...")
-                return False
-        else:
-            # Not enough audio yet
+        # Check if we have enough audio accumulated
+        if len(audio_buffers[call_id]) < min_buffer_size:
+            # Don't process yet - not enough audio accumulated
             print(f"   ⏳ Waiting for more audio... ({total_buffer}/{min_buffer_size} bytes, {total_buffer/min_buffer_size*100:.1f}%)")
             return False
+        
+        print(f"   ✅ Minimum buffer size reached! Checking VAD...")
+        
+        # Force processing if we've been waiting too long (prevents stuck buffers)
+        if time_since_last >= max_wait_time_ms:
+            print(f"   ⏰ Max wait time reached ({time_since_last:.0f}ms), forcing transcription!")
+            return True
+        
+        # Otherwise, check VAD for natural speech boundaries
+        should_process = should_process_audio_chunk(
+            call_id, 
+            current_time, 
+            audio_energy_levels[call_id], 
+            audio_processing_times.get(call_id, 0.0),
+            4000  # 4 second chunks for balance between accuracy and responsiveness
+        )
+        
+        return should_process
         
     except Exception as e:
         print(f"❌ Error accumulating audio chunk for {call_id}: {e}")
