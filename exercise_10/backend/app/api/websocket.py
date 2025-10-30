@@ -110,27 +110,28 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                     except Exception as e:
                         print(f"Error forwarding audio: {e}")
 
-                # Browser MediaRecorder sends complete WebM chunks every 1 second
-                # Each chunk is a standalone encoded audio file (WebM/Opus compressed)
-                # Opus compression: 1 second of speech = ~1.5-2 KB (very efficient!)
-                # Process each chunk individually - DO NOT concatenate WebM files!
+                # Accumulate audio chunks for better transcription
+                # The chunks are raw PCM audio data from the browser
+                should_process = await accumulate_audio_data(call_id, audio_chunk)
                 
-                # Filter out tiny chunks (noise/silence)
-                MIN_CHUNK_SIZE = 1000  # 1 KB minimum (allows for Opus compressed audio)
-                if len(audio_chunk) >= MIN_CHUNK_SIZE:
-                    print(f"🎵 Processing individual WebM chunk: {len(audio_chunk)} bytes")
-                    # Process this chunk immediately
-                    asyncio.create_task(
-                        transcribe_and_broadcast(
-                            call_id, 
-                            audio_chunk,  # Send the complete WebM chunk as-is
-                            speaker, 
-                            websocket, 
-                            partner_call_id
+                # Process accumulated audio buffer if threshold reached
+                if should_process:
+                    audio_data = await process_audio_buffer(call_id)
+                    if audio_data and len(audio_data) > 0:
+                        # Process accumulated audio
+                        asyncio.create_task(
+                            transcribe_and_broadcast(
+                                call_id, 
+                                audio_data,  # Process the accumulated buffer
+                                speaker, 
+                                websocket, 
+                                partner_call_id
+                            )
                         )
-                    )
+                    else:
+                        print(f"⚠️ No accumulated audio data to process for {call_id}")
                 else:
-                    print(f"⚠️ Skipping small chunk: {len(audio_chunk)} bytes (likely silence/noise)")
+                    pass  # Continue accumulating
                 
             elif "text" in data:
                 # Control message received
@@ -559,36 +560,38 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
     try:
         print(f"🎵 About to transcribe audio for {speaker}, size: {len(audio_data)} bytes")
         
-        # Reject chunks that are too small
-        # Browser MediaRecorder sends 1-second WebM chunks with Opus compression (~1.5-2 KB per second)
-        MIN_AUDIO_SIZE = 1000  # 1 KB minimum to filter noise
+        # Reject chunks that are too small (less than 0.8 seconds)
+        # Accumulated raw PCM audio from browser
+        MIN_AUDIO_SIZE = 25600  # 0.8 seconds at 16kHz, 16-bit
         if len(audio_data) < MIN_AUDIO_SIZE:
             print(f"⚠️ Audio chunk too small ({len(audio_data)} bytes < {MIN_AUDIO_SIZE} bytes), skipping...")
             return None
         
-        # Browser MediaRecorder sends WebM/Opus audio (already encoded format)
-        # Send directly to Whisper - DO NOT treat as PCM!
+        # Convert accumulated raw PCM audio to WAV format using wave module
+        # This approach was proven to work!
         try:
-            # DEBUG: Save sample chunk to check format
-            import os
-            os.makedirs("audio_samples", exist_ok=True)
-            debug_file = f"audio_samples/chunk_{call_id}_{len(audio_data)}.webm"
-            with open(debug_file, "wb") as f:
-                f.write(audio_data)
-            print(f"   💾 Saved chunk to {debug_file}")
+            print(f"   Converting {len(audio_data)} bytes PCM to WAV...")
+            wav_buffer = io.BytesIO()
+            with wave.open(wav_buffer, 'wb') as wav_file:
+                wav_file.setnchannels(1)      # Mono
+                wav_file.setsampwidth(2)      # 16-bit (2 bytes per sample)
+                wav_file.setframerate(16000)  # 16kHz sample rate
+                wav_file.writeframes(audio_data)
             
-            print(f"   Sending {len(audio_data)} bytes WebM audio to Whisper...")
-            transcript = await transcribe_audio(audio_data, "audio.webm")
+            wav_buffer.seek(0)
+            
+            # Call Whisper API with WAV format
+            transcript = await transcribe_audio(wav_buffer.read(), "audio.wav")
             
             if transcript:
                 print(f"✅ Transcription successful for {speaker}: {transcript[:50]}...")
                 return transcript
             else:
-                print(f"⚠️ Whisper returned empty transcription")
+                print(f"⚠️ No transcription result for {speaker}")
                 return None
                 
-        except Exception as transcription_error:
-            print(f"❌ Transcription failed: {transcription_error}")
+        except Exception as conversion_error:
+            print(f"❌ WAV conversion failed: {conversion_error}")
             return None
         
     except Exception as e:
@@ -646,40 +649,24 @@ async def accumulate_audio_data(call_id: str, audio_chunk: bytes) -> bool:
         # Calculate time since last processing
         time_since_last = (current_time - audio_processing_times.get(call_id, 0.0)) * 1000  # ms
         
-        # Minimum buffer requirements
-        min_buffer_size = 32000 * 2  # 2 seconds at 16kHz, 16-bit = 64,000 bytes
-        max_wait_time_ms = 8000  # Process after 8 seconds regardless
+        # Minimum buffer requirements (use same as transcribe_audio_buffer)
+        min_buffer_size = 25600  # 0.8 seconds minimum to avoid "You" noise
+        max_wait_time_ms = 3000  # Process after 3 seconds of accumulation
         
-        # Check if we have enough audio accumulated
-        if len(audio_buffers[call_id]) < min_buffer_size:
-            # Simple approach: if we have at least 1s of audio, process it after enough time
-            # This ensures short utterances don't get stuck, but filters out tiny noise
-            ABSOLUTE_MIN_SIZE = 32000  # 1.0 seconds minimum to avoid "You" noise
-            if len(audio_buffers[call_id]) >= ABSOLUTE_MIN_SIZE and time_since_last >= 4000:
-                print(f"   ⏰ Time threshold reached with partial audio! Processing {total_buffer} bytes...")
+        # Check if we have enough audio accumulated OR enough time has passed
+        if len(audio_buffers[call_id]) >= min_buffer_size:
+            # We have enough audio, check if it's time to process
+            if time_since_last >= max_wait_time_ms:
+                print(f"   ⏰ Time threshold reached! Processing {total_buffer} bytes...")
                 return True
-            
-            # Don't process yet - not enough audio accumulated
+            else:
+                # Keep accumulating for better context
+                print(f"   ✅ Buffer ready ({total_buffer} bytes), waiting for VAD or timeout...")
+                return False
+        else:
+            # Not enough audio yet
             print(f"   ⏳ Waiting for more audio... ({total_buffer}/{min_buffer_size} bytes, {total_buffer/min_buffer_size*100:.1f}%)")
             return False
-        
-        print(f"   ✅ Minimum buffer size reached! Checking VAD...")
-        
-        # Force processing if we've been waiting too long (prevents stuck buffers)
-        if time_since_last >= max_wait_time_ms:
-            print(f"   ⏰ Max wait time reached ({time_since_last:.0f}ms), forcing transcription!")
-            return True
-        
-        # Otherwise, check VAD for natural speech boundaries
-        should_process = should_process_audio_chunk(
-            call_id, 
-            current_time, 
-            audio_energy_levels[call_id], 
-            audio_processing_times.get(call_id, 0.0),
-            4000  # 4 second chunks for balance between accuracy and responsiveness
-        )
-        
-        return should_process
         
     except Exception as e:
         print(f"❌ Error accumulating audio chunk for {call_id}: {e}")
