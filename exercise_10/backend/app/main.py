@@ -8,7 +8,7 @@ from .database import init_db, close_db
 from .api import auth_routes, customers, websocket, calls, queue_debug
 
 # Import transcription test routes
-from .api import transcription_test
+from .api import transcription_test, audio_test
 
 # Lifespan context manager
 @asynccontextmanager
@@ -59,6 +59,7 @@ app.include_router(calls.router)
 app.include_router(queue_debug.router)
 app.include_router(websocket.router)
 app.include_router(transcription_test.router)
+app.include_router(audio_test.router)
 
 # Root endpoint
 @app.get("/")
