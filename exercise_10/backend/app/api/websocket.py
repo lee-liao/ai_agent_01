@@ -10,8 +10,8 @@ from .vad_service import (
     is_speech_detected,
     is_silence_detected,
     should_process_audio_chunk,
-    accumulate_audio_chunk,
-    process_audio_buffer
+    accumulate_audio_chunk as vad_accumulate_audio_chunk,
+    process_audio_buffer as vad_process_audio_buffer
 )
 
 router = APIRouter(tags=["WebSocket"])
@@ -81,7 +81,7 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
             if "bytes" in data:
                 # Audio data received
                 audio_chunk = data["bytes"]
-                print(f"📊 Received audio chunk: {len(audio_chunk)} bytes from {call_id}")
+                # print(f"📊 Received audio chunk: {len(audio_chunk)} bytes from {call_id}")
                 
                 # Route audio to partner (for real-time audio streaming)
                 from .calls import active_conversations as active_calls
@@ -109,11 +109,10 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
 
                 # Accumulate audio chunk for smart transcription processing with VAD
                 # Instead of processing individual chunks, accumulate them for better accuracy
-                should_process = await accumulate_audio_chunk(call_id, audio_chunk)
+                should_process = await accumulate_audio_data(call_id, audio_chunk)
                 
                 # Process accumulated audio buffer if VAD indicates it's time
                 if should_process:
-                    print(f"🎵 Smart chunking detected pause/silence, processing accumulated buffer for {call_id}")
                     audio_data = await process_audio_buffer(call_id)
                     if audio_data and len(audio_data) > 0:
                         # Process accumulated audio with timestamp
@@ -131,12 +130,12 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                 else:
                     # For immediate feedback, also process small chunks (optional, can be removed for cleaner approach)
                     # This maintains the responsive feel while building up to smarter chunks
-                    print(f"⏯️ Accumulating audio for {call_id} (buffer: {len(audio_buffers.get(call_id, b''))} bytes)")
+                    pass  # Removed debug logging for production
                 
             elif "text" in data:
                 # Control message received
                 message = json.loads(data["text"])
-                print(f"📡 [WS-{call_id}] Received message type: {message['type']}")
+#                 print(f"📡 [WS-{call_id}] Received message type: {message['type']}")
 
                 if message["type"] == "start_call":
                     print(f"▶️ Call started: {call_id}")
@@ -145,10 +144,10 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                 elif message["type"] == "end_call":
                     print(f"⏹️ Call ended: {call_id}, user_type: {message.get('user_type', 'unknown')}")
                     from .calls import active_conversations as active_calls
-                    print(f"📋 [DEBUG] Active conversations before end_call: {dict(active_calls)}")
+#                     print(f"📋 [DEBUG] Active conversations before end_call: {dict(active_calls)}")
                     user_type = message.get("user_type")
                     await handle_end_call(call_id, message, websocket)
-                    print(f"📋 [DEBUG] Active conversations after end_call: {dict(active_calls)}")
+#                     print(f"📋 [DEBUG] Active conversations after end_call: {dict(active_calls)}")
                     if user_type != 'agent':
                         # Only close WebSocket connection for non-agents (customers)
                         return
@@ -159,7 +158,7 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                     agent_queue_subscribers[call_id] = True
                     try:
                         from .calls import waiting_customers
-                        print(f"[WS] Agent {call_id} subscribed; waiting count={len(waiting_customers)}")
+#                         print(f"[WS] Agent {call_id} subscribed; waiting count={len(waiting_customers)}")
                     except Exception:
                         pass
                     await send_queue_update(target_ws=websocket)
@@ -179,16 +178,16 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                 elif message["type"] == "pickup":
                     # Agent requests to pick up a customer. If account_number absent, pick top of queue (FIFO)
                     account_number = message.get("account_number")
-                    print(f"📥 [WS-{call_id}] Pickup requested for account: {account_number}")
+#                     print(f"📥 [WS-{call_id}] Pickup requested for account: {account_number}")
                     if not account_number:
                         result = await try_pickup_top(agent_call_id=call_id)
                     else:
                         result = await try_pickup_customer(agent_call_id=call_id, account_number=account_number)
-                    print(f"[WS-{call_id}] Pickup result for {account_number}: {result}")
+#                     print(f"[WS-{call_id}] Pickup result for {account_number}: {result}")
                     await websocket.send_json({"type": "pickup_result", **result})
                     # If success, notify both ends of conversation start and send customer context to agent
                     if result.get("status") == "success":
-                        print(f"✅ [WS-{call_id}] Successful pickup, sending conversation_started")
+#                         print(f"✅ [WS-{call_id}] Successful pickup, sending conversation_started")
                         # Send conversation started to agent
                         await websocket.send_json({
                             "type": "conversation_started",
@@ -208,7 +207,7 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                         
                         # Send immediate queue update to the agent who just picked up customer
                         # This ensures their UI shows the current queue state (likely empty)
-                        print(f"📋 [WS-{call_id}] Sending queue update after successful pickup")
+#                         print(f"📋 [WS-{call_id}] Sending queue update after successful pickup")
                         await send_queue_update(target_ws=websocket)
                         
                         customer_call_id = result.get("customer_call_id")
@@ -219,11 +218,11 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                                     "call_id": customer_call_id,
                                     "timestamp": datetime.utcnow().isoformat()
                                 })
-                                print(f"✅ [WS-{call_id}] Sent conversation_started to customer {customer_call_id}")
+#                                 print(f"✅ [WS-{call_id}] Sent conversation_started to customer {customer_call_id}")
                             except Exception as e:
                                 print(f"❌ Failed to send conversation_started to {customer_call_id}: {e}")
                     else:
-                        print(f"❌ [WS-{call_id}] Pickup failed for {account_number}")
+                         print(f"❌ [WS-{call_id}] Pickup failed for {account_number}")
 
                 elif message["type"] == "conversation_started":
                     # Conversation started - trigger customer context fetch for agent
@@ -304,7 +303,7 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
         traceback.print_exc()
     
     finally:
-        print(f"🧹 [finally] Starting cleanup for call_id: {call_id}")
+#         print(f"🧹 [finally] Starting cleanup for call_id: {call_id}")
         # If an active conversation exists for this call_id, notify partner before cleanup
         try:
             from .calls import active_conversations as active_calls
@@ -363,12 +362,12 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
 
             # Remove all related conversation entries
             for key_to_delete in set(keys_to_delete):  # Use set to avoid duplicates
-                print(f"[cleanup] Deleting active conversation with key: {key_to_delete} for call_id: {call_id}")
+#                 print(f"[cleanup] Deleting active conversation with key: {key_to_delete} for call_id: {call_id}")
                 try:
                     del active_calls[key_to_delete]
-                    print(f"🧹 [cleanup] Successfully removed {key_to_delete} from active_conversations")
+#                     print(f"🧹 [cleanup] Successfully removed {key_to_delete} from active_conversations")
                 except Exception as e:
-                    print(f"❌ [cleanup] Error removing active conversation: {e}")
+                     print(f"❌ [cleanup] Error removing active conversation: {e}")
             
             # Notify partner if connected
             if partner_call_id and partner_call_id in active_connections:
@@ -378,36 +377,36 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                         "call_id": partner_call_id,
                         "timestamp": datetime.utcnow().isoformat()
                     })
-                    print(f"✅ [cleanup] Sent conversation_ended to partner {partner_call_id}")
+#                     print(f"✅ [cleanup] Sent conversation_ended to partner {partner_call_id}")
                 except Exception as e:
-                    print(f"❌ [cleanup] Error sending conversation_ended to partner: {e}")
+                     print(f"❌ [cleanup] Error sending conversation_ended to partner: {e}")
             else:
-                print(f"ℹ️ [cleanup] No partner found for {call_id}, partner_call_id: {partner_call_id}")
+                 print(f"ℹ️ [cleanup] No partner found for {call_id}, partner_call_id: {partner_call_id}")
                 
         except Exception as e:
-            print(f"❌ [cleanup] Exception in main cleanup: {e}")
+#             print(f"❌ [cleanup] Exception in main cleanup: {e}")
             import traceback
             traceback.print_exc()
         # Cleanup connection maps
         if call_id in active_connections:
             del active_connections[call_id]
-            print(f"🧹 [cleanup] Removed {call_id} from active_connections")
+#             print(f"🧹 [cleanup] Removed {call_id} from active_connections")
         if call_id in agent_queue_subscribers:
             del agent_queue_subscribers[call_id]
-            print(f"🧹 [cleanup] Removed {call_id} from agent_queue_subscribers")
+#             print(f"🧹 [cleanup] Removed {call_id} from agent_queue_subscribers")
         if call_id in audio_buffers:
             del audio_buffers[call_id]
-            print(f"🧹 [cleanup] Removed {call_id} from audio_buffers")
+#             print(f"🧹 [cleanup] Removed {call_id} from audio_buffers")
         if call_id in audio_energy_levels:
             del audio_energy_levels[call_id]
-            print(f"🧹 [cleanup] Removed {call_id} from audio_energy_levels")
+#             print(f"🧹 [cleanup] Removed {call_id} from audio_energy_levels")
         if call_id in audio_processing_times:
             del audio_processing_times[call_id]
-            print(f"🧹 [cleanup] Removed {call_id} from audio_processing_times")
+#             print(f"🧹 [cleanup] Removed {call_id} from audio_processing_times")
         # Cleanup conversation context
         from .context_manager import clear_context
         clear_context(call_id)
-        print(f"🧹 [cleanup] Cleared context for {call_id}")
+#         print(f"🧹 [cleanup] Cleared context for {call_id}")
 
 async def handle_start_call(call_id: str, message: dict, websocket: WebSocket):
     """Acknowledge connection without starting a call automatically."""
@@ -482,12 +481,13 @@ async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
 
     # Remove all related conversation entries
     for key_to_delete in set(keys_to_delete):  # Use set to avoid duplicates
-        print(f"[handle_end_call] Deleting active conversation with key: {key_to_delete} for call_id: {call_id}")
+#         print(f"[handle_end_call] Deleting active conversation with key: {key_to_delete} for call_id: {call_id}")
         try:
             del active_calls[key_to_delete]
-            print(f"🧹 [handle_end_call] Successfully removed {key_to_delete} from active_conversations")
+#             print(f"🧹 [handle_end_call] Successfully removed {key_to_delete} from active_conversations")
         except Exception as e:
-            print(f"❌ [handle_end_call] Error removing active conversation: {e}")
+#             print(f"❌ [handle_end_call] Error removing active conversation: {e}")
+            pass
     
     # Notify partner if connected
     if partner_call_id and partner_call_id in active_connections:
@@ -497,14 +497,16 @@ async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
                 "call_id": partner_call_id,
                 "timestamp": datetime.utcnow().isoformat()
             })
-            print(f"✅ [handle_end_call] Sent conversation_ended to partner {partner_call_id}")
+#             print(f"✅ [handle_end_call] Sent conversation_ended to partner {partner_call_id}")
         except Exception as e:
-            print(f"❌ [handle_end_call] Error sending conversation_ended to partner {partner_call_id}: {e}")
+#             print(f"❌ [handle_end_call] Error sending conversation_ended to partner {partner_call_id}: {e}")
+            pass
     else:
-        print(f"ℹ️ [handle_end_call] No partner found for {call_id}, partner_call_id: {partner_call_id}")
+#         print(f"ℹ️ [handle_end_call] No partner found for {call_id}, partner_call_id: {partner_call_id}")
+        pass
         
     if not keys_to_delete:
-        print(f"ℹ️ [handle_end_call] Call {call_id} not in active conversations, removing from waiting queue")
+#         print(f"ℹ️ [handle_end_call] Call {call_id} not in active conversations, removing from waiting queue")
         # Not in active conversation: remove from waiting (Redis) and available list
         removed_waiting = False
         removed_agents = False
@@ -513,9 +515,9 @@ async def handle_end_call(call_id: str, message: dict, websocket: WebSocket):
             from .queue_service import remove_from_queue as _rm
             await _rm(call_id)
             removed_waiting = True
-            print(f"🧹 [handle_end_call] Removed {call_id} from waiting queue")
+#             print(f"🧹 [handle_end_call] Removed {call_id} from waiting queue")
         except Exception as e:
-            print(f"❌ [handle_end_call] Error removing from waiting queue: {e}")
+#             print(f"❌ [handle_end_call] Error removing from waiting queue: {e}")
             pass # No fallback, as in-memory queue is deprecated
         
         # In-memory cleanup for available_agents (legacy)
@@ -556,16 +558,11 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
     """Transcribe audio buffer using Whisper API with proper format handling"""
     try:
         print(f"🎵 About to transcribe audio for {speaker}, size: {len(audio_data)} bytes")
-        
-        # Use pydub to handle the WebM format properly
-        # Note: concatenated WebM chunks are still not valid WebM files
-        # Better approach: try to send as WAV after conversion or send as WebM if Whisper supports it directly
-        
         # Try to process directly with Whisper if it supports WebM
         transcript = await transcribe_audio(audio_data, "audio.webm")
         
         if transcript:
-            print(f"✅ Transcription successful for {speaker}: {transcript[:50]}...")
+#             print(f"✅ Transcription successful for {speaker}: {transcript[:50]}...")
             return transcript
         else:
             print(f"⚠️ Whisper API could not transcribe, trying format conversion...")
@@ -584,7 +581,7 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
                 transcript = await transcribe_audio(wav_io.read(), "audio.wav")
                 
                 if transcript:
-                    print(f"✅ Transcription successful (after conversion) for {speaker}: {transcript[:50]}...")
+#                     print(f"✅ Transcription successful (after conversion) for {speaker}: {transcript[:50]}...")
                     return transcript
                 else:
                     print(f"⚠️ Still no transcription after format conversion for {speaker}")
@@ -601,7 +598,7 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
 
 
 # VAD (Voice Activity Detection) Helper Functions
-async def accumulate_audio_chunk(call_id: str, audio_chunk: bytes) -> bool:
+async def accumulate_audio_data(call_id: str, audio_chunk: bytes) -> bool:
     """
     Accumulate audio chunk in buffer and determine if we should process it.
     Uses VAD to detect natural speech boundaries for smart chunking.
@@ -636,7 +633,7 @@ async def accumulate_audio_chunk(call_id: str, audio_chunk: bytes) -> bool:
         
         # Add chunk to buffer
         audio_buffers[call_id].extend(audio_chunk)
-        print(f"📊 Accumulated audio chunk: {len(audio_chunk)} bytes (total: {len(audio_buffers[call_id])} bytes) for {call_id}")
+#         print(f"📊 Accumulated audio chunk: {len(audio_chunk)} bytes (total: {len(audio_buffers[call_id])} bytes) for {call_id}")
         
         # Check if we should process the accumulated buffer
         # This could be based on time, VAD silence detection, or other criteria
@@ -708,7 +705,7 @@ async def transcribe_and_broadcast(
             print(f"⚠️ No transcription result for {speaker} audio")
             return
         
-        print(f"📝 Transcription result for {speaker}: {text[:50]}...")
+#         print(f"📝 Transcription result for {speaker}: {text[:50]}...")
         
         # Create transcript message
         transcript_msg = {
@@ -725,7 +722,7 @@ async def transcribe_and_broadcast(
         # Send to sender
         try:
             await sender_ws.send_json(transcript_msg)
-            print(f"📤 Sent transcript to sender ({speaker}): {text[:30]}...")
+#             print(f"📤 Sent transcript to sender ({speaker}): {text[:30]}...")
         except Exception as e:
             print(f"❌ Error sending transcript to sender: {e}")
 
@@ -733,7 +730,7 @@ async def transcribe_and_broadcast(
         if partner_call_id and partner_call_id in active_connections:
             try:
                 await active_connections[partner_call_id].send_json(transcript_msg)
-                print(f"📤 Sent transcript to partner: {text[:30]}...")
+#                 print(f"📤 Sent transcript to partner: {text[:30]}...")
             except Exception as e:
                 print(f"❌ Error sending transcript to partner: {e}")
                 # Remove dead connection
@@ -744,7 +741,7 @@ async def transcribe_and_broadcast(
         # (keeping the same pattern from the original code)
         from .ai_service import generate_suggestion
         if speaker == "customer" and partner_call_id and partner_call_id in active_connections:
-            print(f"💡 Generating AI suggestion for agent {partner_call_id} based on customer message: {text[:50]}...")
+#             print(f"💡 Generating AI suggestion for agent {partner_call_id} based on customer message: {text[:50]}...")
             suggestion = await generate_suggestion(call_id=call_id, customer_message=text)
             print(f"💡 AI suggestion generated: {suggestion}")
             try:
@@ -755,7 +752,7 @@ async def transcribe_and_broadcast(
                     "timestamp": suggestion.get("timestamp", datetime.utcnow().isoformat())
                 }
                 await active_connections[partner_call_id].send_json(ai_suggestion_msg)
-                print(f"🤖 Sent AI suggestion to agent {partner_call_id}: {suggestion.get('suggestion', '')[:30]}...")
+#                 print(f"🤖 Sent AI suggestion to agent {partner_call_id}: {suggestion.get('suggestion', '')[:30]}...")
             except Exception as e:
                 print(f"❌ Error sending AI suggestion to agent {partner_call_id}: {e}")
                 import traceback
@@ -783,7 +780,7 @@ async def handle_transcript(call_id: str, message: dict, websocket: WebSocket):
         "timestamp": datetime.utcnow().isoformat()
     }
     
-    print(f"📝 Transcript received from {call_id} (speaker: {speaker}): {text[:50]}...")
+#     print(f"📝 Transcript received from {call_id} (speaker: {speaker}): {text[:50]}...")
     
     # Add transcript to conversation context
     context = get_context(call_id)
@@ -850,7 +847,7 @@ async def handle_transcript(call_id: str, message: dict, websocket: WebSocket):
     # (keeping the same pattern from the original code)
     from .ai_service import generate_suggestion
     if speaker == "customer" and partner_call_id and partner_call_id in active_connections:
-        print(f"💡 Generating AI suggestion for agent {partner_call_id} based on customer message: {text[:50]}...")
+#         print(f"💡 Generating AI suggestion for agent {partner_call_id} based on customer message: {text[:50]}...")
         suggestion = await generate_suggestion(call_id=call_id, customer_message=text)
         print(f"💡 AI suggestion generated: {suggestion}")
         try:
@@ -861,7 +858,7 @@ async def handle_transcript(call_id: str, message: dict, websocket: WebSocket):
                 "timestamp": suggestion.get("timestamp", datetime.utcnow().isoformat())
             }
             await active_connections[partner_call_id].send_json(ai_suggestion_msg)
-            print(f"🤖 Sent AI suggestion to agent {partner_call_id}: {suggestion.get('suggestion', '')[:30]}...")
+#             print(f"🤖 Sent AI suggestion to agent {partner_call_id}: {suggestion.get('suggestion', '')[:30]}...")
         except Exception as e:
             print(f"❌ Error sending AI suggestion to agent {partner_call_id}: {e}")
             import traceback

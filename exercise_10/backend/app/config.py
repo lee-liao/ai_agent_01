@@ -24,11 +24,18 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: List[str] = [
-        "http://localhost:3000", 
+        "http://localhost:8501",
+        "https://localhost:8501", 
         "http://localhost:3001",
-        "http://192.168.10.244:3000",
+        "http://192.168.10.210:8501",
+        "https://192.168.10.210:8501",
+        "http://192.168.10.244:8501",
+        "https://192.168.10.244:8501",
         "http://192.168.10.244:*",
-        "http://0.0.0.0:3000"
+        "http://0.0.0.0:8501",
+        "https://0.0.0.0:8501",
+        "http://103.98.213.149:8501",
+        "https://103.98.213.149:8501"
     ]
     
     class Config:

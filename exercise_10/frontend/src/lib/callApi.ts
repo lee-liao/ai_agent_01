@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Explicitly log the API URL for debugging
-const API_URL = process.env.NEXT_PUBLIC_API_URL || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8000`;
+const API_URL = process.env.NEXT_PUBLIC_API_URL || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8600`;
 console.log('Using API URL:', API_URL);
 
 export interface CallResponse {

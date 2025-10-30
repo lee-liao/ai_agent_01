@@ -17,9 +17,10 @@ app.prepare().then(() => {
   createServer(httpsOptions, (req, res) => {
     const parsedUrl = parse(req.url, true);
     handle(req, res, parsedUrl);
-  }).listen(3000, (err) => {
+  }).listen(8501, (err) => {
     if (err) throw err;
-    console.log('> Ready on https://localhost:3000');
-    console.log('> LAN access: https://192.168.10.210:3000');
+    console.log('> Ready on https://localhost:8501');
+    console.log('> LAN access: https://192.168.10.210:8501');
+    console.log('> WAN access: https://103.98.213.149:8501');
   });
 });
