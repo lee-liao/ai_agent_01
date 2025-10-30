@@ -166,8 +166,13 @@ export default function CallsPage() {
       } else if (apiBaseUrl.startsWith('https://')) {
         wsUrl = apiBaseUrl.replace('https://', 'wss://');
       } else {
-        // Fallback for malformed URL
-        wsUrl = `ws://${apiBaseUrl}`;
+        // Fallback for malformed URL - check if it's already a WebSocket URL
+        if (apiBaseUrl.startsWith('ws://') || apiBaseUrl.startsWith('wss://')) {
+          wsUrl = apiBaseUrl;
+        } else {
+          // Default to secure WebSocket if HTTPS is likely being used
+          wsUrl = `wss://${apiBaseUrl}`;
+        }
       }
       
       const websocket = new WebSocket(`${wsUrl}/ws/call/${response.call_id}`);

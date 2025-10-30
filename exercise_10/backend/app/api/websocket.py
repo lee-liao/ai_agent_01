@@ -2,6 +2,17 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import Dict, Optional, List
 import json
 from datetime import datetime
+import asyncio
+
+# Import VAD service for smart audio chunking
+from .vad_service import (
+    calculate_audio_energy,
+    is_speech_detected,
+    is_silence_detected,
+    should_process_audio_chunk,
+    accumulate_audio_chunk,
+    process_audio_buffer
+)
 
 router = APIRouter(tags=["WebSocket"])
 
@@ -12,6 +23,12 @@ agent_queue_subscribers: Dict[str, bool] = {}
 
 # Audio buffers for transcription (call_id -> bytearray)
 audio_buffers: Dict[str, bytearray] = {}
+
+# Audio energy levels for VAD (call_id -> list of recent energy levels)
+audio_energy_levels: Dict[str, List[float]] = {}
+
+# Last processing times for VAD (call_id -> last processing timestamp)
+audio_processing_times: Dict[str, float] = {}
 
 # Buffer size: 4 seconds of audio - balancing responsiveness with transcription quality
 BUFFER_SIZE_SECONDS = 4
@@ -43,6 +60,8 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
     await websocket.accept()
     active_connections[call_id] = websocket
     audio_buffers[call_id] = bytearray()  # Initialize audio buffer
+    audio_energy_levels[call_id] = []     # Initialize energy levels for VAD
+    audio_processing_times[call_id] = 0.0 # Initialize last processing time
 
     print(f"✅ WebSocket connected: {call_id}")
     
@@ -88,17 +107,31 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
                     except Exception as e:
                         print(f"Error forwarding audio: {e}")
 
-                # Process audio chunk for transcription (individual chunks for immediate feedback)
-                # Transcribe the audio chunk in background to avoid blocking
-                asyncio.create_task(
-                    transcribe_and_broadcast(
-                        call_id, 
-                        audio_chunk,  # Process the individual chunk
-                        speaker, 
-                        websocket, 
-                        partner_call_id
-                    )
-                )
+                # Accumulate audio chunk for smart transcription processing with VAD
+                # Instead of processing individual chunks, accumulate them for better accuracy
+                should_process = await accumulate_audio_chunk(call_id, audio_chunk)
+                
+                # Process accumulated audio buffer if VAD indicates it's time
+                if should_process:
+                    print(f"🎵 Smart chunking detected pause/silence, processing accumulated buffer for {call_id}")
+                    audio_data = await process_audio_buffer(call_id)
+                    if audio_data and len(audio_data) > 0:
+                        # Process accumulated audio with timestamp
+                        asyncio.create_task(
+                            transcribe_and_broadcast(
+                                call_id, 
+                                audio_data,  # Process the accumulated buffer
+                                speaker, 
+                                websocket, 
+                                partner_call_id
+                            )
+                        )
+                    else:
+                        print(f"⚠️ No accumulated audio data to process for {call_id}")
+                else:
+                    # For immediate feedback, also process small chunks (optional, can be removed for cleaner approach)
+                    # This maintains the responsive feel while building up to smarter chunks
+                    print(f"⏯️ Accumulating audio for {call_id} (buffer: {len(audio_buffers.get(call_id, b''))} bytes)")
                 
             elif "text" in data:
                 # Control message received
@@ -365,6 +398,12 @@ async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
         if call_id in audio_buffers:
             del audio_buffers[call_id]
             print(f"🧹 [cleanup] Removed {call_id} from audio_buffers")
+        if call_id in audio_energy_levels:
+            del audio_energy_levels[call_id]
+            print(f"🧹 [cleanup] Removed {call_id} from audio_energy_levels")
+        if call_id in audio_processing_times:
+            del audio_processing_times[call_id]
+            print(f"🧹 [cleanup] Removed {call_id} from audio_processing_times")
         # Cleanup conversation context
         from .context_manager import clear_context
         clear_context(call_id)
@@ -560,6 +599,99 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
         traceback.print_exc()
         return None
 
+
+# VAD (Voice Activity Detection) Helper Functions
+async def accumulate_audio_chunk(call_id: str, audio_chunk: bytes) -> bool:
+    """
+    Accumulate audio chunk in buffer and determine if we should process it.
+    Uses VAD to detect natural speech boundaries for smart chunking.
+    
+    Args:
+        call_id: Call identifier
+        audio_chunk: Incoming audio data
+        
+    Returns:
+        True if the accumulated buffer should be processed for transcription
+    """
+    try:
+        # Initialize buffers if needed
+        if call_id not in audio_buffers:
+            audio_buffers[call_id] = bytearray()
+        if call_id not in audio_energy_levels:
+            audio_energy_levels[call_id] = []
+        if call_id not in audio_processing_times:
+            audio_processing_times[call_id] = 0.0
+            
+        # Get current time
+        current_time = asyncio.get_event_loop().time()
+        
+        # Calculate energy level for VAD
+        energy_level = calculate_audio_energy(audio_chunk)
+        
+        # Store energy level for silence detection
+        audio_energy_levels[call_id].append(energy_level)
+        # Keep only recent energy levels to avoid memory issues
+        if len(audio_energy_levels[call_id]) > 100:  # Keep last 100 samples
+            audio_energy_levels[call_id] = audio_energy_levels[call_id][-100:]
+        
+        # Add chunk to buffer
+        audio_buffers[call_id].extend(audio_chunk)
+        print(f"📊 Accumulated audio chunk: {len(audio_chunk)} bytes (total: {len(audio_buffers[call_id])} bytes) for {call_id}")
+        
+        # Check if we should process the accumulated buffer
+        # This could be based on time, VAD silence detection, or other criteria
+        should_process = should_process_audio_chunk(
+            call_id, 
+            current_time, 
+            audio_energy_levels[call_id], 
+            audio_processing_times.get(call_id, 0.0),
+            2000  # 2 second chunks for responsive transcription
+        )
+        
+        return should_process
+        
+    except Exception as e:
+        print(f"❌ Error accumulating audio chunk for {call_id}: {e}")
+        return False
+
+
+async def process_audio_buffer(call_id: str) -> bytes:
+    """
+    Process the accumulated audio buffer and return the audio data for transcription.
+    Clears the buffer after processing.
+    
+    Args:
+        call_id: Call identifier
+        
+    Returns:
+        Audio data for transcription
+    """
+    try:
+        if call_id not in audio_buffers:
+            return b""
+        
+        # Get the accumulated audio data
+        audio_data = bytes(audio_buffers[call_id])
+        
+        # Clear the buffer
+        audio_buffers[call_id].clear()
+        
+        # Update the last processed timestamp
+        audio_processing_times[call_id] = asyncio.get_event_loop().time()
+        
+        # Clear energy levels for this buffer
+        if call_id in audio_energy_levels:
+            audio_energy_levels[call_id].clear()
+        
+        print(f"🎵 Processing accumulated audio buffer: {len(audio_data)} bytes for {call_id}")
+        return audio_data
+        
+    except Exception as e:
+        print(f"❌ Error processing audio buffer for {call_id}: {e}")
+        return b""
+
+
+# Audio Buffer Management Functions
 async def transcribe_and_broadcast(
     call_id: str,
     audio_data: bytes,

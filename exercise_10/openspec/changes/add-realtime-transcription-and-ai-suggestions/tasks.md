@@ -7,19 +7,26 @@
 - [x] 1.6 Update OpenAI library version for better format support
 - [x] 1.7 Add customer transcript handling to customer chat page
 - [ ] 1.8 Enhance customer lookup endpoint and invoke on call start
-- [ ] 1.9 Update frontend `src/app/calls/page.tsx` to render transcripts, suggestions, and customer info
+- [x] 1.9 Update frontend `src/app/calls/page.tsx` to render transcripts, suggestions, and customer info
 - [ ] 1.10 Implement voice call interface specifications (visual indicators, controls)
+- [x] 1.11 Implement smart audio chunking with pause detection and precise timestamps
+- [x] 1.12 Implement dual AI suggestion approach (real-time for chat, batch for voice)
+- [ ] 1.13 Implement unified conversation timeline with timestamp synchronization
+- [ ] 1.14 Add configurable AI suggestion panel limits and FIFO management
 
 ## 2. Configuration
 - [ ] 2.1 Ensure `OPENAI_API_KEY` is read in backend settings
 - [ ] 2.2 Confirm CORS and Next.js rewrites support `/api/*`
+- [ ] 2.3 Add new environment variables for chunking and AI suggestion configuration
 
 ## 3. Testing
-- [ ] 3.1 Manual E2E: customer mic -> transcript < 2s
-- [ ] 3.2 Verify agent receives suggestions upon customer speech
+- [ ] 3.1 Manual E2E: customer mic -> transcript with accurate timestamps
+- [ ] 3.2 Verify agent receives real-time suggestions for chat and batch suggestions for voice
 - [ ] 3.3 Customer info panel loads on call start
+- [ ] 3.4 Unified conversation timeline maintains proper timestamp synchronization
 
 ## 4. Documentation
 - [ ] 4.1 Update README quickstart for Whisper/GPT and env vars
 - [ ] 4.2 Update openspec/project.md if conventions change
+- [ ] 4.3 Document new configuration parameters and their effects
 
