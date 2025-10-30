@@ -559,7 +559,22 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
     try:
         print(f"🎵 About to transcribe audio for {speaker}, size: {len(audio_data)} bytes")
         
-        # Convert raw PCM audio to WAV format using Python's wave module (no ffmpeg needed!)
+        # Strategy 1: Try WebM directly (browser MediaRecorder sends WebM with Opus codec)
+        # This works as proven by the test page!
+        try:
+            print(f"   Trying WebM format first...")
+            transcript = await transcribe_audio(audio_data, "audio.webm")
+            
+            if transcript:
+                print(f"✅ Transcription successful (WebM) for {speaker}: {transcript[:50]}...")
+                return transcript
+            else:
+                print(f"   WebM returned no result, trying WAV conversion...")
+        except Exception as webm_error:
+            print(f"   WebM failed: {webm_error}, trying WAV conversion...")
+        
+        # Strategy 2: If WebM fails, try converting to WAV
+        # (This assumes the data might be raw PCM)
         try:
             wav_buffer = io.BytesIO()
             with wave.open(wav_buffer, 'wb') as wav_file:
@@ -574,14 +589,14 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
             transcript = await transcribe_audio(wav_buffer.read(), "audio.wav")
             
             if transcript:
-                print(f"✅ Transcription successful for {speaker}: {transcript[:50]}...")
+                print(f"✅ Transcription successful (WAV) for {speaker}: {transcript[:50]}...")
                 return transcript
             else:
                 print(f"⚠️ No transcription result for {speaker}")
                 return None
                 
         except Exception as conversion_error:
-            print(f"❌ WAV conversion failed: {conversion_error}")
+            print(f"❌ WAV conversion also failed: {conversion_error}")
             return None
         
     except Exception as e:
