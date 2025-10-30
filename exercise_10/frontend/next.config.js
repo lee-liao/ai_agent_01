@@ -8,7 +8,7 @@ const nextConfig = {
     },
   },
   async rewrites() {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8600';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://localhost:8600';
     return [
       {
         source: '/api/:path*',

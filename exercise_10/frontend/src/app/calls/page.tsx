@@ -157,7 +157,7 @@ export default function CallsPage() {
       // Step 2: Connect WebSocket with assigned call_id
       // Determine WebSocket backend URL based on environment variable
       // This ensures the WebSocket connects to the same backend server as API calls
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || `http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8600`;
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || `https://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8600`;
       
       // Extract hostname and port from API URL to build WebSocket URL
       let wsUrl;
