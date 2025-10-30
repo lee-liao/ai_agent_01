@@ -642,16 +642,27 @@ async def accumulate_audio_data(call_id: str, audio_chunk: bytes) -> bool:
         
         # Add chunk to buffer
         audio_buffers[call_id].extend(audio_chunk)
-#         print(f"📊 Accumulated audio chunk: {len(audio_chunk)} bytes (total: {len(audio_buffers[call_id])} bytes) for {call_id}")
+        total_buffer = len(audio_buffers[call_id])
+        print(f"📊 Audio buffer: {total_buffer:,} bytes ({total_buffer/32000:.2f}s of audio) for {call_id}")
         
         # Check if we should process the accumulated buffer
         # This could be based on time, VAD silence detection, or other criteria
+        # Only process if we have enough audio data (at least 3 seconds worth)
+        min_buffer_size = 32000 * 3  # 3 seconds at 16kHz, 16-bit = 96,000 bytes
+        
+        if len(audio_buffers[call_id]) < min_buffer_size:
+            # Don't process yet - not enough audio accumulated
+            print(f"   ⏳ Waiting for more audio... ({total_buffer}/{min_buffer_size} bytes, {total_buffer/min_buffer_size*100:.1f}%)")
+            return False
+        
+        print(f"   ✅ Minimum buffer size reached! Ready to process when VAD triggers...")
+        
         should_process = should_process_audio_chunk(
             call_id, 
             current_time, 
             audio_energy_levels[call_id], 
             audio_processing_times.get(call_id, 0.0),
-            2000  # 2 second chunks for responsive transcription
+            5000  # 5 second chunks for better transcription accuracy
         )
         
         return should_process
