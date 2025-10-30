@@ -569,6 +569,14 @@ async def transcribe_audio_buffer(call_id: str, audio_data: bytes, speaker: str)
         # Browser MediaRecorder sends WebM/Opus audio (already encoded format)
         # Send directly to Whisper - DO NOT treat as PCM!
         try:
+            # DEBUG: Save sample chunk to check format
+            import os
+            os.makedirs("audio_samples", exist_ok=True)
+            debug_file = f"audio_samples/chunk_{call_id}_{len(audio_data)}.webm"
+            with open(debug_file, "wb") as f:
+                f.write(audio_data)
+            print(f"   💾 Saved chunk to {debug_file}")
+            
             print(f"   Sending {len(audio_data)} bytes WebM audio to Whisper...")
             transcript = await transcribe_audio(audio_data, "audio.webm")
             
