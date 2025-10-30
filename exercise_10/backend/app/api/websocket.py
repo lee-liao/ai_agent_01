@@ -646,23 +646,35 @@ async def accumulate_audio_data(call_id: str, audio_chunk: bytes) -> bool:
         print(f"📊 Audio buffer: {total_buffer:,} bytes ({total_buffer/32000:.2f}s of audio) for {call_id}")
         
         # Check if we should process the accumulated buffer
-        # This could be based on time, VAD silence detection, or other criteria
-        # Only process if we have enough audio data (at least 3 seconds worth)
-        min_buffer_size = 32000 * 3  # 3 seconds at 16kHz, 16-bit = 96,000 bytes
+        # Strategy: Balance between enough audio for accuracy and responsive feedback
         
+        # Calculate time since last processing
+        time_since_last = (current_time - audio_processing_times.get(call_id, 0.0)) * 1000  # ms
+        
+        # Minimum buffer requirements (more lenient now)
+        min_buffer_size = 32000 * 2  # 2 seconds at 16kHz, 16-bit = 64,000 bytes
+        max_wait_time_ms = 8000  # Process after 8 seconds regardless
+        
+        # Check if we have enough audio accumulated
         if len(audio_buffers[call_id]) < min_buffer_size:
             # Don't process yet - not enough audio accumulated
             print(f"   ⏳ Waiting for more audio... ({total_buffer}/{min_buffer_size} bytes, {total_buffer/min_buffer_size*100:.1f}%)")
             return False
         
-        print(f"   ✅ Minimum buffer size reached! Ready to process when VAD triggers...")
+        print(f"   ✅ Minimum buffer size reached! Checking VAD...")
         
+        # Force processing if we've been waiting too long (prevents stuck buffers)
+        if time_since_last >= max_wait_time_ms:
+            print(f"   ⏰ Max wait time reached ({time_since_last:.0f}ms), forcing transcription!")
+            return True
+        
+        # Otherwise, check VAD for natural speech boundaries
         should_process = should_process_audio_chunk(
             call_id, 
             current_time, 
             audio_energy_levels[call_id], 
             audio_processing_times.get(call_id, 0.0),
-            5000  # 5 second chunks for better transcription accuracy
+            4000  # 4 second chunks for balance between accuracy and responsiveness
         )
         
         return should_process
