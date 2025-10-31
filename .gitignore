@@ -31,3 +31,13 @@ node_modules/
 exercise_* copy/
 
 
+.github/
+.gemini/
+.wucai-clipboard/
+.wucai/
+exercise_8/backend/logs/
+exercise_8/backend/app/logs/
+gha-creds-*.json
+exercise_10/customer-sim/
+exercise_10/backend/sslCertificates/
+exercise_10/frontend/sslCertificates/

@@ -50,16 +50,22 @@ export default function RunPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Mock data - in real implementation, this would call api.listDocs() and api.listPlaybooks()
-    setDocs([
-      { doc_id: "doc_001", name: "SaaS_MSA_v2.pdf" },
-      { doc_id: "doc_002", name: "NDA_Template.docx" },
-      { doc_id: "doc_003", name: "DPA_GDPR.pdf" },
-    ]);
-    setPlaybooks([
-      { playbook_id: "playbook_001", name: "Standard SaaS MSA Policy" },
-      { playbook_id: "playbook_002", name: "GDPR DPA Policy" },
-    ]);
+    const fetchData = async () => {
+      try {
+        const [docsResponse, playbooksResponse] = await Promise.all([
+          api.listDocs(),
+          api.listPlaybooks()
+        ]);
+        
+        setDocs(docsResponse);
+        setPlaybooks(playbooksResponse);
+      } catch (err) {
+        setError("Failed to load documents or playbooks");
+        console.error("Error fetching data:", err);
+      }
+    };
+
+    fetchData();
   }, []);
 
   const handleStartRun = async () => {
@@ -72,12 +78,14 @@ export default function RunPage() {
     setError(null);
 
     try {
-      // Mock response - in real implementation, this would call api.run()
-      const mockRunId = `run_${Date.now()}`;
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 500));
-      // Navigate to the run detail page
-      router.push(`/run/${mockRunId}`);
+      const response = await api.run({
+        doc_id: docId,
+        agent_path: agentPath,
+        playbook_id: playbookId || undefined
+      });
+      
+      // Navigate to the actual run detail page
+      router.push(`/run/${response.run_id}`);
     } catch (err) {
       setError("Failed to start run");
       console.error(err);

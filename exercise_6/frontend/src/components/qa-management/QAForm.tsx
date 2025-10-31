@@ -76,7 +76,7 @@ export function QAForm({ qa, onSubmit, onClose, isLoading }: QAFormProps) {
               rows={3}
               value={formData.question}
               onChange={(e) => handleChange('question', e.target.value)}
-              className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Enter the question that users might ask..."
               required
             />
@@ -95,7 +95,7 @@ export function QAForm({ qa, onSubmit, onClose, isLoading }: QAFormProps) {
               rows={6}
               value={formData.answer}
               onChange={(e) => handleChange('answer', e.target.value)}
-              className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Enter the detailed answer..."
               required
             />
@@ -114,7 +114,7 @@ export function QAForm({ qa, onSubmit, onClose, isLoading }: QAFormProps) {
               id="tags"
               value={formData.tags}
               onChange={(e) => handleChange('tags', e.target.value)}
-              className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               placeholder="tag1, tag2, tag3"
             />
             <p className="mt-1 text-xs text-gray-500">

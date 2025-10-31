@@ -21,6 +21,34 @@ class ExtractorAgent:
         "phone": r"\b(?:\+\d{1,2}\s?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b",
         "address": r"\b\d+\s+[A-Za-z\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct)\b",
         "name": r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b",  # Simple name pattern
+        "passport": r"\b[A-Z]{2}\d{7}\b",
+    }
+
+    # Phrases/headings that often cause false-positive "names" in legal docs
+    _NAME_HEADING_STOP_PHRASES = {
+        "governing law",
+        "payment obligation",
+        "term duration",
+        "dispute resolution",
+        "indemnification",
+        "limitation of liability",
+        "scope of work",
+        "termination for convenience",
+        "auto renewal",
+        "exclusive remedy",
+        "standard implementation",
+        "project kickoff",
+    }
+
+    _NAME_CONTEXT_HINTS = [
+        "name:", "full name", "print name", "signed by", "signature",
+        "attn", "attention", "contact", "mr.", "ms.", "mrs.", "dr.",
+        "representative", "witness", "employee", "client name",
+    ]
+
+    _GENERIC_EMAIL_USERS = {
+        "info", "support", "sales", "contact", "admin", "noreply",
+        "no-reply", "hello", "careers", "hr", "jobs"
     }
     
     def extract(
@@ -115,21 +143,37 @@ class ExtractorAgent:
                 
                 # Determine risk level
                 risk_level = self._assess_pii_risk(pii_type)
+
+                # Context-aware confidence scoring and filtering for select types
+                confidence = 0.8  # default
+                drop_entity = False
+                if pii_type == "name":
+                    confidence = self._score_name_confidence(content, start_pos, end_pos, entity_text)
+                    # Reduce risk for low-confidence name detections
+                    risk_level = self._adjust_risk_by_confidence(risk_level, confidence)
+                    # Drop very low-confidence name matches entirely
+                    if confidence < 0.3:
+                        drop_entity = True
+                elif pii_type == "email":
+                    confidence = self._score_email_confidence(entity_text)
+                    risk_level = self._adjust_risk_by_confidence(risk_level, confidence)
                 
                 # Create entity ID
                 entity_id = hashlib.md5(f"{pii_type}_{start_pos}_{entity_text}".encode()).hexdigest()[:16]
                 
-                pii_entities.append({
-                    "id": entity_id,
-                    "type": pii_type,
-                    "text": entity_text,
-                    "start_pos": start_pos,
-                    "end_pos": end_pos,
-                    "context": context,
-                    "risk_level": risk_level,
-                    "redaction_mode": redaction_mode,
-                    "redacted_value": self._redact_value(entity_text, pii_type, redaction_mode)
-                })
+                if not drop_entity:
+                    pii_entities.append({
+                        "id": entity_id,
+                        "type": pii_type,
+                        "text": entity_text,
+                        "start_pos": start_pos,
+                        "end_pos": end_pos,
+                        "context": context,
+                        "risk_level": risk_level,
+                        "confidence": round(confidence, 2),
+                        "redaction_mode": redaction_mode,
+                        "redacted_value": self._redact_value(entity_text, pii_type, redaction_mode)
+                    })
         
         return pii_entities
     
@@ -171,6 +215,80 @@ class ExtractorAgent:
             return "medium"
         else:
             return "low"
+
+    def _adjust_risk_by_confidence(self, risk_level: str, confidence: float) -> str:
+        """
+        Adjust a categorical risk level downward when confidence is low
+        """
+        if confidence >= 0.6:
+            return risk_level
+        # Map to lower risk when confidence is low
+        if risk_level == "high":
+            return "medium" if confidence >= 0.4 else "low"
+        if risk_level == "medium":
+            return "low"
+        return risk_level
+
+    def _score_name_confidence(self, content: str, start: int, end: int, text: str) -> float:
+        """
+        Heuristic confidence for person names:
+        - Boost when nearby context hints a person name (signature/contact lines)
+        - Suppress when the phrase looks like a section heading or known legal term
+        - Suppress when entire line is title-case heading
+        """
+        # Normalize
+        phrase = text.strip()
+        phrase_lower = phrase.lower()
+
+        # If the phrase matches a common legal heading, treat as very low confidence
+        if phrase_lower in self._NAME_HEADING_STOP_PHRASES:
+            return 0.1
+
+        # Inspect the current line context
+        line_start = content.rfind("\n", 0, start) + 1
+        line_end = content.find("\n", end)
+        if line_end == -1:
+            line_end = len(content)
+        line = content[line_start:line_end].strip()
+        
+        # Heading-like lines often end with ':' or are Title Case without punctuation
+        if line.endswith(":"):
+            return 0.2
+        # All-caps or Title Case short headings are likely not names
+        if (len(line) <= 40) and (line.isupper() or line.istitle()):
+            # If the entire line equals the phrase, treat as heading
+            if line.replace(":", "").strip() == phrase:
+                return 0.25
+
+        # Look for nearby context hints
+        window = content[max(0, start-80):min(len(content), end+80)].lower()
+        if any(hint in window for hint in self._NAME_CONTEXT_HINTS):
+            return 0.9
+
+        # Otherwise moderate confidence for a bare two-token proper-case phrase
+        return 0.5
+
+    def _score_email_confidence(self, email: str) -> float:
+        """
+        Heuristic confidence for emails:
+        - Lower when local part is generic (info@, support@, etc.)
+        - Higher when it resembles a personal address (first.last or contains alphabetic name-like tokens)
+        """
+        try:
+            local, domain = email.split('@', 1)
+        except ValueError:
+            return 0.5
+        local_lower = local.lower()
+
+        if local_lower in self._GENERIC_EMAIL_USERS:
+            return 0.55
+        # Personal-like: two alphabetic tokens separated by . or - and not too short
+        if ('.' in local_lower or '-' in local_lower):
+            tokens = re.split(r"[\.-]", local_lower)
+            if len(tokens) >= 2 and all(t.isalpha() and len(t) >= 2 for t in tokens[:2]):
+                return 0.9
+        # Default reasonably confident
+        return 0.8
     
     def _redact_value(self, value: str, pii_type: str, mode: str) -> str:
         """
@@ -214,6 +332,11 @@ class ExtractorAgent:
                 if len(digits) >= 4:
                     return "***-***-" + digits[-4:]
                 return "***"
+            elif pii_type == "passport":
+                # Keep last 4 characters
+                if len(value) >= 4:
+                    return "***" + value[-4:]
+                return "***"
             else:
                 return "***"
     
@@ -226,20 +349,23 @@ class ExtractorAgent:
         """
         Check if HITL is required based on PII and classification
         """
-        # Check for high-risk PII
-        high_risk_pii = [p for p in pii_entities if p["risk_level"] == "high"]
+        # Check for high-risk, high-confidence PII
+        high_risk_pii = [
+            p for p in pii_entities
+            if p["risk_level"] == "high" and float(p.get("confidence", 1.0)) >= 0.7
+        ]
         if len(high_risk_pii) > 0:
             return True
         
         # Check if document has financial or health data with PII
         if classification.get("has_financial_terms") or classification.get("has_health_data"):
-            if len(pii_entities) > 0:
+            if any(float(p.get("confidence", 1.0)) >= 0.6 for p in pii_entities):
                 return True
         
         # Check policy requirements
         for policy in policies:
             if policy.get("name") == "PII Protection Policy":
-                if policy.get("rules", {}).get("require_hitl", False) and len(pii_entities) > 0:
+                if policy.get("rules", {}).get("require_hitl", False) and any(float(p.get("confidence", 1.0)) >= 0.6 for p in pii_entities):
                     return True
         
         return False

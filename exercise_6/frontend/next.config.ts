@@ -9,11 +9,8 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8002',
   },
   
-  // Enable experimental features for better Docker support
-  experimental: {
-    // Optimize for Docker containers
-    outputFileTracingRoot: process.cwd(),
-  },
+  // Optimize for Docker containers
+  outputFileTracingRoot: process.cwd(),
   
   // Configure rewrites for API proxy (optional)
   async rewrites() {

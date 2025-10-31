@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { listDocuments, listPolicies, startReviewRun, getRun } from "@/lib/api";
 
-export default function ReviewPage() {
+function ReviewPageInner() {
   const searchParams = useSearchParams();
   const docIdParam = searchParams.get("doc_id");
 
@@ -14,10 +14,28 @@ export default function ReviewPage() {
   const [selectedPolicyIds, setSelectedPolicyIds] = useState<string[]>([]);
   const [runResult, setRunResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [polling, setPolling] = useState(false);
 
   useEffect(() => {
     loadDocuments();
     loadPolicies();
+    // Load last run results from localStorage to restore links/state
+    try {
+      const lastId = typeof window !== 'undefined' ? localStorage.getItem('last_run_id') : null;
+      if (lastId && !runResult) {
+        (async () => {
+          try {
+            const latest = await getRun(lastId);
+            setRunResult(latest);
+            if (!['completed', 'failed'].includes(latest.status)) {
+              setPolling(true);
+            }
+          } catch (e) {
+            // ignore
+          }
+        })();
+      }
+    } catch {}
   }, []);
 
   const loadDocuments = async () => {
@@ -56,12 +74,16 @@ export default function ReviewPage() {
         selectedDocId,
         selectedPolicyIds.length > 0 ? selectedPolicyIds : undefined
       );
+      // Persist last run id for quick revisit
+      try { localStorage.setItem('last_run_id', result.run_id); } catch {}
       
       // Poll for results
       setTimeout(async () => {
         try {
           const run = await getRun(result.run_id);
           setRunResult(run);
+          // begin polling until run completes or fails
+          setPolling(true);
         } catch (error) {
           console.error("Failed to get run results:", error);
         }
@@ -71,6 +93,39 @@ export default function ReviewPage() {
       alert("Failed to start review");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Auto-poll run status while in-progress or awaiting HITL
+  useEffect(() => {
+    let interval: any;
+    const shouldPoll = polling && runResult && !["completed", "failed"].includes(runResult.status);
+    if (shouldPoll) {
+      interval = setInterval(async () => {
+        try {
+          const latest = await getRun(runResult.run_id);
+          setRunResult(latest);
+          if (["completed", "failed"].includes(latest.status)) {
+            setPolling(false);
+            clearInterval(interval);
+          }
+        } catch (err) {
+          console.error("Polling run failed:", err);
+        }
+      }, 3000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [polling, runResult]);
+
+  const refreshRun = async () => {
+    if (!runResult?.run_id) return;
+    try {
+      const latest = await getRun(runResult.run_id);
+      setRunResult(latest);
+    } catch (err) {
+      console.error("Refresh run failed:", err);
     }
   };
 
@@ -182,7 +237,7 @@ export default function ReviewPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <span className="text-sm text-gray-600">Run ID:</span>
-                    <p className="font-mono text-xs">{runResult.run_id}</p>
+                    <p className="font-mono text-xs break-all">{runResult.run_id}</p>
                   </div>
                   <div>
                     <span className="text-sm text-gray-600">Status:</span>
@@ -196,6 +251,31 @@ export default function ReviewPage() {
                     </p>
                   </div>
                 </div>
+                {runResult.status === "completed" && (
+                  <div className="mt-4">
+                    <a
+                      href={`/export/${runResult.run_id}/final`}
+                      className="inline-block bg-gray-800 text-white px-4 py-2 rounded text-sm hover:bg-gray-900"
+                    >
+                      View Final Document →
+                    </a>
+                    <a
+                      href={`/export/${runResult.run_id}/redline`}
+                      className="inline-block ml-2 bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
+                    >
+                      View Redline →
+                    </a>
+                    <div className="mt-2 text-xs text-gray-500">
+                      Or open directly:
+                      <div>
+                        <code className="break-all">{`/export/${runResult.run_id}/final`}</code>
+                      </div>
+                      <div>
+                        <code className="break-all">{`/export/${runResult.run_id}/redline`}</code>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {runResult.hitl_required && (
                   <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                     <p className="text-yellow-800 font-medium">
@@ -207,6 +287,10 @@ export default function ReviewPage() {
                     >
                       Go to HITL Queue →
                     </a>
+                    <div className="mt-2 text-xs text-yellow-700">
+                      The pipeline pauses at reviewer/drafter until a decision is made.
+                      After approval, this page will auto-refresh and continue.
+                    </div>
                   </div>
                 )}
               </div>
@@ -320,6 +404,14 @@ export default function ReviewPage() {
                               View Redline Document →
                             </a>
                           )}
+                          {runResult?.final_output && (
+                            <a
+                              href={`/export/${runResult.run_id}/final`}
+                              className="inline-block ml-2 bg-gray-700 text-white px-4 py-2 rounded text-sm hover:bg-gray-800"
+                            >
+                              View Final Document →
+                            </a>
+                          )}
                         </div>
                       )}
                     </div>
@@ -334,9 +426,24 @@ export default function ReviewPage() {
               <p>Select a document and click "Start Multi-Agent Review" to begin.</p>
             </div>
           )}
+          {runResult && (
+            <div className="mt-4">
+              <button onClick={refreshRun} className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-2 rounded text-sm">
+                Refresh Run Status
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ReviewPage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto px-4 py-8">Loading review...</div>}>
+      <ReviewPageInner />
+    </Suspense>
   );
 }
 

@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 class Settings(BaseSettings):
     # App
@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
+    REDIS_USERNAME: Optional[str] = None
+    REDIS_PASSWORD: Optional[str] = None
     
     # OpenAI
     OPENAI_API_KEY: str = ""
@@ -22,9 +24,18 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: List[str] = [
-        "http://localhost:3000",
+        "http://localhost:8501",
+        "https://localhost:8501", 
         "http://localhost:3001",
-        "http://localhost:3080",
+        "http://192.168.10.210:8501",
+        "https://192.168.10.210:8501",
+        "http://192.168.10.244:8501",
+        "https://192.168.10.244:8501",
+        "http://192.168.10.244:*",
+        "http://0.0.0.0:8501",
+        "https://0.0.0.0:8501",
+        "http://103.98.213.149:8501",
+        "https://103.98.213.149:8501"
     ]
     
     class Config:

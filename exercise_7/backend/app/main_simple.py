@@ -534,7 +534,6 @@ async def chat(chat_data: dict):
         rag_response = await asyncio.wait_for(
             rag_service.chat_with_rag(
                 query=message,
-                qa_pairs=qa_pairs,
                 conversation_history=None,  # Could be implemented with session storage
                 max_chunks=min(settings.max_chunks_per_query, 3),  # Limit chunks for faster response
                 similarity_threshold=settings.similarity_threshold

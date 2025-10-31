@@ -11,7 +11,7 @@ import uuid
 from .document_processor import document_processor
 from .retrieval_service import retrieval_service
 from .llm_service import llm_service
-from .qa_service import qa_service
+from app.services.vector_service import vector_service
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,6 @@ class RAGService:
     async def chat_with_rag(
         self,
         query: str,
-        qa_pairs: Optional[List[Dict[str, Any]]] = None,
         conversation_history: Optional[List[Dict[str, str]]] = None,
         max_chunks: Optional[int] = None,
         similarity_threshold: Optional[float] = None
@@ -76,7 +75,6 @@ class RAGService:
         
         Args:
             query: User's question
-            qa_pairs: Available Q&A pairs to search through
             conversation_history: Previous conversation messages
             max_chunks: Maximum number of document chunks to retrieve
             similarity_threshold: Minimum similarity score for retrieval
@@ -96,10 +94,8 @@ class RAGService:
                 similarity_threshold=similarity_threshold or settings.similarity_threshold
             )
             
-            # Step 2: Search through Q&A pairs if provided
-            qa_matches = []
-            if qa_pairs:
-                qa_matches = await self._search_qa_pairs(query, qa_pairs)
+            # Step 2: Search through Q&A pairs
+            qa_matches = await self._search_qa_pairs(query)
             
             # Step 3: Generate response using LLM with retrieved context
             llm_result = await self.llm_service.generate_response(
@@ -149,22 +145,22 @@ class RAGService:
                 "error": str(e)
             }
     
-    async def _search_qa_pairs(self, query: str, qa_pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Search through Q&A pairs using ChromaDB vector similarity"""
+    async def _search_qa_pairs(self, query: str) -> List[Dict[str, Any]]:
+        """Search through Q&A pairs using PostgreSQL vector similarity"""
         try:
-            # Use ChromaDB Q&A service for semantic search
-            matches = await qa_service.search_qa_pairs(
+            # Use PostgreSQL vector service for semantic search
+            matches = await vector_service.search_qa_pairs(
                 query=query,
                 max_results=3,
-                similarity_threshold=0.7  # Use higher threshold for embeddings
+                similarity_threshold=0.7
             )
             
-            logger.info(f"Found {len(matches)} Q&A matches using ChromaDB for query: '{query[:50]}...'")
+            logger.info(f"Found {len(matches)} Q&A matches using PostgreSQL for query: '{query[:50]}...'")
             
             return matches
             
         except Exception as e:
-            logger.error(f"Error searching Q&A pairs with ChromaDB: {e}")
+            logger.error(f"Error searching Q&A pairs with PostgreSQL: {e}")
             # Fallback to empty list if embedding search fails
             return []
     

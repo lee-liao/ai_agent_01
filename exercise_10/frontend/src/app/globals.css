@@ -19,11 +19,32 @@ body {
   background: rgb(var(--background-rgb));
 }
 
+/* Form field legibility (regardless of OS theme) */
+input, textarea, select {
+  color: #111827; /* gray-900 */
+}
+input::placeholder, textarea::placeholder {
+  color: #6b7280; /* gray-500 */
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+  /* Ensure text remains legible on light card backgrounds in dark mode */
+  .dark\:text-black {
+    color: #000;
+  }
 }
+
+/* Safeguard: white surfaces should use dark text even if OS is dark */
+.bg-white,
+.bg-gray-50,
+.bg-gray-100,
+.bg-gray-200 {
+  color: #111827; /* Tailwind gray-900 */
+}
+
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {

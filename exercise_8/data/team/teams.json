@@ -1,0 +1,87 @@
+{
+  "teams": [
+    {
+      "name": "manager_worker_team",
+      "pattern": "manager_worker",
+      "description": "Manager decomposes work, workers execute in parallel",
+      "agents": [
+        {
+          "type": "ParserAgent",
+          "module": "app.agents.agent",
+          "init_params": null
+        },
+        {
+          "type": "RiskAnalyzerAgent",
+          "module": "app.agents.agent",
+          "init_params": null
+        },
+        {
+          "type": "RedlineGeneratorAgent",
+          "module": "app.agents.agent",
+          "init_params": null
+        }
+      ]
+    },
+    {
+      "name": "planner_executor_team",
+      "pattern": "pipeline",
+      "description": "Pipeline execution with data passing between agents",
+      "agents": [
+        {
+          "type": "ParserAgent",
+          "module": "app.agents.agent",
+          "init_params": null
+        },
+        {
+          "type": "RiskAnalyzerAgent",
+          "module": "app.agents.agent",
+          "init_params": null
+        },
+        {
+          "type": "RedlineGeneratorAgent",
+          "module": "app.agents.agent",
+          "init_params": null
+        }
+      ]
+    },
+    {
+      "name": "reviewer_referee_team",
+      "pattern": "sequential",
+      "description": "Reviewer checks against checklist, Referee arbitrates contested decisions",
+      "agents": [
+        {
+          "type": "ReviewerAgent",
+          "module": "app.agents.reviewer_referee_agents",
+          "init_params": null
+        },
+        {
+          "type": "RefereeAgent",
+          "module": "app.agents.reviewer_referee_agents",
+          "init_params": null
+        }
+      ]
+    },
+    {
+      "name": "sequential_team",
+      "pattern": "sequential",
+      "description": "Sequential execution: parse, assess, redline",
+      "agents": [
+        {
+          "type": "ParserAgent",
+          "module": "app.agents.agent",
+          "init_params": null
+        },
+        {
+          "type": "RiskAnalyzerAgent",
+          "module": "app.agents.agent",
+          "init_params": null
+        },
+        {
+          "type": "RedlineGeneratorAgent",
+          "module": "app.agents.agent",
+          "init_params": null
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -15,171 +15,244 @@ import {
   ArrowRight,
 } from "lucide-react";
 
-// Mock data for demonstration
-const mockPendingRuns = [
-  {
-    run_id: "run_abc123",
-    doc_name: "SaaS_MSA_v2.pdf",
-    agent_path: "manager_worker",
-    status: "awaiting_risk_approval",
-    created_at: "2025-10-06T10:23:45Z",
-    high_risk_count: 1,
-    medium_risk_count: 3,
-    low_risk_count: 4,
-  },
-  {
-    run_id: "run_def456",
-    doc_name: "NDA_Template.docx",
-    agent_path: "planner_executor",
-    status: "awaiting_risk_approval",
-    created_at: "2025-10-06T09:15:22Z",
-    high_risk_count: 0,
-    medium_risk_count: 2,
-    low_risk_count: 5,
-  },
-];
+import { api } from "../../lib/api";
 
-const mockRiskAssessments = {
-  run_id: "run_abc123",
-  doc_name: "SaaS_MSA_v2.pdf",
-  assessments: [
-    {
-      clause_id: "clause_3.2",
-      clause_heading: "Limitation of Liability",
-      clause_text:
-        "Company shall be liable for any and all damages arising from this Agreement, including but not limited to direct, indirect, incidental, consequential, and punitive damages.",
-      risk_level: "HIGH",
-      rationale:
-        "Unlimited liability exposure. No cap on damages. Includes consequential and punitive damages which significantly increase financial risk.",
-      policy_refs: ["POL-001: Liability Cap", "POL-003: Consequential Damages"],
-      recommended_action: "REJECT - Require liability cap at 12 months fees and exclude consequential/punitive damages",
-      impact_assessment: "Critical: Could expose company to unlimited financial liability",
-    },
-    {
-      clause_id: "clause_5.1",
-      clause_heading: "Indemnification",
-      clause_text:
-        "Customer shall indemnify and hold harmless Company from any claims arising from Customer's use of the Service.",
-      risk_level: "MEDIUM",
-      rationale:
-        "Broad indemnification without standard carve-outs. Missing exceptions for Company's gross negligence or force majeure events.",
-      policy_refs: ["POL-002: Indemnity Exclusions"],
-      recommended_action: "REQUEST MODIFICATION - Add carve-outs for Company fault and force majeure",
-      impact_assessment: "Moderate: Could create disputes in edge cases",
-    },
-    {
-      clause_id: "clause_7.3",
-      clause_heading: "Data Protection",
-      clause_text:
-        "Company will process Customer data in accordance with applicable laws.",
-      risk_level: "MEDIUM",
-      rationale:
-        "Lacks specific GDPR/CCPA compliance language. No mention of DPA or SCCs for international transfers.",
-      policy_refs: ["POL-005: GDPR Compliance", "POL-006: Data Processing"],
-      recommended_action: "REQUEST MODIFICATION - Add explicit GDPR/CCPA references and DPA requirement",
-      impact_assessment: "Moderate: Regulatory compliance risk for EU/CA customers",
-    },
-    {
-      clause_id: "clause_9.2",
-      clause_heading: "Warranties",
-      clause_text:
-        "Company disclaims all warranties, express or implied, including warranties of merchantability and fitness for a particular purpose.",
-      risk_level: "MEDIUM",
-      rationale:
-        "Complete warranty disclaimer may not be enforceable in all jurisdictions. Could create customer trust issues.",
-      policy_refs: ["POL-007: Warranty Standards"],
-      recommended_action: "REQUEST MODIFICATION - Provide limited 90-day warranty",
-      impact_assessment: "Moderate: May impact sales and enforceability",
-    },
-    {
-      clause_id: "clause_4.1",
-      clause_heading: "Payment Terms",
-      clause_text: "Customer shall pay all fees within thirty (30) days of invoice date.",
-      risk_level: "LOW",
-      rationale: "Standard Net 30 payment terms. No unusual provisions.",
-      policy_refs: ["POL-004: Payment Terms"],
-      recommended_action: "APPROVE - Standard terms",
-      impact_assessment: "Low: Industry standard payment terms",
-    },
-    {
-      clause_id: "clause_6.2",
-      clause_heading: "Intellectual Property",
-      clause_text:
-        "All intellectual property rights in the Service shall remain with Company.",
-      risk_level: "LOW",
-      rationale: "Standard IP ownership clause. Protects Company's proprietary rights.",
-      policy_refs: ["POL-009: IP Rights"],
-      recommended_action: "APPROVE - Protects Company IP",
-      impact_assessment: "Low: Standard protective language",
-    },
-    {
-      clause_id: "clause_8.1",
-      clause_heading: "Termination",
-      clause_text:
-        "Either party may terminate this Agreement with ninety (90) days written notice.",
-      risk_level: "LOW",
-      rationale: "Standard 90-day termination notice. Balanced for both parties.",
-      policy_refs: ["POL-010: Termination"],
-      recommended_action: "APPROVE - Standard terms",
-      impact_assessment: "Low: Reasonable notice period",
-    },
-    {
-      clause_id: "clause_10.3",
-      clause_heading: "Dispute Resolution",
-      clause_text:
-        "Any disputes shall be resolved through binding arbitration in accordance with AAA rules.",
-      risk_level: "LOW",
-      rationale: "Standard arbitration clause. Cost-effective dispute resolution.",
-      policy_refs: ["POL-011: Dispute Resolution"],
-      recommended_action: "APPROVE - Standard arbitration",
-      impact_assessment: "Low: Reduces litigation costs",
-    },
-  ],
-};
+interface PendingRunSummary {
+  run_id: string;
+  doc_id: string;
+  doc_name: string;
+  agent_path: string;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+  high_risk_count: number;
+  medium_risk_count: number;
+  low_risk_count: number;
+  total_assessments: number;
+}
+
+interface AssessmentEntry {
+  clause_id: string;
+  clause_heading: string;
+  clause_text: string;
+  risk_level: string;
+  rationale: string;
+  policy_refs: string[];
+  recommended_action: string;
+  impact_assessment: string;
+  decision?: "approve" | "reject" | "review";
+  decision_comment?: string;
+  decision_updated_at?: string;
+}
+
+interface AssessmentResponse {
+  run_id: string;
+  doc_id: string;
+  doc_name: string;
+  agent_path: string;
+  assessments: AssessmentEntry[];
+}
 
 export default function RiskGatePage() {
+  const [pendingRuns, setPendingRuns] = useState<PendingRunSummary[]>([]);
+  const [runsLoading, setRunsLoading] = useState(false);
+  const [runsError, setRunsError] = useState<string | null>(null);
+
   const [selectedRun, setSelectedRun] = useState<string>("");
-  const [assessments, setAssessments] = useState<any>(null);
+  const [assessments, setAssessments] = useState<AssessmentResponse | null>(null);
+  const [assessmentsLoading, setAssessmentsLoading] = useState(false);
+  const [assessmentError, setAssessmentError] = useState<string | null>(null);
+
   const [approvedClauses, setApprovedClauses] = useState<Set<string>>(new Set());
   const [rejectedClauses, setRejectedClauses] = useState<Set<string>>(new Set());
   const [clauseComments, setClauseComments] = useState<Record<string, string>>({});
   const [approvalComplete, setApprovalComplete] = useState(false);
 
-  const handleLoadRun = (runId: string) => {
-    setSelectedRun(runId);
-    // In real implementation: api.getBlackboard(runId)
-    setAssessments(mockRiskAssessments);
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const refreshPendingRuns = async () => {
+    setRunsLoading(true);
+    setRunsError(null);
+    try {
+      const data: PendingRunSummary[] = await api.listPendingRiskRuns();
+      setPendingRuns(data);
+    } catch (error) {
+      console.error(error);
+      setRunsError("Unable to load pending runs. Please try again.");
+    } finally {
+      setRunsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshPendingRuns();
+  }, []);
+
+  const resetDecisionState = () => {
     setApprovedClauses(new Set());
     setRejectedClauses(new Set());
     setClauseComments({});
     setApprovalComplete(false);
+    setSubmitError(null);
   };
 
-  const handleToggleApproval = (clauseId: string, defaultAction: string) => {
+  const persistClauseDecisions = async (
+    clauseIds: string[],
+    approvedSet: Set<string>,
+    rejectedSet: Set<string>,
+    commentsMap: Record<string, string>
+  ) => {
+    if (!assessments || clauseIds.length === 0) return;
+    const items = clauseIds.map((clauseId) => ({
+      clause_id: clauseId,
+      decision: rejectedSet.has(clauseId)
+        ? "reject"
+        : approvedSet.has(clauseId)
+        ? "approve"
+        : "review",
+      comments: commentsMap[clauseId] ?? "",
+    }));
+
+    try {
+      await api.saveRiskGateDecisions(assessments.run_id, { items });
+    } catch (error) {
+      console.error("Failed to persist risk decisions", error);
+    }
+  };
+
+  const handleLoadRun = async (runId: string) => {
+    setSelectedRun(runId);
+    resetDecisionState();
+    setAssessments(null);
+    setAssessmentError(null);
+    setAssessmentsLoading(true);
+    try {
+      const data: AssessmentResponse = await api.getRiskAssessments(runId);
+      const approved = new Set<string>();
+      const rejected = new Set<string>();
+      const comments: Record<string, string> = {};
+
+      for (const assessment of data.assessments) {
+        const decision = (assessment.decision || "review").toLowerCase();
+        if (decision === "approve") {
+          approved.add(assessment.clause_id);
+        } else if (decision === "reject") {
+          rejected.add(assessment.clause_id);
+        }
+        if (assessment.decision_comment) {
+          comments[assessment.clause_id] = assessment.decision_comment;
+        }
+      }
+
+      setApprovedClauses(approved);
+      setRejectedClauses(rejected);
+      setClauseComments(comments);
+      setAssessments(data);
+    } catch (error) {
+      console.error(error);
+      setAssessmentError("Failed to load risk assessments for this run.");
+    } finally {
+      setAssessmentsLoading(false);
+    }
+  };
+
+  const handleToggleApproval = (
+    clauseId: string,
+    defaultAction: string,
+    riskLevel: string
+  ) => {
     const newApproved = new Set(approvedClauses);
     const newRejected = new Set(rejectedClauses);
 
-    if (approvedClauses.has(clauseId)) {
+    if (newApproved.has(clauseId)) {
       newApproved.delete(clauseId);
       newRejected.add(clauseId);
-    } else if (rejectedClauses.has(clauseId)) {
+    } else if (newRejected.has(clauseId)) {
       newRejected.delete(clauseId);
     } else {
-      // First click - use recommended action
-      if (defaultAction.startsWith("APPROVE")) {
+      const normalized = (defaultAction || "").toUpperCase();
+      if (normalized.startsWith("APPROVE")) {
         newApproved.add(clauseId);
-      } else {
+      } else if (normalized.startsWith("REJECT")) {
         newRejected.add(clauseId);
+      } else if ((riskLevel || "").toUpperCase() === "HIGH") {
+        newRejected.add(clauseId);
+      } else {
+        newApproved.add(clauseId);
       }
     }
 
     setApprovedClauses(newApproved);
     setRejectedClauses(newRejected);
+    void persistClauseDecisions([clauseId], newApproved, newRejected, clauseComments);
   };
 
-  const handleApproveAll = () => {
-    // In real implementation: api.riskApprove({run_id, items})
-    setApprovalComplete(true);
+  const handleApproveAllClauses = () => {
+    if (!assessments) return;
+    const allIds = assessments.assessments.map((a) => a.clause_id);
+    const approved = new Set(allIds);
+    const rejected = new Set<string>();
+    setApprovedClauses(approved);
+    setRejectedClauses(rejected);
+    void persistClauseDecisions(allIds, approved, rejected, clauseComments);
+  };
+
+  const handleRejectAllClauses = () => {
+    if (!assessments) return;
+    const allIds = assessments.assessments.map((a) => a.clause_id);
+    const rejected = new Set(allIds);
+    const approved = new Set<string>();
+    setRejectedClauses(rejected);
+    setApprovedClauses(approved);
+    void persistClauseDecisions(allIds, approved, rejected, clauseComments);
+  };
+
+  const handleCommentChange = (clauseId: string, value: string) => {
+    const nextComments = { ...clauseComments };
+    if (value) {
+      nextComments[clauseId] = value;
+    } else {
+      delete nextComments[clauseId];
+    }
+    setClauseComments(nextComments);
+    void persistClauseDecisions([clauseId], approvedClauses, rejectedClauses, nextComments);
+  };
+
+  const highRiskCount =
+    assessments?.assessments.filter((a) => a.risk_level.toUpperCase() === "HIGH").length || 0;
+  const mediumRiskCount =
+    assessments?.assessments.filter((a) => a.risk_level.toUpperCase() === "MEDIUM").length || 0;
+  const lowRiskCount =
+    assessments?.assessments.filter((a) => a.risk_level.toUpperCase() === "LOW").length || 0;
+  const totalClauses = assessments?.assessments.length ?? 0;
+  const pendingCount = Math.max(totalClauses - approvedClauses.size - rejectedClauses.size, 0);
+
+  const allDecisionsMade =
+    assessments && totalClauses > 0 && approvedClauses.size + rejectedClauses.size === totalClauses;
+
+  const handleSubmitApproval = async () => {
+    if (!assessments || !allDecisionsMade) return;
+
+    setSubmitLoading(true);
+    setSubmitError(null);
+
+    try {
+      const items = assessments.assessments.map((assessment) => ({
+        clause_id: assessment.clause_id,
+        decision: rejectedClauses.has(assessment.clause_id) ? "reject" : "approve",
+        comments: clauseComments[assessment.clause_id] || undefined,
+      }));
+
+      await api.riskApprove({ run_id: assessments.run_id, items });
+      setApprovalComplete(true);
+      await refreshPendingRuns();
+    } catch (error) {
+      console.error(error);
+      setSubmitError("Failed to submit risk approval. Please try again.");
+    } finally {
+      setSubmitLoading(false);
+    }
   };
 
   const getRiskColor = (riskLevel: string) => {
@@ -208,10 +281,6 @@ export default function RiskGatePage() {
     }
   };
 
-  const highRiskCount = assessments?.assessments.filter((a: any) => a.risk_level === "HIGH").length || 0;
-  const mediumRiskCount = assessments?.assessments.filter((a: any) => a.risk_level === "MEDIUM").length || 0;
-  const lowRiskCount = assessments?.assessments.filter((a: any) => a.risk_level === "LOW").length || 0;
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       {/* Header */}
@@ -231,57 +300,87 @@ export default function RiskGatePage() {
           </h2>
         </div>
         <div className="grid grid-cols-1 gap-3">
-          {mockPendingRuns.map((run) => (
-            <button
-              key={run.run_id}
-              onClick={() => handleLoadRun(run.run_id)}
-              className={`flex items-center justify-between p-4 border-2 rounded-lg text-left transition-all ${
-                selectedRun === run.run_id
-                  ? "border-primary-500 bg-primary-50"
-                  : "border-gray-200 hover:border-primary-300 hover:bg-gray-50"
-              }`}
-            >
-              <div className="flex items-center space-x-4 flex-1">
-                <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                <div className="flex-1">
-                  <p className="font-medium text-gray-900">{run.doc_name}</p>
-                  <p className="text-xs text-gray-500 font-mono mt-1">{run.run_id}</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-6 text-sm">
-                <div className="text-center">
-                  <p className="text-gray-600 text-xs">Agent</p>
-                  <p className="font-medium text-gray-900">
-                    {run.agent_path.replace("_", "-")}
-                  </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-gray-600 text-xs">Risk Clauses</p>
-                  <div className="flex items-center space-x-1 mt-1">
-                    <span className="px-1.5 py-0.5 bg-red-100 text-red-800 text-xs font-semibold rounded">
-                      {run.high_risk_count}H
-                    </span>
-                    <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 text-xs font-semibold rounded">
-                      {run.medium_risk_count}M
-                    </span>
-                    <span className="px-1.5 py-0.5 bg-green-100 text-green-800 text-xs font-semibold rounded">
-                      {run.low_risk_count}L
-                    </span>
+          {runsLoading && (
+            <div className="text-sm text-gray-500">Loading pending runs…</div>
+          )}
+          {runsError && (
+            <div className="text-sm text-red-600 border border-red-200 bg-red-50 px-3 py-2 rounded">
+              {runsError}
+            </div>
+          )}
+          {!runsLoading && !runsError && pendingRuns.length === 0 && (
+            <div className="text-sm text-gray-500">No runs currently awaiting risk approval.</div>
+          )}
+          {pendingRuns.map((run) => {
+            const createdAt = run.created_at
+              ? new Date(run.created_at).toLocaleTimeString("en-US", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "—";
+
+            return (
+              <button
+                key={run.run_id}
+                onClick={() => void handleLoadRun(run.run_id)}
+                className={`flex items-center justify-between p-4 border-2 rounded-lg text-left transition-all ${
+                  selectedRun === run.run_id
+                    ? "border-primary-500 bg-primary-50"
+                    : "border-gray-200 hover:border-primary-300 hover:bg-gray-50"
+                }`}
+              >
+                <div className="flex items-center space-x-4 flex-1">
+                  <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900">{run.doc_name}</p>
+                    <p className="text-xs text-gray-500 font-mono mt-1">{run.run_id}</p>
                   </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-gray-600 text-xs">Time</p>
-                  <p className="text-gray-700" suppressHydrationWarning>
-                    {new Date(run.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                  </p>
+                <div className="flex items-center space-x-6 text-sm">
+                  <div className="text-center">
+                    <p className="text-gray-600 text-xs">Agent</p>
+                    <p className="font-medium text-gray-900">
+                      {run.agent_path.replace("_", "-")}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                  <p className="text-gray-600 text-xs">Risk Clauses</p>
+                    <div className="flex items-center space-x-1 mt-1">
+                      <span className="px-1.5 py-0.5 bg-red-100 text-red-800 text-xs font-semibold rounded">
+                        {run.high_risk_count}H
+                      </span>
+                      <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 text-xs font-semibold rounded">
+                        {run.medium_risk_count}M
+                      </span>
+                      <span className="px-1.5 py-0.5 bg-green-100 text-green-800 text-xs font-semibold rounded">
+                        {run.low_risk_count}L
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-gray-600 text-xs">Time</p>
+                    <p className="text-gray-700" suppressHydrationWarning>
+                      {createdAt}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Risk Assessments */}
+      {assessmentError && (
+        <div className="card border border-red-200 bg-red-50 text-red-700 mb-6">
+          {assessmentError}
+        </div>
+      )}
+
+      {assessmentsLoading && (
+        <div className="card text-sm text-gray-500 mb-6">Loading risk assessments…</div>
+      )}
+
       {assessments && !approvalComplete && (
         <>
           {/* Summary Cards */}
@@ -291,9 +390,7 @@ export default function RiskGatePage() {
                 <p className="text-sm text-gray-600">Total Clauses</p>
                 <FileText className="w-5 h-5 text-blue-600" />
               </div>
-              <p className="text-3xl font-bold text-gray-900">
-                {assessments.assessments.length}
-              </p>
+              <p className="text-3xl font-bold text-gray-900">{totalClauses}</p>
               <p className="text-sm text-gray-600 mt-1">Reviewed</p>
             </div>
 
@@ -330,32 +427,23 @@ export default function RiskGatePage() {
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center">
                 <Shield className="w-6 h-6 text-primary-600 mr-3" />
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Risk Assessments ({assessments.assessments.length})
-                </h2>
+                <div>
+                  <p className="text-sm uppercase tracking-wide text-gray-500">{assessments.doc_name}</p>
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    Risk Assessments ({totalClauses})
+                  </h2>
+                </div>
               </div>
               <div className="flex space-x-2">
                 <button
-                  onClick={() => {
-                    const allIds = new Set(
-                      assessments.assessments.map((a: any) => a.clause_id)
-                    );
-                    setApprovedClauses(allIds);
-                    setRejectedClauses(new Set());
-                  }}
+                  onClick={handleApproveAllClauses}
                   className="btn-secondary text-sm flex items-center"
                 >
                   <ThumbsUp className="w-4 h-4 mr-2" />
                   Approve All
                 </button>
                 <button
-                  onClick={() => {
-                    const allIds = new Set(
-                      assessments.assessments.map((a: any) => a.clause_id)
-                    );
-                    setRejectedClauses(allIds);
-                    setApprovedClauses(new Set());
-                  }}
+                  onClick={handleRejectAllClauses}
                   className="btn-secondary text-sm flex items-center"
                 >
                   <ThumbsDown className="w-4 h-4 mr-2" />
@@ -365,7 +453,7 @@ export default function RiskGatePage() {
             </div>
 
             <div className="space-y-4">
-              {assessments.assessments.map((assessment: any, index: number) => {
+              {assessments.assessments.map((assessment, index) => {
                 const isApproved = approvedClauses.has(assessment.clause_id);
                 const isRejected = rejectedClauses.has(assessment.clause_id);
 
@@ -412,7 +500,8 @@ export default function RiskGatePage() {
                         onClick={() =>
                           handleToggleApproval(
                             assessment.clause_id,
-                            assessment.recommended_action
+                            assessment.recommended_action,
+                            assessment.risk_level
                           )
                         }
                         className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
@@ -476,7 +565,7 @@ export default function RiskGatePage() {
                         <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
                           Policy References:
                         </label>
-                        {assessment.policy_refs.map((ref: string, idx: number) => (
+                        {assessment.policy_refs.map((ref, idx) => (
                           <span
                             key={idx}
                             className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded"
@@ -497,12 +586,7 @@ export default function RiskGatePage() {
                           rows={2}
                           placeholder="Add any notes or concerns about this risk assessment..."
                           value={clauseComments[assessment.clause_id] || ""}
-                          onChange={(e) =>
-                            setClauseComments({
-                              ...clauseComments,
-                              [assessment.clause_id]: e.target.value,
-                            })
-                          }
+                          onChange={(e) => handleCommentChange(assessment.clause_id, e.target.value)}
                         />
                       </div>
                     </div>
@@ -528,24 +612,19 @@ export default function RiskGatePage() {
                   {rejectedClauses.size > 0 && (
                     <p>✗ {rejectedClauses.size} clauses rejected</p>
                   )}
-                  <p className="text-gray-600">
-                    {assessments.assessments.length -
-                      approvedClauses.size -
-                      rejectedClauses.size}{" "}
-                    pending review
-                  </p>
+                  <p className="text-gray-600">{pendingCount} pending review</p>
                 </div>
               </div>
+              {submitError && (
+                <div className="text-sm text-red-600 mr-4">{submitError}</div>
+              )}
               <button
-                onClick={handleApproveAll}
-                disabled={
-                  approvedClauses.size + rejectedClauses.size !==
-                  assessments.assessments.length
-                }
+                onClick={() => void handleSubmitApproval()}
+                disabled={!allDecisionsMade || submitLoading}
                 className="btn-primary flex items-center text-lg py-3 px-6"
               >
-                <CheckCircle className="w-5 h-5 mr-2" />
-                Submit Risk Approval
+                <CheckCircle className={`w-5 h-5 mr-2 ${submitLoading ? "animate-spin" : ""}`} />
+                {submitLoading ? "Submitting…" : "Submit Risk Approval"}
               </button>
             </div>
           </div>
@@ -586,14 +665,14 @@ export default function RiskGatePage() {
               <div>
                 <p className="text-gray-600">Total</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {assessments.assessments.length}
+                  {totalClauses}
                 </p>
               </div>
             </div>
           </div>
           <div className="flex space-x-3">
             <Link
-              href={`/run/${selectedRun}`}
+              href={selectedRun ? `/finalize?run_id=${selectedRun}` : "/finalize"}
               className="btn-primary flex items-center"
             >
               <ArrowRight className="w-4 h-4 mr-2" />
@@ -607,7 +686,7 @@ export default function RiskGatePage() {
       )}
 
       {/* Empty State */}
-      {!assessments && (
+      {!assessments && !assessmentsLoading && !assessmentError && (
         <div className="card text-center py-12">
           <Shield className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <p className="text-gray-600 mb-2">No run selected</p>

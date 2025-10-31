@@ -97,6 +97,8 @@ npm install
 npm run dev
 ```
 
+If you encounter Windows dev file locking issues, the frontend is configured with a custom `distDir` (`build`) in `next.config.mjs`. Restart `npm run dev` after changes.
+
 ## Usage Guide
 
 ### 1. Upload Documents
@@ -109,6 +111,7 @@ npm run dev
 - Select document and applicable policies
 - Click "Start Multi-Agent Review"
 - View results from each agent
+- If status shows `awaiting_hitl`, click the banner’s "Go to HITL Queue" to approve. The Review page auto-refreshes to continue. When completed, quick links appear to view Final and Redline exports.
 
 ### 3. HITL Approval
 - If high-risk items detected, review appears in **HITL Queue**
@@ -129,6 +132,11 @@ npm run dev
   - Unauthorized disclosure count (target: ZERO)
   - Review SLA hit rate
   - Red team test pass rate
+  - Pending HITL items
+
+### 6. Exports
+- Redline viewer: navigate to `/export/<run_id>/redline`
+- Final document: navigate to `/export/<run_id>/final`
 
 ### 6. Audit Trail
 - **Audit** page shows complete activity log

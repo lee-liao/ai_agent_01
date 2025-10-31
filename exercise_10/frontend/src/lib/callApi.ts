@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Explicitly log the API URL for debugging
+const API_URL = process.env.NEXT_PUBLIC_API_URL || `https://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8600`;
+console.log('Using API URL:', API_URL);
 
 export interface CallResponse {
   call_id: string;
@@ -18,12 +20,27 @@ export interface CallStats {
 
 export const callAPI = {
   // Start a new call (agent or customer)
-  async startCall(userType: 'agent' | 'customer', userName: string): Promise<CallResponse> {
-    const response = await axios.post(`${API_URL}/api/calls/start`, {
+  async startCall(
+    userType: 'agent' | 'customer',
+    userName: string,
+    options?: { accountNumber?: string; targetAccountNumber?: string; available?: boolean }
+  ): Promise<CallResponse> {
+    const payload: any = {
       user_type: userType,
-      user_name: userName
-    });
-    return response.data;
+      user_name: userName,
+    };
+    if (options?.accountNumber) payload.account_number = options.accountNumber;
+    if (options?.targetAccountNumber) payload.target_account_number = options.targetAccountNumber;
+    if (typeof options?.available === 'boolean') payload.available = options.available;
+    
+    console.log('Making API call to:', `${API_URL}/api/calls/start`);
+    try {
+      const response = await axios.post(`${API_URL}/api/calls/start`, payload);
+      return response.data;
+    } catch (error) {
+      console.error('API call failed:', error);
+      throw error;
+    }
   },
 
   // Get call status
@@ -47,6 +64,13 @@ export const callAPI = {
   // Get partner's call ID for routing
   async getPartner(callId: string) {
     const response = await axios.get(`${API_URL}/api/calls/match/${callId}`);
+    return response.data;
+  }
+};
+
+export const customerAPI = {
+  async publicSearch(q: string) {
+    const response = await axios.get(`${API_URL}/api/customers/public/search`, { params: { q } });
     return response.data;
   }
 };

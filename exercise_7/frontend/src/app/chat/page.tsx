@@ -9,7 +9,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { ChatMessage } from '@/components/chat/ChatMessage'
 import { SourcesPanel } from '@/components/chat/SourcesPanel'
-import { api, ChatMessage as ChatMessageType } from '@/lib/api'
+import { api, ChatMessage as ChatMessageType, ChatResponse } from '@/lib/api'
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessageType[]>([])
@@ -28,7 +28,7 @@ export default function ChatPage() {
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: (message: string) => api.sendMessage(message, sessionId),
-    onSuccess: (response) => {
+    onSuccess: (response: ChatResponse) => {
       // Add user message
       const userMessage: ChatMessageType = {
         id: `user_${Date.now()}`,
@@ -167,7 +167,7 @@ export default function ChatPage() {
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Ask me anything about your knowledge base..."
-                  className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  className="block w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none"
                   rows={2}
                   disabled={sendMessageMutation.isPending}
                 />

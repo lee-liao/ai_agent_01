@@ -4,8 +4,10 @@ import { useState, useEffect } from "react";
 import { uploadDocument, listDocuments, getDocument } from "@/lib/api";
 
 export default function DocumentsPage() {
-  const [documents, setDocuments] = useState<any[]>([]);
-  const [selectedDoc, setSelectedDoc] = useState<any>(null);
+  type DocumentItem = { doc_id: string; name: string; uploaded_at: string; metadata?: any; content?: string };
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const selectedDoc = selectedDocId ? documents.find(d => d.doc_id === selectedDocId) || null : null;
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -45,13 +47,14 @@ export default function DocumentsPage() {
   };
 
   const handleViewDocument = async (docId: string) => {
-    try {
-      const doc = await getDocument(docId);
-      setSelectedDoc(doc);
-    } catch (error) {
-      console.error("Failed to load document:", error);
-    }
-  };
+  try {
+    const doc = await getDocument(docId);
+    setDocuments((prev) => prev.map((d) => (d.doc_id === docId ? { ...d, content: doc.content } : d)));
+    setSelectedDocId(docId);
+  } catch (error) {
+    console.error("Failed to load document:", error);
+  }
+};
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -137,7 +140,7 @@ export default function DocumentsPage() {
               Document Preview: {selectedDoc.name}
             </h2>
             <button
-              onClick={() => setSelectedDoc(null)}
+              onClick={() => setSelectedDocId(null)}
               className="text-gray-500 hover:text-gray-700"
             >
               ✕ Close
@@ -150,7 +153,7 @@ export default function DocumentsPage() {
           </div>
           <div className="mt-4">
             <a
-              href={`/review?doc_id=${selectedDoc.doc_id || Object.keys(documents).find(k => documents[k] === selectedDoc)}`}
+              href={`/review?doc_id=${selectedDocId}`}
               className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 inline-block"
             >
               Start Review Process →
@@ -161,4 +164,6 @@ export default function DocumentsPage() {
     </div>
   );
 }
+
+
 

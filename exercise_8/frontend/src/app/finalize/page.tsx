@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   CheckCircle,
   XCircle,
@@ -18,146 +19,77 @@ import {
   ArrowRight,
 } from "lucide-react";
 
-// Mock data for demonstration
-const mockPendingReviews = [
-  {
-    run_id: "run_abc123",
-    doc_name: "SaaS_MSA_v2.pdf",
-    agent_path: "manager_worker",
-    score: 92,
-    status: "awaiting_final_approval",
-    created_at: "2025-10-06T10:23:45Z",
-    total_proposals: 5,
-    high_risk_resolved: 1,
-  },
-  {
-    run_id: "run_def456",
-    doc_name: "NDA_Template.docx",
-    agent_path: "planner_executor",
-    score: 88,
-    status: "awaiting_final_approval",
-    created_at: "2025-10-06T09:15:22Z",
-    total_proposals: 3,
-    high_risk_resolved: 0,
-  },
-];
+import { api } from "../../lib/api";
 
-const mockRedlineDetails = {
-  run_id: "run_abc123",
-  doc_id: "doc_001",
-  doc_name: "SaaS_MSA_v2.pdf",
-  agent_path: "manager_worker",
-  playbook_id: "playbook_saas_001",
-  score: 92,
-  status: "awaiting_final_approval",
-  created_at: "2025-10-06T10:23:45Z",
-  summary: {
-    total_clauses: 8,
-    high_risk_clauses: 1,
-    medium_risk_clauses: 3,
-    low_risk_clauses: 4,
-    proposals_generated: 5,
-    estimated_risk_reduction: "78%",
-  },
-  proposals: [
-    {
-      proposal_id: "prop_1",
-      clause_id: "clause_3.2",
-      clause_heading: "Limitation of Liability",
-      risk_level: "HIGH",
-      original_text:
-        "Company shall be liable for any and all damages arising from this Agreement, including but not limited to direct, indirect, incidental, consequential, and punitive damages.",
-      proposed_text:
-        "Company's total liability under this Agreement shall be limited to the amounts paid by Customer in the twelve (12) months preceding the claim. Company shall not be liable for indirect, incidental, consequential, or punitive damages.",
-      rationale:
-        "Original clause exposes company to unlimited liability. Proposed cap aligns with industry standard (12 months fees) and excludes consequential damages per company policy.",
-      policy_refs: ["POL-001: Liability Cap", "POL-003: Consequential Damages"],
-      variant: "conservative",
-      reviewer_notes:
-        "Approved by legal reviewer. Meets compliance requirements.",
-      status: "pending_approval",
-    },
-    {
-      proposal_id: "prop_2",
-      clause_id: "clause_5.1",
-      clause_heading: "Indemnification",
-      risk_level: "MEDIUM",
-      original_text:
-        "Customer shall indemnify and hold harmless Company from any claims arising from Customer's use of the Service.",
-      proposed_text:
-        "Customer shall indemnify and hold harmless Company from any claims arising from Customer's use of the Service, except to the extent caused by Company's gross negligence or willful misconduct, and excluding claims arising from force majeure events.",
-      rationale:
-        "Original clause is too broad. Proposed version adds standard carve-outs for Company's fault and force majeure events.",
-      policy_refs: ["POL-002: Indemnity Exclusions"],
-      variant: "moderate",
-      reviewer_notes: "Standard carve-outs applied. Low risk.",
-      status: "pending_approval",
-    },
-    {
-      proposal_id: "prop_3",
-      clause_id: "clause_7.3",
-      clause_heading: "Data Protection",
-      risk_level: "MEDIUM",
-      original_text:
-        "Company will process Customer data in accordance with applicable laws.",
-      proposed_text:
-        "Company will process Customer data in accordance with applicable laws, including GDPR and CCPA. Company will maintain a Data Processing Agreement (DPA) as set forth in Exhibit A, which incorporates Standard Contractual Clauses (SCCs) for international data transfers.",
-      rationale:
-        "Original clause lacks specificity on GDPR compliance. Proposed version adds explicit DPA reference and SCC requirement for international transfers.",
-      policy_refs: ["POL-005: GDPR Compliance", "POL-006: Data Processing"],
-      variant: "conservative",
-      reviewer_notes: "Critical for EU customers. Must include DPA.",
-      status: "pending_approval",
-    },
-    {
-      proposal_id: "prop_4",
-      clause_id: "clause_9.2",
-      clause_heading: "Warranties",
-      risk_level: "MEDIUM",
-      original_text:
-        "Company disclaims all warranties, express or implied, including warranties of merchantability and fitness for a particular purpose.",
-      proposed_text:
-        "Except as expressly stated in this Agreement, Company disclaims all other warranties, express or implied. Company warrants that the Service will perform substantially in accordance with the Documentation for a period of ninety (90) days from delivery.",
-      rationale:
-        "Complete disclaimer is too broad and may not be enforceable. Proposed version provides a limited warranty while maintaining reasonable protections.",
-      policy_refs: ["POL-007: Warranty Standards"],
-      variant: "moderate",
-      reviewer_notes: "Balanced approach. 90-day warranty is standard.",
-      status: "pending_approval",
-    },
-    {
-      proposal_id: "prop_5",
-      clause_id: "clause_11.4",
-      clause_heading: "Subprocessors",
-      risk_level: "LOW",
-      original_text: "Company may use third-party service providers.",
-      proposed_text:
-        "Company may use third-party subprocessors to provide the Service. A current list of subprocessors is available at [company.com/subprocessors]. Company will provide thirty (30) days' notice of any new subprocessors, and Customer may object for reasonable cause.",
-      rationale:
-        "Original clause lacks transparency. Proposed version adds subprocessor list, notification, and objection rights per GDPR requirements.",
-      policy_refs: ["POL-006: Data Processing", "POL-008: Subprocessor List"],
-      variant: "conservative",
-      reviewer_notes: "GDPR requirement. Low risk addition.",
-      status: "pending_approval",
-    },
-  ],
-  memo: {
-    executive_summary:
-      "The SaaS MSA has been reviewed and 5 key clauses have been identified for redlining. The most critical change is capping liability at 12 months fees (Clause 3.2), which reduces company exposure from unlimited to a defined amount. Additional improvements include GDPR-compliant data processing language, balanced warranty provisions, and subprocessor transparency.",
-    risk_assessment:
-      "Original contract posed HIGH risk due to unlimited liability exposure. Proposed redlines reduce overall risk by approximately 78%. All changes align with company policy and industry best practices.",
-    recommendations: [
-      "Approve all 5 proposed changes",
-      "Ensure DPA (Exhibit A) is attached before execution",
-      "Update subprocessor list at company.com/subprocessors",
-      "Review annually for compliance with evolving regulations",
-    ],
-  },
-};
+interface PendingFinalRun {
+  run_id: string;
+  doc_id?: string;
+  doc_name?: string;
+  agent_path?: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+  total_proposals: number;
+  high_risk_resolved: number;
+  score: number;
+}
+
+interface FinalSummary {
+  total_clauses: number;
+  high_risk_clauses: number;
+  medium_risk_clauses: number;
+  low_risk_clauses: number;
+  proposals_generated: number;
+  estimated_risk_reduction: string;
+}
+
+interface FinalMemo {
+  executive_summary: string;
+  risk_assessment: string;
+  recommendations: string[];
+}
+
+interface RedlineProposal {
+  proposal_id: string;
+  clause_id: string;
+  clause_heading: string;
+  risk_level: string;
+  original_text: string;
+  proposed_text: string;
+  rationale: string;
+  policy_refs: string[];
+  variant: string;
+  reviewer_notes?: string;
+}
+
+interface RedlineDetails {
+  run_id: string;
+  doc_id?: string;
+  doc_name?: string;
+  agent_path?: string;
+  playbook_id?: string;
+  status?: string;
+  created_at?: string;
+  score: number;
+  summary: FinalSummary;
+  proposals: RedlineProposal[];
+  memo: FinalMemo;
+}
 
 export default function FinalizePage() {
+  const searchParams = useSearchParams();
+  const deepLinkRunId = useMemo(() => searchParams?.get("run_id") ?? "", [searchParams]);
+  const [pendingRuns, setPendingRuns] = useState<PendingFinalRun[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(true);
+  const [pendingError, setPendingError] = useState<string | null>(null);
+
   const [selectedRun, setSelectedRun] = useState<string>("");
-  const [redlineDetails, setRedlineDetails] = useState<any>(null);
+  const [redlineDetails, setRedlineDetails] = useState<RedlineDetails | null>(
+    null
+  );
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+
   const [approvalNotes, setApprovalNotes] = useState<string>("");
   const [approvedProposals, setApprovedProposals] = useState<Set<string>>(
     new Set()
@@ -168,33 +100,95 @@ export default function FinalizePage() {
   const [proposalComments, setProposalComments] = useState<
     Record<string, string>
   >({});
+
+  const [finalApproveError, setFinalApproveError] = useState<string | null>(
+    null
+  );
+  const [submittingApproval, setSubmittingApproval] = useState(false);
+
   const [showExportOptions, setShowExportOptions] = useState(false);
   const [exportComplete, setExportComplete] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
-  const handleLoadRedline = (runId: string) => {
+  const refreshPendingRuns = async (options?: { preserveSelection?: boolean }) => {
+    const preserveSelection = options?.preserveSelection ?? false;
+    setPendingLoading(true);
+    setPendingError(null);
+    try {
+      const data: PendingFinalRun[] = await api.listPendingFinalRuns();
+      setPendingRuns(data);
+
+      const runStillPending = data.some((item) => item.run_id === selectedRun);
+      if (!runStillPending && !preserveSelection) {
+        setSelectedRun("");
+        setRedlineDetails(null);
+        setShowExportOptions(false);
+        setExportComplete(false);
+      }
+    } catch (error) {
+      console.error("Failed to load pending final runs", error);
+      setPendingError("Unable to load pending final approvals.");
+    } finally {
+      setPendingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshPendingRuns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleLoadRedline = async (runId: string) => {
     setSelectedRun(runId);
-    // In real implementation, this would call: api.getBlackboard(runId)
-    setRedlineDetails(mockRedlineDetails);
-    // Auto-approve all by default
-    const allProposalIds = new Set(
-      mockRedlineDetails.proposals.map((p: any) => p.proposal_id)
-    );
-    setApprovedProposals(allProposalIds);
-    setRejectedProposals(new Set());
-    setProposalComments({});
+    setDetailsLoading(true);
+    setDetailsError(null);
+    setRedlineDetails(null);
     setShowExportOptions(false);
     setExportComplete(false);
+    setFinalApproveError(null);
+
+    try {
+      const data: RedlineDetails = await api.getRedlineDetails(runId);
+      setRedlineDetails(data);
+      const allClauseIds = new Set<string>(
+        data.proposals.map((proposal) => proposal.clause_id)
+      );
+      setApprovedProposals(allClauseIds);
+      setRejectedProposals(new Set());
+      setProposalComments({});
+    } catch (error) {
+      console.error("Failed to load redline details", error);
+      setDetailsError("Unable to load redline details for this run.");
+    } finally {
+      setDetailsLoading(false);
+    }
   };
+
+  useEffect(() => {
+    if (!deepLinkRunId || pendingRuns.length === 0) {
+      return;
+    }
+    if (!pendingRuns.some((run) => run.run_id === deepLinkRunId)) {
+      return;
+    }
+    if (selectedRun === deepLinkRunId) {
+      return;
+    }
+    void handleLoadRedline(deepLinkRunId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkRunId, pendingRuns]);
 
   const handleToggleApproval = (proposalId: string) => {
     const newApproved = new Set(approvedProposals);
     const newRejected = new Set(rejectedProposals);
 
-    if (approvedProposals.has(proposalId)) {
+    if (newApproved.has(proposalId)) {
       newApproved.delete(proposalId);
       newRejected.add(proposalId);
-    } else {
+    } else if (newRejected.has(proposalId)) {
       newRejected.delete(proposalId);
+    } else {
       newApproved.add(proposalId);
     }
 
@@ -202,14 +196,51 @@ export default function FinalizePage() {
     setRejectedProposals(newRejected);
   };
 
-  const handleApproveAll = () => {
-    // In real implementation, this would call: api.finalApprove({run_id, note})
-    setShowExportOptions(true);
+  const handleApproveAll = async () => {
+    if (!selectedRun || !redlineDetails) {
+      return;
+    }
+
+    setSubmittingApproval(true);
+    setFinalApproveError(null);
+    setExportError(null);
+
+    try {
+      await api.finalApprove({
+        run_id: selectedRun,
+        approved: Array.from(approvedProposals),
+        rejected: Array.from(rejectedProposals),
+        note: approvalNotes,
+      });
+
+      setShowExportOptions(true);
+      setExportComplete(false);
+      await refreshPendingRuns({ preserveSelection: true });
+    } catch (error) {
+      console.error("Final approval failed", error);
+      setFinalApproveError("Unable to finalize approval. Please try again.");
+    } finally {
+      setSubmittingApproval(false);
+    }
   };
 
-  const handleExport = (format: string) => {
-    // In real implementation, this would call: api.exportRedline(runId, format)
-    setExportComplete(true);
+  const handleExport = async (format: "md" | "docx" | "pdf") => {
+    if (!selectedRun) {
+      return;
+    }
+
+    setExporting(true);
+    setExportError(null);
+
+    try {
+      await api.exportRedline(selectedRun, format);
+      setExportComplete(true);
+    } catch (error) {
+      console.error("Export failed", error);
+      setExportError("Failed to export redlined document.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const getRiskColor = (riskLevel: string) => {
@@ -227,7 +258,6 @@ export default function FinalizePage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           Final Approval Gate
@@ -237,7 +267,27 @@ export default function FinalizePage() {
         </p>
       </div>
 
-      {/* Pending Reviews */}
+      {pendingError && (
+        <div className="mb-4 border border-red-200 bg-red-50 text-red-700 px-4 py-3 rounded">
+          {pendingError}
+        </div>
+      )}
+      {detailsError && (
+        <div className="mb-4 border border-red-200 bg-red-50 text-red-700 px-4 py-3 rounded">
+          {detailsError}
+        </div>
+      )}
+      {finalApproveError && (
+        <div className="mb-4 border border-red-200 bg-red-50 text-red-700 px-4 py-3 rounded">
+          {finalApproveError}
+        </div>
+      )}
+      {exportError && (
+        <div className="mb-4 border border-red-200 bg-red-50 text-red-700 px-4 py-3 rounded">
+          {exportError}
+        </div>
+      )}
+
       <div className="card mb-8">
         <div className="flex items-center mb-6">
           <Clock className="w-6 h-6 text-orange-600 mr-3" />
@@ -246,60 +296,85 @@ export default function FinalizePage() {
           </h2>
         </div>
         <div className="grid grid-cols-1 gap-3">
-          {mockPendingReviews.map((review) => (
-            <button
-              key={review.run_id}
-              onClick={() => handleLoadRedline(review.run_id)}
-              className={`flex items-center justify-between p-4 border-2 rounded-lg text-left transition-all ${
-                selectedRun === review.run_id
-                  ? "border-primary-500 bg-primary-50"
-                  : "border-gray-200 hover:border-primary-300 hover:bg-gray-50"
-              }`}
-            >
-              <div className="flex items-center space-x-4 flex-1">
-                <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                <div className="flex-1">
-                  <p className="font-medium text-gray-900">{review.doc_name}</p>
-                  <p className="text-xs text-gray-500 font-mono mt-1">
-                    {review.run_id}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-6 text-sm">
-                <div className="text-center">
-                  <p className="text-gray-600 text-xs">Agent</p>
-                  <p className="font-medium text-gray-900">
-                    {review.agent_path.replace("_", "-")}
-                  </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-gray-600 text-xs">Score</p>
-                  <p className="font-semibold text-gray-900">
-                    {review.score}/100
-                  </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-gray-600 text-xs">Proposals</p>
-                  <p className="font-medium text-gray-900">
-                    {review.total_proposals}
-                  </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-gray-600 text-xs">Time</p>
-                  <p className="text-gray-700" suppressHydrationWarning>
-                    {new Date(review.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-              </div>
-            </button>
-          ))}
+          {pendingLoading ? (
+            <div className="p-4 border-2 border-dashed border-gray-200 rounded-lg text-gray-500 text-sm">
+              Loading pending reviews...
+            </div>
+          ) : pendingRuns.length === 0 ? (
+            <div className="p-6 border-2 border-gray-200 rounded-lg text-gray-500 text-sm text-center">
+              No runs are awaiting final approval.
+            </div>
+          ) : (
+            pendingRuns.map((review) => {
+              const createdAt = review.created_at
+                ? new Date(review.created_at).toLocaleTimeString("en-US", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "--";
+
+              return (
+                <button
+                  key={review.run_id}
+                  onClick={() => handleLoadRedline(review.run_id)}
+                  className={`flex items-center justify-between p-4 border-2 rounded-lg text-left transition-all ${
+                    selectedRun === review.run_id
+                      ? "border-primary-500 bg-primary-50"
+                      : "border-gray-200 hover:border-primary-300 hover:bg-gray-50"
+                  }`}
+                >
+                  <div className="flex items-center space-x-4 flex-1">
+                    <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">
+                        {review.doc_name || "Untitled Document"}
+                      </p>
+                      <p className="text-xs text-gray-500 font-mono mt-1">
+                        {review.run_id}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-6 text-sm">
+                    <div className="text-center">
+                      <p className="text-gray-600 text-xs">Agent</p>
+                      <p className="font-medium text-gray-900">
+                        {(review.agent_path || "-").replace("_", "-")}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-gray-600 text-xs">Score</p>
+                      <p className="font-semibold text-gray-900">
+                        {Math.round(review.score)} / 100
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-gray-600 text-xs">Proposals</p>
+                      <p className="font-medium text-gray-900">
+                        {review.total_proposals}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-gray-600 text-xs">Time</p>
+                      <p className="text-gray-700" suppressHydrationWarning>
+                        {createdAt}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
         </div>
       </div>
 
-      {/* Redline Details */}
-      {redlineDetails && (
+      {selectedRun && detailsLoading && (
+        <div className="card text-gray-500 text-sm mb-8">
+          Loading redline details...
+        </div>
+      )}
+
+      {redlineDetails && !detailsLoading && (
         <>
-          {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
             <div className="card">
               <div className="flex items-center justify-between mb-2">
@@ -307,10 +382,10 @@ export default function FinalizePage() {
                 <FileText className="w-5 h-5 text-blue-600" />
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                {redlineDetails.summary.total_clauses}
+                {redlineDetails.summary?.total_clauses ?? 0}
               </p>
               <p className="text-sm text-gray-600 mt-1">
-                {redlineDetails.summary.proposals_generated} proposals
+                {redlineDetails.summary?.proposals_generated ?? 0} proposals
               </p>
             </div>
 
@@ -320,7 +395,7 @@ export default function FinalizePage() {
                 <AlertTriangle className="w-5 h-5 text-green-600" />
               </div>
               <p className="text-3xl font-bold text-green-600">
-                {redlineDetails.summary.estimated_risk_reduction}
+                {redlineDetails.summary?.estimated_risk_reduction ?? "--"}
               </p>
               <p className="text-sm text-gray-600 mt-1">After redlines</p>
             </div>
@@ -342,13 +417,12 @@ export default function FinalizePage() {
                 <ThumbsUp className="w-5 h-5 text-purple-600" />
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                {redlineDetails.score}/100
+                {Math.round(redlineDetails.score)} / 100
               </p>
               <p className="text-sm text-gray-600 mt-1">Quality rating</p>
             </div>
           </div>
 
-          {/* Executive Summary */}
           <div className="card mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200">
             <div className="flex items-center mb-4">
               <FileText className="w-6 h-6 text-blue-600 mr-3" />
@@ -360,7 +434,7 @@ export default function FinalizePage() {
               <div>
                 <h4 className="font-semibold text-gray-900 mb-2">Overview</h4>
                 <p className="text-sm text-gray-700">
-                  {redlineDetails.memo.executive_summary}
+                  {redlineDetails.memo?.executive_summary || "No summary available."}
                 </p>
               </div>
               <div>
@@ -368,7 +442,7 @@ export default function FinalizePage() {
                   Risk Assessment
                 </h4>
                 <p className="text-sm text-gray-700">
-                  {redlineDetails.memo.risk_assessment}
+                  {redlineDetails.memo?.risk_assessment || "No assessment provided."}
                 </p>
               </div>
               <div>
@@ -376,9 +450,12 @@ export default function FinalizePage() {
                   Recommendations
                 </h4>
                 <ul className="space-y-1">
-                  {redlineDetails.memo.recommendations.map(
-                    (rec: string, idx: number) => (
-                      <li key={idx} className="text-sm text-gray-700 flex items-start">
+                  {(redlineDetails.memo?.recommendations || []).map(
+                    (rec, idx) => (
+                      <li
+                        key={`${redlineDetails.run_id}-rec-${idx}`}
+                        className="text-sm text-gray-700 flex items-start"
+                      >
                         <span className="text-blue-600 mr-2">•</span>
                         <span>{rec}</span>
                       </li>
@@ -389,7 +466,6 @@ export default function FinalizePage() {
             </div>
           </div>
 
-          {/* Proposals */}
           <div className="card mb-8">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center">
@@ -401,8 +477,8 @@ export default function FinalizePage() {
               <div className="flex space-x-2">
                 <button
                   onClick={() => {
-                    const allIds = new Set(
-                      redlineDetails.proposals.map((p: any) => p.proposal_id)
+                    const allIds = new Set<string>(
+                      redlineDetails.proposals.map((p) => p.clause_id)
                     );
                     setApprovedProposals(allIds);
                     setRejectedProposals(new Set());
@@ -414,8 +490,8 @@ export default function FinalizePage() {
                 </button>
                 <button
                   onClick={() => {
-                    const allIds = new Set(
-                      redlineDetails.proposals.map((p: any) => p.proposal_id)
+                    const allIds = new Set<string>(
+                      redlineDetails.proposals.map((p) => p.clause_id)
                     );
                     setRejectedProposals(allIds);
                     setApprovedProposals(new Set());
@@ -429,13 +505,13 @@ export default function FinalizePage() {
             </div>
 
             <div className="space-y-6">
-              {redlineDetails.proposals.map((proposal: any, index: number) => {
-                const isApproved = approvedProposals.has(proposal.proposal_id);
-                const isRejected = rejectedProposals.has(proposal.proposal_id);
+              {redlineDetails.proposals.map((proposal, index) => {
+                const isApproved = approvedProposals.has(proposal.clause_id);
+                const isRejected = rejectedProposals.has(proposal.clause_id);
 
                 return (
                   <div
-                    key={proposal.proposal_id}
+                    key={`${proposal.clause_id}-${index}`}
                     className={`border-2 rounded-lg overflow-hidden transition-all ${
                       isApproved
                         ? "border-green-300 bg-green-50"
@@ -444,7 +520,6 @@ export default function FinalizePage() {
                         : "border-gray-200"
                     }`}
                   >
-                    {/* Proposal Header */}
                     <div className="bg-gray-50 px-4 py-3 flex items-center justify-between">
                       <div className="flex items-center space-x-4 flex-1">
                         <span className="flex-shrink-0 w-8 h-8 bg-primary-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
@@ -467,15 +542,13 @@ export default function FinalizePage() {
                             </span>
                           </div>
                           <p className="text-xs text-gray-500 mt-1">
-                            Variant: {proposal.variant} • Reviewer:{" "}
-                            {proposal.reviewer_notes}
+                            Variant: {proposal.variant}
+                            {proposal.reviewer_notes && ` • Reviewer: ${proposal.reviewer_notes}`}
                           </p>
                         </div>
                       </div>
                       <button
-                        onClick={() =>
-                          handleToggleApproval(proposal.proposal_id)
-                        }
+                        onClick={() => handleToggleApproval(proposal.clause_id)}
                         className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
                           isApproved
                             ? "bg-green-600 text-white hover:bg-green-700"
@@ -500,9 +573,7 @@ export default function FinalizePage() {
                       </button>
                     </div>
 
-                    {/* Proposal Details */}
                     <div className="p-4 space-y-4">
-                      {/* Original Text */}
                       <div>
                         <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center">
                           <XCircle className="w-3 h-3 mr-1 text-red-600" />
@@ -513,7 +584,6 @@ export default function FinalizePage() {
                         </div>
                       </div>
 
-                      {/* Proposed Text */}
                       <div>
                         <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center">
                           <CheckCircle className="w-3 h-3 mr-1 text-green-600" />
@@ -524,7 +594,6 @@ export default function FinalizePage() {
                         </div>
                       </div>
 
-                      {/* Rationale */}
                       <div>
                         <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
                           Rationale
@@ -534,14 +603,13 @@ export default function FinalizePage() {
                         </p>
                       </div>
 
-                      {/* Policy References */}
                       <div className="flex flex-wrap gap-2">
                         <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
                           Policy References:
                         </label>
-                        {proposal.policy_refs.map((ref: string, idx: number) => (
+                        {proposal.policy_refs.map((ref, idx) => (
                           <span
-                            key={idx}
+                            key={`${proposal.clause_id}-policy-${idx}`}
                             className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded"
                           >
                             {ref}
@@ -549,7 +617,6 @@ export default function FinalizePage() {
                         ))}
                       </div>
 
-                      {/* Comments */}
                       <div>
                         <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center mb-2">
                           <MessageSquare className="w-3 h-3 mr-1" />
@@ -559,11 +626,11 @@ export default function FinalizePage() {
                           className="input text-sm"
                           rows={2}
                           placeholder="Add any notes or concerns about this proposal..."
-                          value={proposalComments[proposal.proposal_id] || ""}
+                          value={proposalComments[proposal.clause_id] || ""}
                           onChange={(e) =>
                             setProposalComments({
                               ...proposalComments,
-                              [proposal.proposal_id]: e.target.value,
+                              [proposal.clause_id]: e.target.value,
                             })
                           }
                         />
@@ -575,7 +642,6 @@ export default function FinalizePage() {
             </div>
           </div>
 
-          {/* Final Approval Section */}
           {!showExportOptions && (
             <div className="card bg-gradient-to-r from-primary-50 to-blue-50 border-2 border-primary-200">
               <div className="flex items-center mb-4">
@@ -602,17 +668,18 @@ export default function FinalizePage() {
                 </div>
                 <button
                   onClick={handleApproveAll}
-                  disabled={approvedProposals.size === 0}
-                  className="btn-primary flex items-center text-lg py-3 px-6"
+                  disabled={approvedProposals.size === 0 || submittingApproval}
+                  className={`btn-primary flex items-center text-lg py-3 px-6 ${
+                    submittingApproval ? "opacity-70 cursor-not-allowed" : ""
+                  }`}
                 >
                   <CheckCircle className="w-5 h-5 mr-2" />
-                  Approve & Export
+                  {submittingApproval ? "Approving..." : "Approve & Export"}
                 </button>
               </div>
             </div>
           )}
 
-          {/* Export Options */}
           {showExportOptions && !exportComplete && (
             <div className="card bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-200">
               <div className="flex items-center mb-4">
@@ -628,7 +695,10 @@ export default function FinalizePage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <button
                   onClick={() => handleExport("docx")}
-                  className="card hover:shadow-lg transition-shadow text-center p-6"
+                  disabled={exporting}
+                  className={`card hover:shadow-lg transition-shadow text-center p-6 ${
+                    exporting ? "opacity-70 cursor-not-allowed" : ""
+                  }`}
                 >
                   <FileText className="w-12 h-12 text-blue-600 mx-auto mb-3" />
                   <p className="font-semibold text-gray-900">Microsoft Word</p>
@@ -636,7 +706,10 @@ export default function FinalizePage() {
                 </button>
                 <button
                   onClick={() => handleExport("pdf")}
-                  className="card hover:shadow-lg transition-shadow text-center p-6"
+                  disabled={exporting}
+                  className={`card hover:shadow-lg transition-shadow text-center p-6 ${
+                    exporting ? "opacity-70 cursor-not-allowed" : ""
+                  }`}
                 >
                   <FileText className="w-12 h-12 text-red-600 mx-auto mb-3" />
                   <p className="font-semibold text-gray-900">PDF</p>
@@ -646,7 +719,10 @@ export default function FinalizePage() {
                 </button>
                 <button
                   onClick={() => handleExport("md")}
-                  className="card hover:shadow-lg transition-shadow text-center p-6"
+                  disabled={exporting}
+                  className={`card hover:shadow-lg transition-shadow text-center p-6 ${
+                    exporting ? "opacity-70 cursor-not-allowed" : ""
+                  }`}
                 >
                   <FileText className="w-12 h-12 text-gray-600 mx-auto mb-3" />
                   <p className="font-semibold text-gray-900">Markdown</p>
@@ -656,7 +732,6 @@ export default function FinalizePage() {
             </div>
           )}
 
-          {/* Export Complete */}
           {exportComplete && (
             <div className="card bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-200">
               <div className="flex items-center mb-4">
@@ -679,7 +754,7 @@ export default function FinalizePage() {
                     <li className="flex items-center justify-between">
                       <span className="flex items-center">
                         <FileText className="w-4 h-4 mr-2 text-blue-600" />
-                        SaaS_MSA_v2_REDLINED.docx
+                        Redlined_Document.docx
                       </span>
                       <button className="text-primary-600 hover:text-primary-700 font-medium">
                         Download
@@ -724,8 +799,7 @@ export default function FinalizePage() {
         </>
       )}
 
-      {/* Empty State */}
-      {!redlineDetails && (
+      {!redlineDetails && !detailsLoading && (
         <div className="card text-center py-12">
           <CheckCircle className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <p className="text-gray-600 mb-2">No review selected</p>

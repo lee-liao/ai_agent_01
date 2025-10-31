@@ -335,6 +335,9 @@ DELETE /api/playbooks/{id}         # Delete playbook
 
 ### **HITL Gates**
 ```
+GET    /api/hitl/pending-runs      # Runs awaiting risk approval with risk counts
+GET    /api/hitl/runs/{run_id}/assessments
+                                   # Fetch enriched risk assessments for a run
 POST   /api/hitl/risk-approve      # Approve/reject risk assessments
 POST   /api/hitl/final-approve     # Final approval for redlines
 GET    /api/blackboard/{run_id}    # Get shared state
@@ -358,6 +361,12 @@ GET    /api/reports/cost           # Cost analysis
 ```
 GET    /api/replay/{run_id}        # Get replay data
 POST   /api/replay/{run_id}        # Replay with modifications
+```
+
+### **Team Management**
+```
+GET    /api/teams                  # List registered teams and their capabilities
+GET    /api/teams/{team_name}      # Inspect a specific team definition
 ```
 
 ---

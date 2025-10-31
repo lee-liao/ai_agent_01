@@ -53,6 +53,17 @@ DEFAULT_POLICIES = {
             "health_data_handling": "strict",
             "max_auto_approval_risk": "medium",
         }
+    },
+    "external_sharing": {
+        "name": "External Sharing Policy",
+        "rules": {
+            # Third-party sharing requires human approval
+            "third_party_sharing": "prohibited_without_hitl",
+            # Optional allowlist for approved domains/entities (not enforced in mock)
+            "allowed_entities": [],
+            # Allow sharing only after redactions are applied
+            "allow_after_redaction": True,
+        }
     }
 }
 

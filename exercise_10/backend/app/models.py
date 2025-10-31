@@ -1,10 +1,44 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, ForeignKey, TypeDecorator, CHAR
+from sqlalchemy.dialects.postgresql import UUID as pgUUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
 
 from .database import Base
+
+# Cross-database UUID type (works with SQLite and PostgreSQL)
+class GUID(TypeDecorator):
+    """Platform-independent GUID type.
+    Uses PostgreSQL's UUID type, otherwise uses CHAR(36), storing as stringified hex values.
+    """
+    impl = CHAR
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(pgUUID(as_uuid=True))
+        else:
+            return dialect.type_descriptor(CHAR(36))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == 'postgresql':
+            return value
+        else:
+            if not isinstance(value, uuid.UUID):
+                return str(uuid.UUID(value))
+            else:
+                return str(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        else:
+            if not isinstance(value, uuid.UUID):
+                return uuid.UUID(value)
+            else:
+                return value
 
 class User(Base):
     """Agent/Supervisor/Admin users"""
@@ -43,7 +77,7 @@ class Call(Base):
     __tablename__ = "calls"
     
     id = Column(Integer, primary_key=True)
-    call_id = Column(UUID(as_uuid=True), default=uuid.uuid4, unique=True, index=True)
+    call_id = Column(GUID, default=uuid.uuid4, unique=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True)
     agent_name = Column(String(255))
     start_time = Column(DateTime, default=datetime.utcnow)
@@ -64,7 +98,7 @@ class Transcript(Base):
     __tablename__ = "transcripts"
     
     id = Column(Integer, primary_key=True)
-    call_id = Column(UUID(as_uuid=True), ForeignKey("calls.call_id"), index=True)
+    call_id = Column(GUID, ForeignKey("calls.call_id"), index=True)
     speaker = Column(String(20))  # customer, agent
     text = Column(Text)
     timestamp = Column(DateTime, default=datetime.utcnow)
@@ -78,7 +112,7 @@ class AISuggestion(Base):
     __tablename__ = "ai_suggestions"
     
     id = Column(Integer, primary_key=True)
-    call_id = Column(UUID(as_uuid=True), ForeignKey("calls.call_id"), index=True)
+    call_id = Column(GUID, ForeignKey("calls.call_id"), index=True)
     suggestion_type = Column(String(50))  # tip, alert, action, info
     message = Column(Text)
     used = Column(Boolean, default=False)
