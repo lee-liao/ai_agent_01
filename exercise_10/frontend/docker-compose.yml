@@ -9,11 +9,8 @@ services:
     container_name: Lee_exercise10_frontend
     ports:
       - "8501:8501"
-    environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL}
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      NEXTAUTH_URL: ${NEXTAUTH_URL}
+    env_file:
+      - .env.local
     volumes:
       - .:/app
       - /app/node_modules

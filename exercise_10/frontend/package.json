@@ -7,8 +7,6 @@
     "dev:https": "node server.js",
     "dev:lan": "next dev --hostname 0.0.0.0 --port 8501",
     "dev:lan:https": "node server.js",
-    "copy:certs": "node copy-ssl-certs.js",
-    "setup:ssl": "node copy-ssl-certs.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
