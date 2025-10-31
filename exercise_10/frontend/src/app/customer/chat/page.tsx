@@ -187,15 +187,16 @@ export default function CustomerChatPage() {
             setWaitingForAgent(false);
           }
           return;
-        }
-        // Legacy binary audio (not used with WebRTC)
-        if (event.data instanceof Blob) {
-          playAudioChunk(event.data);
-          return;
-        }
-        if (event.data instanceof ArrayBuffer) {
-          playAudioChunk(new Blob([event.data], { type: 'audio/webm;codecs=opus' }));
-          return;
+        } catch (e) {
+          // Legacy binary audio (not used with WebRTC)
+          if (event.data instanceof Blob) {
+            playAudioChunk(event.data);
+            return;
+          }
+          if (event.data instanceof ArrayBuffer) {
+            playAudioChunk(new Blob([event.data], { type: 'audio/webm;codecs=opus' }));
+            return;
+          }
         }
       };
 
