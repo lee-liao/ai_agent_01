@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Phone, PhoneOff, Mic, MicOff, User, Clock, MessageSquare, Volume2 } from 'lucide-react';
 import { useAudioCall } from '@/lib/useAudioCall';
+import { playAudioChunk } from '@/lib/audioUtils';
+import useWebRTCAudio from '@/lib/useWebRTCAudio';
+import AISuggestions from '@/components/AISuggestions';
 
 interface Message {
   id: string;
@@ -49,6 +52,9 @@ export default function CallsPage() {
       addMessage(speaker === 'agent' ? 'agent' : 'customer', `[Voice] ${text}`);
     }
   });
+
+  // WebRTC audio (agent acts as responder)
+  const rtc = useWebRTCAudio({ role: 'responder', ws });
 
   // Check authentication
   useEffect(() => {
@@ -269,6 +275,7 @@ export default function CallsPage() {
       };
 
       setWs(websocket);
+      setCallId(response.call_id);
       
     } catch (error: any) {
       console.error('Failed to connect agent:', error);

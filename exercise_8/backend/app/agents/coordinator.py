@@ -558,3 +558,4 @@ class Coordinator:
             status = run["status"]
             counts[status] = counts.get(status, 0) + 1
         return counts
+

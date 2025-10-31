@@ -369,3 +369,10 @@ The Legal Document Chat Assistant provides:
 
 Perfect for learning about LLM security, prompt injection, and safe AI assistant design!
 
+
+
+
+
+
+
+

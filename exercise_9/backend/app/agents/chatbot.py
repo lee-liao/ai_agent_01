@@ -352,3 +352,10 @@ def detect_prompt_injection(message: str) -> Dict[str, Any]:
     agent = ChatbotAgent()
     return agent._scan_for_threats(message)
 
+
+
+
+
+
+
+

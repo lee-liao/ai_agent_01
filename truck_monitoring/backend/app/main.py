@@ -4,10 +4,12 @@ Main FastAPI Application for Truck Monitoring System
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from .database import init_db
-from .api import auth_routes, trucks, statistics
+from .api import auth_routes, trucks, statistics, edge, media
 from .seed_data import seed_database
 
 
@@ -40,10 +42,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Create uploads directory
+UPLOAD_DIR = Path(__file__).parent.parent / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
+(UPLOAD_DIR / "images").mkdir(exist_ok=True)
+(UPLOAD_DIR / "videos").mkdir(exist_ok=True)
+(UPLOAD_DIR / "thumbnails").mkdir(exist_ok=True)
+
+# Mount static files for uploads
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
 # Include routers
 app.include_router(auth_routes.router)
 app.include_router(trucks.router)
 app.include_router(statistics.router)
+app.include_router(edge.router)  # Edge computer endpoints (no auth required)
+app.include_router(media.router)  # Media upload endpoints (no auth required)
 
 
 @app.get("/")
@@ -71,4 +85,7 @@ if __name__ == "__main__":
         port=8095,
         reload=True
     )
+
+
+
 
