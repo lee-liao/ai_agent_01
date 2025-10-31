@@ -9,6 +9,8 @@ services:
     container_name: Lee_exercise10_frontend
     ports:
       - "8501:8501"
+    networks:
+      - Lee-network
     env_file:
       - .env.local
     volumes:
@@ -17,3 +19,6 @@ services:
       - /app/.next
     command: npm run dev:lan:https
 
+networks:
+  Lee-network:
+    external: true

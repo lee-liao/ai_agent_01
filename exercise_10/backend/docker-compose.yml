@@ -9,6 +9,8 @@ services:
     container_name: Lee_exercise10_backend
     ports:
       - "8600:8600"
+    networks:
+      - Lee-network
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
@@ -18,3 +20,7 @@ services:
     volumes:
       - .:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8600 --ssl-keyfile ./sslCertificates/key.pem --ssl-certfile ./sslCertificates/cert.pem --reload
+
+networks:
+  Lee-network:
+    external: true
