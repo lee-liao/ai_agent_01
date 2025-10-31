@@ -12,8 +12,8 @@ RUN npm install
 COPY . .
 
 # Expose port
-EXPOSE 3000
+EXPOSE 8501
 
 # Run application
-CMD ["npm", "run", "dev"]
+CMD ["npm", "run", "dev:lan:https"]
 
