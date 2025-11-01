@@ -51,55 +51,67 @@ Complete the following to harden the MVP and prepare an internal alpha launch. E
 - Deliverables: `docs/safety_scope.md`, `config/safety_policy.json`, backend guard hook with refusal templates.
 - Pass: 20 red-team prompts trigger correct refusal/redirect (unit tests).
 
-2) Curated RAG pack (citations required)
+2) Refusal templates UI
+- Deliverables: Supportive copy + resource links (hotlines, referrals); render with empathy in UI via `RefusalMessage` component.
+- Pass: All refusals show empathy statement + clickable resource link.
+
+3) Curated RAG pack (citations required)
 - Deliverables: `rag/ingest.py`, `rag/index.json`, retrieval helper, citation badges/links in UI.
 - Pass: In 10 sampled sessions, ≥90% responses include ≥1 citation.
 
-3) SSE advice streaming
+4) SSE advice streaming
 - Deliverables: backend SSE endpoint that streams advice chunks; frontend consumer in `/coach/chat`.
 - Pass: First token <1.5s; streaming updates visible.
 
-4) Playwright e2e suite
+5) Playwright e2e suite
 - Deliverables: expand `frontend/e2e/assistant.spec.ts` to ≥10 scenarios (screen time, bedtime, sibling conflict, motivation, ADHD-like guidance → safe referral, etc.).
 - Pass: All scenarios green; asserts response structure (empathy, 3 steps, citation, safety footer).
 
-5) Dockerize & health checks
+6) Dockerize & health checks
 - Deliverables: `Dockerfile`(API), `Dockerfile.web`(Next), `docker-compose.yml`, `/readyz` checks RAG + model key.
 - Pass: `docker compose up` → both services healthy ≤20s.
 
-6) CI/CD pipelines
+7) CI/CD pipelines
 - Deliverables: `.github/workflows/ci.yml` (lint/type, unit, e2e, build), `.github/workflows/cd.yml` (staging smoke deploy).
 - Pass: Red blocks merge; green tag auto-deploys to staging.
 
-7) SLOs & observability
+8) SLOs & observability
 - Deliverables: `observability/` with OpenTelemetry spans (retrieval, model, guard), dashboards (JSON exports).
 - Pass: 15‑min load test p95 ≤ 2.5s; failure rate ≤ 1%.
 
-8) Guardrails + HITL queue
+9) Guardrails + HITL queue
 - Deliverables: `backend/app/guardrails.py` (PII/crisis/medical classifier) ↔ HITL UI `web/app/(hitl)/queue.tsx`.
 - Pass: Crisis prompts route to HITL in <500ms; mentor reply appears in parent chat.
 
-9) Prompt versioning & snapshots
+10) Prompt versioning & snapshots
 - Deliverables: `prompts/child_coach_vX.json`, `tests/snapshots/*`, prompt changelog.
 - Pass: Changing prompts without version bump fails CI.
 
-10) Token/cost watchdog
+11) Token/cost watchdog
 - Deliverables: `billing/ledger.py` (per‑turn tokens/cost), caps + "lite mode" fallback, nightly CSV + admin sparkline.
 - Pass: Over‑budget requests return lite mode with notice; report generated daily.
 
-11) Load testing
+12) Load testing
 - Deliverables: Use scaffolds in `load/k6/coach_scenario.js` and `load/locust/locustfile.py`.
 - Pass: Report includes throughput, p95, error rate; meets SLOs.
 
-12) Accessibility & UX polish
+13) Accessibility & UX polish
 - Deliverables: keyboard navigation, ARIA roles for chat, disclaimers.
 - Pass: Axe scan has no critical issues.
 
+14) Alpha test protocol
+- Deliverables: `docs/alpha_plan.md`, consent copy, feedback form, 10 issues logged.
+- Pass: ≥80% "felt-helpful", 0 P0 safety bugs.
+
+15) Demo & one-pager
+- Deliverables: 2-minute demo video (refusal → normal advice w/ citations → HITL); one-pager report (p95, fail rate, citation rate, cost/day, risks, next steps).
+- Pass: Demo reproducible from `docker compose up`; metrics align with SLOs.
+
 ## What to Submit
 
-- 3–5 merged PRs covering: Safety+RAG, Docker+CI, E2E+SLOs.
-- 2‑minute demo: refusal flow → normal advice with citations → HITL escalation.
-- One‑pager: metrics (p95, fail rate, citation rate), cost/day, key risks, next‑week plan.
+- **3–5 merged PRs** covering: Safety+RAG+Refusal UI, Docker+CI, E2E+SLOs+Observability.
+- **Alpha test results** (Task 14): Feedback summary, helpfulness ≥80%, 0 P0 safety bugs.
+- **Demo & one-pager** (Task 15): 2-minute video showing refusal → normal advice with citations → HITL escalation; plus one-page report with metrics, costs, risks, and next steps.
 
 ## 📖 Documentation Index
 
@@ -108,9 +120,13 @@ Complete the following to harden the MVP and prepare an internal alpha launch. E
 - **[SCRIPTS.md](./SCRIPTS.md)** - 🛠️ Scripts reference and commands
 - **[PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)** - 📁 Codebase layout and architecture
 - **[load/README.md](./load/README.md)** - 🧪 Load testing guide (K6 & Locust)
+- **[OPENSPEC_SETUP_COMPLETE.md](./OPENSPEC_SETUP_COMPLETE.md)** - 📋 OpenSpec proposals for all 15 tasks
+- **[CLASS_NOTES_INTEGRATED.md](./CLASS_NOTES_INTEGRATED.md)** - 📝 Integration of class notes into OpenSpec
 
 ## Tips
 
+- **Use OpenSpec workflow**: Each task has a detailed proposal in `openspec/changes/`. Run `openspec list` to see all tasks, `openspec show <task-name>` for details.
 - Keep `.env` and secrets out of source control; use templates.
 - Add feature flags for streaming vs non‑streaming and model choices.
 - Prefer small, reviewable PRs; ensure CI is green before merging.
+- Follow the recommended implementation order in `OPENSPEC_SETUP_COMPLETE.md` for best results.
