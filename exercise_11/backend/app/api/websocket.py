@@ -23,13 +23,41 @@ async def coach_ws(websocket: WebSocket, session_id: str):
 
             if msg.get("type") == "text":
                 user_text = msg.get("text", "").strip()
-                advice = (
-                    "I hear you. Here are a few ideas you might try: "
-                    "1) Acknowledge feelings, 2) Offer a simple choice, 3) Keep routines consistent."
-                )
+                
+                # Import guardrails, RAG, and LLM
+                from app.guardrails import get_guard
+                from rag.simple_retrieval import retrieve_context
+                from app.llm import generate_advice_non_streaming
+                
+                # Check guardrails first
+                guard = get_guard()
+                category, refusal_data = guard.classify_request(user_text)
+                
+                if category != 'ok':
+                    # Send refusal message
+                    await websocket.send_json({
+                        "type": "refusal",
+                        "data": refusal_data,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    })
+                    continue
+                
+                # Get RAG context
+                rag_context = retrieve_context(user_text, max_results=2)
+                
+                # Generate advice with OpenAI
+                advice = await generate_advice_non_streaming(user_text, rag_context)
+                
+                # Extract citations
+                citations = [
+                    {'source': doc['source'], 'url': doc['url']}
+                    for doc in rag_context
+                ]
+                
                 await websocket.send_json({
                     "type": "advice",
                     "text": advice,
+                    "citations": citations,
                     "echo": user_text,
                     "timestamp": datetime.utcnow().isoformat(),
                 })

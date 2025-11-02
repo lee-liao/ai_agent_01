@@ -1,0 +1,55 @@
+{
+  "medical_keywords": [
+    "diagnose",
+    "diagnosis",
+    "adhd",
+    "autism",
+    "fever",
+    "symptoms",
+    "sick",
+    "disease",
+    "disorder",
+    "medication",
+    "medicine",
+    "prescription",
+    "dosage"
+  ],
+  "crisis_keywords": [
+    "hurt",
+    "suicide",
+    "abuse",
+    "danger",
+    "afraid",
+    "kill",
+    "harm",
+    "violent",
+    "emergency",
+    "scared",
+    "lose control"
+  ],
+  "legal_keywords": [
+    "custody",
+    "divorce",
+    "lawyer",
+    "court",
+    "rights",
+    "legal",
+    "sue",
+    "attorney",
+    "judge",
+    "parental rights"
+  ],
+  "therapy_keywords": [
+    "depression",
+    "anxiety",
+    "trauma",
+    "therapist",
+    "counselor",
+    "mental health",
+    "ptsd",
+    "panic",
+    "depressed",
+    "panic attack"
+  ]
+}
+

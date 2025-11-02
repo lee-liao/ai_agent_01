@@ -3,8 +3,21 @@
 import { useEffect, useRef, useState } from 'react';
 import coachAPI from '@/lib/coachApi';
 import { Send, Sparkles, User, Bot, Loader2, CheckCircle2, Shield, Zap, Heart, Star, TrendingUp } from 'lucide-react';
+import { RefusalMessage } from '@/components/RefusalMessage';
 
-interface Msg { id: string; role: 'parent' | 'coach' | 'system'; text: string; at: Date }
+interface Citation {
+  source: string;
+  url: string;
+}
+
+interface Msg { 
+  id: string; 
+  role: 'parent' | 'coach' | 'system' | 'refusal'; 
+  text: string; 
+  at: Date;
+  citations?: Citation[];
+  refusalData?: any;
+}
 
 export default function CoachChatPage() {
   const [parent, setParent] = useState<{ name: string } | null>(null);
@@ -13,6 +26,7 @@ export default function CoachChatPage() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Msg[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [streamingText, setStreamingText] = useState(''); // For SSE streaming display
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -24,12 +38,13 @@ export default function CoachChatPage() {
 
   useEffect(() => { 
     endRef.current?.scrollIntoView({ behavior: 'smooth' }); 
-  }, [messages]);
+  }, [messages, streamingText]); // Also scroll when streaming text updates
 
   const start = async () => {
     if (!parent) return;
     setConnectionStatus('connecting');
     try {
+      // Create session via REST API
       const { session_id, message } = await coachAPI.startSession(parent.name);
       setSessionId(session_id);
       setMessages((m) => [...m, { 
@@ -39,68 +54,102 @@ export default function CoachChatPage() {
         at: new Date() 
       }]);
       
-      const socket = new WebSocket(`ws://localhost:8011/ws/coach/${session_id}`);
+      // Session ready - using SSE for messages (no WebSocket needed)
+      setConnectionStatus('connected');
+      setMessages((m) => [...m, { 
+        id: crypto.randomUUID(), 
+        role: 'system', 
+        text: '✨ Session ready! How can I help you today?', 
+        at: new Date() 
+      }]);
       
-      socket.onopen = () => {
-        setWs(socket);
-        setConnectionStatus('connected');
-        inputRef.current?.focus();
-      };
-      
-      socket.onmessage = (ev) => {
-        try {
-          const data = JSON.parse(ev.data);
-          if (data.type === 'advice') {
-            setIsTyping(true);
-            setTimeout(() => {
-              setMessages((m) => [
-                ...m,
-                { id: crypto.randomUUID(), role: 'coach', text: data.text, at: new Date() },
-              ]);
-              setIsTyping(false);
-            }, 1000);
-          } else if (data.type === 'session_started') {
-            setMessages((m) => [...m, { 
-              id: crypto.randomUUID(), 
-              role: 'system', 
-              text: '✨ Session ready! How can I help you today?', 
-              at: new Date() 
-            }]);
-          }
-        } catch {
-          // ignore malformed messages
-        }
-      };
-      
-      socket.onclose = () => {
-        setWs(null);
-        setConnectionStatus('disconnected');
-      };
-      
-      socket.onerror = () => {
-        setConnectionStatus('disconnected');
-      };
+      inputRef.current?.focus();
     } catch (error) {
       setConnectionStatus('disconnected');
       setMessages((m) => [...m, { 
         id: crypto.randomUUID(), 
         role: 'system', 
-        text: '❌ Failed to connect. Please try again.', 
+        text: '❌ Failed to start session. Please try again.', 
         at: new Date() 
       }]);
     }
   };
 
   const send = () => {
-    if (!input.trim() || !ws) return;
-    ws.send(JSON.stringify({ type: 'text', text: input.trim() }));
+    if (!input.trim() || !sessionId) return;
+    
+    const question = input.trim();
+    
+    // Add user message
     setMessages((m) => [...m, { 
       id: crypto.randomUUID(), 
       role: 'parent', 
-      text: input.trim(), 
+      text: question, 
       at: new Date() 
     }]);
     setInput('');
+    setIsTyping(true);
+    setStreamingText('');
+    
+    // Use SSE for streaming response (Task 4: SSE Streaming)
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8011';
+    const eventSource = new EventSource(
+      `${apiUrl}/api/coach/stream/${sessionId}?question=${encodeURIComponent(question)}`
+    );
+    
+    let fullText = '';
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'refusal') {
+          // Handle refusal
+          setMessages((m) => [...m, {
+            id: crypto.randomUUID(),
+            role: 'refusal',
+            text: '',
+            at: new Date(),
+            refusalData: data.data
+          }]);
+          setIsTyping(false);
+          setStreamingText('');
+          eventSource.close();
+        } else if (data.chunk) {
+          // Accumulate streaming text
+          fullText += data.chunk;
+          setStreamingText(fullText);
+        } else if (data.done) {
+          // Stream complete
+          setMessages((m) => [...m, {
+            id: crypto.randomUUID(),
+            role: 'coach',
+            text: fullText,
+            at: new Date(),
+            citations: data.citations || []
+          }]);
+          setIsTyping(false);
+          setStreamingText('');
+          eventSource.close();
+        }
+      } catch (err) {
+        console.error('Error parsing SSE:', err);
+      }
+    };
+    
+    eventSource.onerror = (error) => {
+      console.error('SSE error:', error);
+      setMessages((m) => [...m, {
+        id: crypto.randomUUID(),
+        role: 'system',
+        text: '❌ Connection error. Please try again.',
+        at: new Date()
+      }]);
+      setIsTyping(false);
+      setStreamingText('');
+      eventSource.close();
+    };
+    
     inputRef.current?.focus();
   };
 
@@ -207,58 +256,99 @@ export default function CoachChatPage() {
                     className={`flex ${m.role === 'parent' ? 'justify-end' : 'justify-start'} animate-slide-up`}
                     style={{ animationDelay: `${idx * 30}ms` }}
                   >
-                    <div className={`flex gap-4 max-w-[80%] ${m.role === 'parent' ? 'flex-row-reverse' : 'flex-row'}`}>
-                      {/* Avatar */}
-                      {m.role !== 'system' && (
-                        <div className={`flex-shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center shadow-xl border-3 ${
-                          m.role === 'coach'
-                            ? 'bg-gradient-to-br from-amber-400 via-orange-500 to-amber-600 border-orange-300'
-                            : 'bg-gradient-to-br from-orange-600 via-orange-500 to-amber-600 border-orange-400'
-                        }`}>
-                          {m.role === 'coach' ? (
-                            <Bot className="w-7 h-7 text-white" />
-                          ) : (
-                            <User className="w-7 h-7 text-white" />
+                    {/* Refusal Message - Special Layout */}
+                    {m.role === 'refusal' ? (
+                      <div className="w-full max-w-[85%]" data-testid="refusal-message">
+                        <RefusalMessage data={m.refusalData} />
+                      </div>
+                    ) : (
+                      <div className={`flex gap-4 max-w-[80%] ${m.role === 'parent' ? 'flex-row-reverse' : 'flex-row'}`}>
+                        {/* Avatar */}
+                        {m.role !== 'system' && (
+                          <div className={`flex-shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center shadow-xl border-3 ${
+                            m.role === 'coach'
+                              ? 'bg-gradient-to-br from-amber-400 via-orange-500 to-amber-600 border-orange-300'
+                              : 'bg-gradient-to-br from-orange-600 via-orange-500 to-amber-600 border-orange-400'
+                          }`}>
+                            {m.role === 'coach' ? (
+                              <Bot className="w-7 h-7 text-white" />
+                            ) : (
+                              <User className="w-7 h-7 text-white" />
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Message Bubble */}
+                        <div 
+                          className={`rounded-3xl px-7 py-5 shadow-xl border-3 ${
+                            m.role === 'parent'
+                              ? 'bg-gradient-to-br from-orange-600 via-orange-500 to-amber-600 text-white border-orange-400'
+                              : m.role === 'coach'
+                              ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-amber-50 text-slate-900 border-orange-300'
+                              : 'bg-gradient-to-br from-blue-50 to-cyan-50 text-slate-700 border-blue-300'
+                          }`}
+                          data-testid={m.role === 'coach' ? 'assistant-message' : undefined}
+                        >
+                          <p 
+                            className={`leading-relaxed whitespace-pre-wrap font-semibold text-lg ${
+                              m.role === 'coach' ? 'text-slate-800' : ''
+                            }`}
+                          >
+                            {m.text}
+                          </p>
+                          
+                          {/* Citations */}
+                          {m.citations && m.citations.length > 0 && (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {m.citations.map((cite, i) => (
+                                <a
+                                  key={i}
+                                  href={cite.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  data-testid="citation"
+                                  className="inline-flex items-center gap-1.5 text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-1.5 rounded-full font-bold transition-colors border border-blue-300 shadow-sm"
+                                >
+                                  <span>📚</span>
+                                  <span>[{cite.source}]</span>
+                                </a>
+                              ))}
+                            </div>
                           )}
-                        </div>
-                      )}
-                      
-                      {/* Message Bubble */}
-                      <div className={`rounded-3xl px-7 py-5 shadow-xl border-3 ${
-                        m.role === 'parent'
-                          ? 'bg-gradient-to-br from-orange-600 via-orange-500 to-amber-600 text-white border-orange-400'
-                          : m.role === 'coach'
-                          ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-amber-50 text-slate-900 border-orange-300'
-                          : 'bg-gradient-to-br from-blue-50 to-cyan-50 text-slate-700 border-blue-300'
-                      }`}>
-                        <p className={`leading-relaxed whitespace-pre-wrap font-semibold text-lg ${
-                          m.role === 'coach' ? 'text-slate-800' : ''
-                        }`}>
-                          {m.text}
-                        </p>
-                        <div className={`text-xs mt-3 font-bold flex items-center gap-2 ${
-                          m.role === 'parent' ? 'text-white/80' : 'text-slate-600'
-                        }`}>
-                          <span>{m.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                          {m.role === 'parent' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                          
+                          <div className={`text-xs mt-3 font-bold flex items-center gap-2 ${
+                            m.role === 'parent' ? 'text-white/80' : 'text-slate-600'
+                          }`}>
+                            <span>{m.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            {m.role === 'parent' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 ))}
                 
-                {/* Typing Indicator */}
+                {/* Streaming Text Indicator - Shows tokens as they arrive */}
                 {isTyping && (
-                  <div className="flex gap-4 animate-slide-up">
+                  <div className="flex gap-4 animate-slide-up" data-testid="streaming-indicator">
                     <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br from-amber-400 to-orange-500 shadow-xl border-3 border-orange-300">
                       <Bot className="w-7 h-7 text-white" />
                     </div>
-                    <div className="bg-gradient-to-br from-amber-50 to-orange-100 border-3 border-orange-300 rounded-3xl px-7 py-5 shadow-xl">
-                      <div className="flex gap-2">
-                        <div className="w-4 h-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full animate-bounce shadow-lg" />
-                        <div className="w-4 h-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full animate-bounce shadow-lg" style={{ animationDelay: '0.2s' }} />
-                        <div className="w-4 h-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full animate-bounce shadow-lg" style={{ animationDelay: '0.4s' }} />
-                      </div>
+                    <div className="bg-gradient-to-br from-amber-50 to-orange-100 border-3 border-orange-300 rounded-3xl px-7 py-5 shadow-xl min-w-[200px]">
+                      {streamingText ? (
+                        // Show streaming text as it arrives
+                        <p className="text-slate-800 font-semibold text-lg leading-relaxed">
+                          {streamingText}
+                          <span className="inline-block w-2 h-5 bg-orange-500 ml-1 animate-pulse" /> {/* Cursor */}
+                        </p>
+                      ) : (
+                        // Loading dots before first token
+                        <div className="flex gap-2">
+                          <div className="w-4 h-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full animate-bounce shadow-lg" />
+                          <div className="w-4 h-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full animate-bounce shadow-lg" style={{ animationDelay: '0.2s' }} />
+                          <div className="w-4 h-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full animate-bounce shadow-lg" style={{ animationDelay: '0.4s' }} />
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -280,13 +370,15 @@ export default function CoachChatPage() {
                     send(); 
                   } 
                 }}
-                placeholder={ws ? 'Ask about routines, conflicts, screen time…' : 'Start session to begin chatting'}
-                disabled={!ws}
+                placeholder={sessionId ? 'Ask about routines, conflicts, screen time…' : 'Start session to begin chatting'}
+                disabled={!sessionId || isTyping}
+                data-testid="chat-input"
                 className="flex-1 border-3 border-orange-300 rounded-2xl px-7 py-5 focus:ring-4 focus:ring-orange-500/40 focus:border-orange-500 disabled:bg-slate-100 disabled:cursor-not-allowed outline-none transition-all text-slate-900 text-lg font-semibold placeholder:text-slate-500 hover:border-orange-400 bg-white shadow-inner"
               />
               <button
                 onClick={send}
-                disabled={!ws || !input.trim()}
+                disabled={!sessionId || !input.trim() || isTyping}
+                aria-label="Send message"
                 className="bg-gradient-to-r from-orange-600 via-orange-500 to-amber-600 text-white rounded-2xl px-10 py-5 font-black disabled:opacity-40 disabled:cursor-not-allowed hover:shadow-2xl hover:shadow-orange-500/50 hover:scale-110 transition-all duration-200 flex items-center gap-3 group border-3 border-orange-400/50 shadow-xl"
               >
                 <Send className="w-7 h-7 group-hover:translate-x-1 transition-transform" />
@@ -295,7 +387,7 @@ export default function CoachChatPage() {
             </div>
             
             {/* Quick Tips */}
-            {ws && messages.length < 2 && (
+            {sessionId && messages.length < 2 && (
               <div className="mt-6 flex flex-wrap gap-3 items-center justify-center">
                 <TrendingUp className="w-5 h-5 text-slate-500" />
                 <span className="text-sm text-slate-600 font-black uppercase tracking-wide">Popular Topics:</span>

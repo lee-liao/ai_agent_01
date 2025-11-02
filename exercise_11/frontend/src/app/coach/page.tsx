@@ -66,6 +66,7 @@ export default function CoachEntryPage() {
               </label>
               <div className="relative">
                 <input 
+                  name="parent_name"
                   value={name} 
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-7 py-5 bg-gradient-to-br from-slate-50 to-orange-50/50 border-3 border-orange-300 rounded-2xl focus:ring-4 focus:ring-orange-500/40 focus:border-orange-500 transition-all outline-none text-slate-900 text-xl font-semibold placeholder:text-slate-400 hover:border-orange-400 shadow-inner"
@@ -96,7 +97,7 @@ export default function CoachEntryPage() {
               ) : (
                 <>
                   <Zap className="w-7 h-7 fill-white animate-pulse relative z-10" />
-                  <span className="relative z-10">Start Coaching Session</span>
+                  <span className="relative z-10">Start</span>
                   <ArrowRight className="w-7 h-7 group-hover:translate-x-2 transition-transform relative z-10" />
                 </>
               )}
