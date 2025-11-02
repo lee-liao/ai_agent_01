@@ -45,8 +45,8 @@ async def coach_ws(websocket: WebSocket, session_id: str):
                 # Get RAG context
                 rag_context = retrieve_context(user_text, max_results=2)
                 
-                # Generate advice with OpenAI
-                advice = await generate_advice_non_streaming(user_text, rag_context)
+                # Generate advice with OpenAI (with session_id for cost tracking)
+                advice = await generate_advice_non_streaming(user_text, rag_context, session_id)
                 
                 # Extract citations
                 citations = [

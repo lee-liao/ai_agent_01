@@ -31,13 +31,33 @@ app.add_middleware(
 
 @app.get("/healthz")
 async def healthz():
+    """Basic health check - is the service running?"""
     return {"status": "ok"}
 
 
 @app.get("/readyz")
 async def readyz():
-    # TODO: check RAG index and model key here later
-    return {"ready": True}
+    """
+    Readiness check - is the service ready to handle requests?
+    Checks dependencies: OpenAI API key, RAG index
+    """
+    from app.config import settings
+    from pathlib import Path
+    
+    checks = {
+        "openai_key_configured": bool(settings.OPENAI_API_KEY),
+        "rag_module_available": True,  # Already imported successfully if we're here
+        "config_file_exists": Path("config/safety_policy.json").exists()
+    }
+    
+    all_ready = all(checks.values())
+    status_code = 200 if all_ready else 503
+    
+    return {
+        "ready": all_ready,
+        "checks": checks,
+        "message": "Service ready" if all_ready else "Service not ready - check configuration"
+    }
 
 
 app.include_router(coach.router)

@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: child-growth-backend
+    container_name: child-growth-backend
+    ports:
+      - "8011:8011"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CORS_ORIGINS=http://localhost:3082,http://frontend:3082
+    volumes:
+      - ./backend:/app
+      - ./config:/app/config
+      - ./rag:/app/rag
+    networks:
+      - child-growth-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8011/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.web
+    image: child-growth-frontend
+    container_name: child-growth-frontend
+    ports:
+      - "3082:3082"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8011
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8011
+      - PORT=3082
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - child-growth-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  child-growth-network:
+    driver: bridge
+

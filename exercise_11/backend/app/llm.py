@@ -103,7 +103,8 @@ async def generate_advice_streaming(
 
 async def generate_advice_non_streaming(
     question: str,
-    rag_context: list = None
+    rag_context: list = None,
+    session_id: str = "unknown"
 ) -> str:
     """
     Generate parenting advice using OpenAI API (non-streaming).
@@ -111,6 +112,7 @@ async def generate_advice_non_streaming(
     Args:
         question: Parent's question
         rag_context: Optional list of RAG documents
+        session_id: Session ID for cost tracking
         
     Returns:
         Complete advice response
@@ -124,6 +126,16 @@ async def generate_advice_non_streaming(
             messages=messages,
             temperature=0.7,
             max_tokens=500
+        )
+        
+        # Track usage and costs
+        from billing.ledger import get_tracker
+        tracker = get_tracker()
+        tracker.log_usage(
+            session_id=session_id,
+            model="gpt-3.5-turbo",
+            prompt_tokens=response.usage.prompt_tokens,
+            completion_tokens=response.usage.completion_tokens
         )
         
         return response.choices[0].message.content

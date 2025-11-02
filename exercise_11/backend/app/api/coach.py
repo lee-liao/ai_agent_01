@@ -7,6 +7,9 @@ import asyncio
 
 router = APIRouter(prefix="/api/coach", tags=["Coach"])
 
+# Track tokens for streaming (since we can't get usage from stream directly)
+streaming_token_estimate = {}
+
 
 class StartSessionRequest(BaseModel):
     parent_name: str
@@ -19,6 +22,17 @@ async def start_session(req: StartSessionRequest):
         "session_id": session_id,
         "message": f"Welcome {req.parent_name}! You can start chatting with your parenting coach.",
     }
+
+
+@router.get("/cost-status")
+async def get_cost_status():
+    """
+    Get current cost tracking status.
+    Useful for admin monitoring and budget checks.
+    """
+    from billing.ledger import get_tracker
+    tracker = get_tracker()
+    return tracker.get_budget_status()
 
 
 @router.get("/stream/{session_id}")
@@ -55,10 +69,25 @@ async def stream_advice(session_id: str, question: str):
         
         # Stream advice from OpenAI
         try:
+            token_count = 0
             async for chunk in generate_advice_streaming(question, rag_context):
                 yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                token_count += len(chunk.split())  # Rough token estimate
                 # Small delay to prevent overwhelming the client
                 await asyncio.sleep(0.01)
+            
+            # Estimate costs for streaming (can't get exact from stream)
+            # Rough estimate: ~1.3 tokens per word
+            from billing.ledger import get_tracker
+            tracker = get_tracker()
+            estimated_prompt = len(question.split()) * 1.3 + 200  # Question + system prompt
+            estimated_completion = token_count * 1.3
+            tracker.log_usage(
+                session_id=session_id,
+                model="gpt-3.5-turbo",
+                prompt_tokens=int(estimated_prompt),
+                completion_tokens=int(estimated_completion)
+            )
             
             # Send citations and done signal
             yield f"data: {json.dumps({'done': True, 'citations': citations})}\n\n"
