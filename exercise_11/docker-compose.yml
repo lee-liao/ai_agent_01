@@ -9,8 +9,9 @@ services:
     container_name: child-growth-backend
     ports:
       - "8011:8011"
+    env_file:
+      - backend/.env
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - CORS_ORIGINS=http://localhost:3082,http://frontend:3082
     volumes:
       - ./backend:/app/backend
