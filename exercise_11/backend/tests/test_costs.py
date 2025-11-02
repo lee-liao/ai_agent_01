@@ -2,6 +2,15 @@
 Simple tests for cost tracking functionality.
 """
 
+import sys
+from pathlib import Path
+
+# Add parent directories to path for direct execution
+backend_dir = Path(__file__).parent.parent
+exercise11_dir = backend_dir.parent
+sys.path.insert(0, str(backend_dir))
+sys.path.insert(0, str(exercise11_dir))
+
 from billing.ledger import CostTracker, get_tracker
 
 
