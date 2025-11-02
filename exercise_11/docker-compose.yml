@@ -5,8 +5,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    image: child-growth-backend
-    container_name: child-growth-backend
+    image: exercise11-backend
+    container_name: exercise11-backend
     ports:
       - "8011:8011"
     env_file:
@@ -18,21 +18,21 @@ services:
       - ./config:/app/config
       - ./rag:/app/rag
     networks:
-      - child-growth-network
+      - exercise11-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8011/healthz')"]
+      test: ["CMD", "curl", "-f", "http://localhost:8011/healthz"]
       interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 5s
+      start_period: 10s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile.web
-    image: child-growth-frontend
-    container_name: child-growth-frontend
+    image: exercise11-frontend
+    container_name: exercise11-frontend
     ports:
       - "3082:3082"
     environment:
@@ -44,13 +44,13 @@ services:
       - /app/node_modules
       - /app/.next
     networks:
-      - child-growth-network
+      - exercise11-network
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
 
 networks:
-  child-growth-network:
+  exercise11-network:
     driver: bridge
 
