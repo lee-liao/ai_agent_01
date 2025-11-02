@@ -3,8 +3,8 @@ version: '3.8'
 services:
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     image: child-growth-backend
     container_name: child-growth-backend
     ports:
@@ -13,7 +13,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - CORS_ORIGINS=http://localhost:3082,http://frontend:3082
     volumes:
-      - ./backend:/app
+      - ./backend:/app/backend
       - ./config:/app/config
       - ./rag:/app/rag
     networks:
