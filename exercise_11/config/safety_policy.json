@@ -25,7 +25,12 @@
     "violent",
     "emergency",
     "scared",
-    "lose control"
+    "lose control",
+    "beat",
+    "hit",
+    "strike",
+    "slap",
+    "punch"
   ],
   "legal_keywords": [
     "custody",
