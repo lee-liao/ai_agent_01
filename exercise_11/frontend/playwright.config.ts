@@ -11,6 +11,7 @@ export default defineConfig({
   use: {
     baseURL: base,
     trace: 'on-first-retry',
+    video: 'retain-on-failure', // Record video on failures by default
   },
   projects: [
     {

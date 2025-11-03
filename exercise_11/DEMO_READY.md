@@ -144,6 +144,8 @@ npx playwright test e2e/assistant.spec.ts
 
 #### Playwright Command Options
 
+**📹 Video Recording Note**: Videos are automatically configured in `playwright.config.ts` to record on failures (`video: 'retain-on-failure'`). To record ALL videos, temporarily change it to `video: 'on'` in the config file. Videos are saved in `test-results/*/video.webm`.
+
 **Interactive UI Mode** (Best for debugging):
 ```bash
 npx playwright test e2e/assistant.spec.ts --ui
@@ -156,8 +158,12 @@ npx playwright test e2e/assistant.spec.ts --headed
 
 **Generate Video Recording**:
 ```bash
-npx playwright test e2e/assistant.spec.ts --video=on
+# Videos are automatically recorded on failures (configured in playwright.config.ts)
+npx playwright test e2e/assistant.spec.ts
 # Videos saved in test-results/*/video.webm
+
+# To record ALL videos (not just failures), temporarily edit playwright.config.ts:
+# Change: video: 'retain-on-failure' to video: 'on'
 ```
 
 **HTML Report** (Nice presentation):
@@ -191,8 +197,12 @@ npx playwright test --project=webkit
 
 **Best for Demo** (headed + video + report):
 ```bash
-npx playwright test e2e/assistant.spec.ts --headed --video=on --reporter=html
+# Video is automatically recorded (configured in playwright.config.ts)
+npx playwright test e2e/assistant.spec.ts --headed --reporter=html
 npx playwright show-report
+
+# Note: Videos saved automatically. To record ALL videos, edit playwright.config.ts:
+# Change: video: 'retain-on-failure' to video: 'on'
 ```
 
 ---
@@ -206,6 +216,7 @@ npx playwright show-report
 **Commits**: 469516d, fa26c3c
 
 #### What Was Built:
+- ✅ `exercise_11/docs/safety_scope.md` - The safety boundaries, scope limitations, and handling procedures
 - ✅ `config/safety_policy.json` - 4 categories, 50+ keywords
 - ✅ `backend/app/guardrails.py` - SafetyGuard class (130 lines)
 - ✅ `backend/tests/test_guardrails.py` - 24 core tests
@@ -343,8 +354,8 @@ npx playwright test e2e/assistant.spec.ts
 # Interactive mode
 npx playwright test --ui
 
-# With video
-npx playwright test --headed --video=on
+# With video (configured in playwright.config.ts - records on failure)
+npx playwright test --headed
 
 # HTML report
 npx playwright test --reporter=html
@@ -1143,7 +1154,7 @@ pytest tests/test_costs.py -v                       # 4 cost tests
 # Frontend E2E
 npx playwright test e2e/assistant.spec.ts           # Basic run
 npx playwright test --ui                            # Interactive
-npx playwright test --headed --video=on             # Visual + record
+npx playwright test --headed                         # Visual (videos auto-recorded)
 npx playwright show-report                          # View HTML report
 ```
 
