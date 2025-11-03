@@ -52,10 +52,49 @@ Use conventional commit messages:
 git push origin feature/your-feature-name
 ```
 
-Create a pull request on GitHub with:
-- Clear title and description
-- Reference to related issue/task
-- Screenshots (if UI changes)
+**Create a pull request on GitHub**:
+
+**Option A: Using GitHub CLI** (recommended for developers):
+```bash
+gh pr create --title "feat: add new safety check" \
+  --body "Adds new safety check for physical harm keywords.
+
+- Added 'beat', 'hit', 'slap' to crisis keywords
+- Updated test_guardrails_extended.py with 7 new tests
+- All tests passing ✅
+
+Related to Task 1: Safety & Scope Policy"
+```
+
+**Option B: Using GitHub Web UI**:
+
+1. Go to your repository on GitHub
+2. Click "Compare & pull request" (or navigate to Pull Requests → New)
+3. Fill out the PR form with:
+   - **Clear title**: Use conventional commit format (e.g., "feat: add new safety check")
+   - **Description**: Explain what changes were made and why
+   - **Reference**: Link to related issue/task (e.g., "Closes #123" or "Related to Task 7")
+   - **Screenshots**: Include screenshots if UI changes were made
+   - **Checklist**: Mark any relevant checkboxes
+
+**Example PR Description**:
+```markdown
+## Description
+Adds new safety check for physical harm keywords after red-team testing.
+
+## Changes
+- Added 'beat', 'hit', 'slap' to crisis keywords
+- Updated test_guardrails_extended.py with 7 new tests
+- All tests passing ✅
+
+## Testing
+- Ran `pytest tests/test_guardrails_extended.py -v` - 7 passed
+- Manual testing verified crisis detection works
+
+## Related
+- Task 1: Safety & Scope Policy
+- Fixes safety gap identified in red-team testing
+```
 
 ### 6. Code Review
 
