@@ -32,6 +32,8 @@ exercise_* copy/
 
 
 .github/
+!exercise_11/.github/
+!exercise_11/.github/**
 .gemini/
 .wucai-clipboard/
 .wucai/

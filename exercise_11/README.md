@@ -1,5 +1,10 @@
 # Exercise 11: Child Growth Assistant (Week 8)
 
+[![CI](https://github.com/YOUR_USERNAME/YOUR_REPO/workflows/CI/badge.svg)](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/ci.yml)
+[![CD](https://github.com/YOUR_USERNAME/YOUR_REPO/workflows/CD/badge.svg)](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/cd.yml)
+
+> **Note**: Replace `YOUR_USERNAME/YOUR_REPO` with your actual GitHub repository path to enable badges.
+
 This exercise bootstraps a Child Growth/Parenting Coach assistant as an evolution of Exercise 10. It includes:
 
 - **Backend (FastAPI)**: Health endpoints, coach WebSocket chat for parenting advice

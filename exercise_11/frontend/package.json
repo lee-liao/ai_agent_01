@@ -5,7 +5,7 @@
     "dev": "next dev -p 3082",
     "build": "next build",
     "start": "next start -p 3082",
-    "lint": "echo 'no linter configured'",
+    "lint": "next lint",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:update": "playwright test --update-snapshots"
