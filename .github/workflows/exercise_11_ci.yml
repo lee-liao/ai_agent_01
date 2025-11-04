@@ -191,7 +191,7 @@ jobs:
           docker build -f backend/Dockerfile -t exercise11-backend:ci .
       
       - name: Build frontend image
-        working-directory: exercise_11
+        working-directory: exercise_11/frontend
         run: |
-          docker build -f frontend/Dockerfile.web -t exercise11-frontend:ci .
+          docker build -f Dockerfile.web -t exercise11-frontend:ci .
 
