@@ -68,6 +68,78 @@ gh run view <run-id> --log
 
 ---
 
+## Configuration
+
+### Setting Up GitHub Secrets
+
+The CI/CD pipelines require secrets to be configured in your GitHub repository. Here's how to set them up:
+
+#### 1. Navigate to Repository Settings
+
+1. Go to your GitHub repository (e.g., `https://github.com/YOUR_USERNAME/YOUR_REPO`)
+2. Click **Settings** (top menu bar)
+3. In the left sidebar, click **Secrets and variables** → **Actions**
+
+#### 2. Add OpenAI API Key
+
+**Required for E2E tests to run with real API responses:**
+
+1. Click **New repository secret**
+2. **Name**: `OPENAI_API_KEY`
+3. **Secret**: Paste your OpenAI API key (get it from https://platform.openai.com/api-keys)
+4. Click **Add secret**
+
+**Important Notes:**
+- The secret name must match exactly: `OPENAI_API_KEY` (case-sensitive)
+- The API key will be masked in logs (shown as `***`)
+- You can use a test/CI-specific API key if you have usage limits
+- Without this secret, E2E tests will gracefully skip content assertions (tests will still pass)
+
+#### Other Environment Variables
+
+**No other secrets are required!** The following environment variables from `backend/.env` are either:
+- **Set directly in CI workflow** (hardcoded values)
+- **Have safe defaults** (no secrets needed)
+
+| Variable | CI/CD Handling | Notes |
+|----------|---------------|-------|
+| `OPENAI_API_KEY` | ✅ **Secret Required** | Added via GitHub Secrets |
+| `CORS_ORIGINS` | ✅ Set in workflow | Hardcoded as `http://localhost:3082` in CI |
+| `NEXT_PUBLIC_API_URL` | ✅ Set in workflow | Hardcoded as `http://localhost:8011` in CI |
+| `NEXT_PUBLIC_WS_URL` | ✅ Set in workflow | Hardcoded as `ws://localhost:8011` in CI |
+| `PORT` | ✅ Set in workflow | Hardcoded as `3082` in CI |
+
+**Local Development**: Your `backend/.env` file is for local development only and is not used by CI/CD. The CI workflow sets all necessary environment variables directly.
+
+#### 3. Verify Secret is Set
+
+You can verify the secret exists by:
+- Checking the workflow run logs - if the key is set, E2E tests will use real API calls
+- Looking for API errors in test logs - if missing, you'll see "test-key-for-ci" fallback
+
+#### 4. Using GitHub CLI (Alternative)
+
+If you prefer using the command line:
+
+```bash
+# Set the secret (requires GitHub CLI and appropriate permissions)
+gh secret set OPENAI_API_KEY --body "sk-your-api-key-here"
+```
+
+**Note**: Replace `sk-your-api-key-here` with your actual OpenAI API key.
+
+#### 5. Environment-Specific Secrets (Advanced)
+
+For different environments (staging, production), you can also set secrets at the environment level:
+
+1. Go to **Settings** → **Environments**
+2. Create or select an environment (e.g., `staging`)
+3. Add secrets specific to that environment
+
+This is useful if you want different API keys for different deployment stages.
+
+---
+
 ## CI Pipeline
 
 The Continuous Integration (CI) pipeline runs on every push and pull request to `main` and `develop` branches. It includes:
