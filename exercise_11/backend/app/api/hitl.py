@@ -59,7 +59,7 @@ async def get_item_details(hitl_id: str):
 async def submit_mentor_reply(hitl_id: str, request: MentorReplyRequest):
     """
     Submit mentor reply to a HITL item.
-    The reply will be sent to the parent's chat session.
+    The reply will be sent to the parent's chat session in real-time via WebSocket.
     """
     if not request.mentor_reply or not request.mentor_reply.strip():
         raise HTTPException(status_code=400, detail="mentor_reply is required")
@@ -69,11 +69,35 @@ async def submit_mentor_reply(hitl_id: str, request: MentorReplyRequest):
         raise HTTPException(status_code=404, detail="HITL item not found")
     
     item = get_hitl_item(hitl_id)
+    session_id = item["session_id"]
+    mentor_reply = item["mentor_reply"]
+    
+    # Push mentor reply to active SSE connections for this session
+    from app.sse_manager import sse_manager
+    from datetime import datetime
+    
+    message = {
+        "type": "mentor_reply",
+        "mentor_reply": mentor_reply,
+        "hitl_id": hitl_id,
+        "session_id": session_id,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    
+    await sse_manager.send_to_session(session_id, message)
+    
+    # Also notify mentor queue about the update
+    await sse_manager.send_to_session("mentor_queue", {
+        "type": "case_updated",
+        "case": item
+    })
+    
     return {
         "success": True,
         "hitl_id": hitl_id,
-        "mentor_reply": item["mentor_reply"],
-        "session_id": item["session_id"]
+        "mentor_reply": mentor_reply,
+        "session_id": session_id,
+        "message": "Reply submitted and delivered to parent in real-time."
     }
 
 

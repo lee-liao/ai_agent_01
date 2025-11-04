@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import uuid
 import json
 import asyncio
+from app.sse_manager import sse_manager, create_sse_stream
 
 router = APIRouter(prefix="/api/coach", tags=["Coach"])
 
@@ -35,6 +36,41 @@ async def get_cost_status():
     return tracker.get_budget_status()
 
 
+@router.get("/events/{session_id}")
+async def stream_events(session_id: str):
+    """
+    Persistent SSE stream for receiving real-time events (mentor replies, etc.).
+    This connection stays open and receives push messages from the server.
+    """
+    return StreamingResponse(
+        create_sse_stream(session_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
+
+
+@router.get("/hitl/events")
+async def stream_hitl_events():
+    """
+    Persistent SSE stream for mentor queue updates.
+    Pushes real-time updates when new cases are created or cases are updated.
+    """
+    # Use a special session ID for mentor queue
+    return StreamingResponse(
+        create_sse_stream("mentor_queue"),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
 @router.get("/stream/{session_id}")
 async def stream_advice(session_id: str, question: str):
     """
@@ -52,9 +88,35 @@ async def stream_advice(session_id: str, question: str):
         guard = get_guard()
         category, refusal_data = guard.classify_request(question)
         
+        # Handle HITL-triggering categories (crisis, pii)
+        if category in ['crisis', 'pii']:
+            # Import HITL functions
+            from app.guardrails import create_hitl_case
+            import time as time_module
+            
+            # Create HITL case (measure latency for SLO)
+            start_time = time_module.time()
+            hitl_id = create_hitl_case(
+                session_id=session_id,
+                category=category,
+                user_message=question,
+                conversation_history=[]  # Could track history if needed
+            )
+            routing_latency_ms = (time_module.time() - start_time) * 1000
+            
+            # Send HITL queued message
+            yield f"data: {json.dumps({'type': 'hitl_queued', 'message': 'Thank you for reaching out. A mentor will review your message and respond shortly. Please know that your safety and your child\'s safety are our top priority.', 'hitl_id': hitl_id, 'category': category})}\n\n"
+            yield f"data: {json.dumps({'done': True})}\n\n"
+            return
+        
+        # Handle other out-of-scope categories (medical, legal, therapy)
         if category != 'ok':
-            # Send refusal as a single chunk
-            yield f"data: {json.dumps({'type': 'refusal', 'data': refusal_data})}\n\n"
+            # Only send refusal if refusal_data exists
+            if refusal_data:
+                yield f"data: {json.dumps({'type': 'refusal', 'data': refusal_data})}\n\n"
+            else:
+                # Fallback message if refusal_data is None
+                yield f"data: {json.dumps({'type': 'refusal', 'data': {'empathy': 'Thank you for reaching out.', 'message': 'I\'m not able to help with that specific question. Please consult a professional for guidance.', 'resources': []}})}\n\n"
             yield f"data: {json.dumps({'done': True})}\n\n"
             return
         

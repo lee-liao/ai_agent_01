@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import coachAPI from '@/lib/coachApi';
-import { Send, Sparkles, User, Bot, Loader2, CheckCircle2, Shield, Zap, Heart, Star, TrendingUp } from 'lucide-react';
+import hitlAPI from '@/lib/hitlApi';
+import { Send, Sparkles, User, Bot, Loader2, CheckCircle2, Shield, Zap, Heart, Star, TrendingUp, AlertCircle } from 'lucide-react';
 import { RefusalMessage } from '@/components/RefusalMessage';
 
 interface Citation {
@@ -12,16 +13,17 @@ interface Citation {
 
 interface Msg { 
   id: string; 
-  role: 'parent' | 'coach' | 'system' | 'refusal'; 
+  role: 'parent' | 'coach' | 'system' | 'refusal' | 'hitl'; 
   text: string; 
   at: Date;
   citations?: Citation[];
   refusalData?: any;
+  hitlData?: { hitl_id: string; category: string; message: string };
+  isMentorReply?: boolean; // True if this message is from a mentor (not AI)
 }
 
 export default function CoachChatPage() {
   const [parent, setParent] = useState<{ name: string } | null>(null);
-  const [ws, setWs] = useState<WebSocket | null>(null);
   const [sessionId, setSessionId] = useState('');
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -30,6 +32,7 @@ export default function CoachChatPage() {
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const displayedRepliesRef = useRef<Set<string>>(new Set()); // Track which mentor replies we've already displayed
 
   useEffect(() => {
     const p = localStorage.getItem('parent');
@@ -39,6 +42,55 @@ export default function CoachChatPage() {
   useEffect(() => { 
     endRef.current?.scrollIntoView({ behavior: 'smooth' }); 
   }, [messages, streamingText]); // Also scroll when streaming text updates
+
+  // Persistent SSE connection for real-time mentor replies
+  useEffect(() => {
+    if (!sessionId || connectionStatus !== 'connected') {
+      return;
+    }
+
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8011';
+    const eventSource = new EventSource(`${apiUrl}/api/coach/events/${sessionId}`);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        // Handle mentor reply messages
+        if (data.type === 'mentor_reply') {
+          const hitl_id = data.hitl_id;
+          
+          // Only display if we haven't shown this reply yet
+          if (!displayedRepliesRef.current.has(hitl_id)) {
+            displayedRepliesRef.current.add(hitl_id);
+            
+            setMessages((m) => [...m, {
+              id: `mentor-${hitl_id}`,
+              role: 'coach',
+              text: data.mentor_reply,
+              at: new Date(data.timestamp),
+              isMentorReply: true, // Mark as mentor reply
+            }]);
+          }
+        }
+        // Handle connection confirmation
+        else if (data.type === 'connected') {
+          console.log('SSE connected for mentor replies');
+        }
+      } catch (error) {
+        console.error('Error parsing SSE message:', error);
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error('SSE error:', error);
+      // EventSource will automatically reconnect
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [sessionId, connectionStatus]);
 
   const start = async () => {
     if (!parent) return;
@@ -111,6 +163,22 @@ export default function CoachChatPage() {
             text: '',
             at: new Date(),
             refusalData: data.data
+          }]);
+          setIsTyping(false);
+          setStreamingText('');
+          eventSource.close();
+        } else if (data.type === 'hitl_queued') {
+          // Handle HITL queued message
+          setMessages((m) => [...m, {
+            id: crypto.randomUUID(),
+            role: 'hitl',
+            text: data.message || 'A mentor will review your message and respond shortly.',
+            at: new Date(),
+            hitlData: {
+              hitl_id: data.hitl_id,
+              category: data.category,
+              message: data.message
+            }
           }]);
           setIsTyping(false);
           setStreamingText('');
@@ -261,6 +329,25 @@ export default function CoachChatPage() {
                       <div className="w-full max-w-[85%]" data-testid="refusal-message">
                         <RefusalMessage data={m.refusalData} />
                       </div>
+                    ) : m.role === 'hitl' ? (
+                      <div className="w-full max-w-[85%]" data-testid="hitl-message">
+                        <div className="bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm">
+                          <div className="flex items-center gap-2 mb-2">
+                            <AlertCircle className="w-5 h-5 text-blue-600" />
+                            <p className="font-semibold text-blue-900 text-base">
+                              Your message has been forwarded to a mentor
+                            </p>
+                          </div>
+                          <p className="text-gray-700 mb-2 leading-relaxed">
+                            {m.text}
+                          </p>
+                          {m.hitlData && (
+                            <p className="text-xs text-gray-500 italic">
+                              Case ID: {m.hitlData.hitl_id} • Category: {m.hitlData.category}
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     ) : (
                       <div className={`flex gap-4 max-w-[80%] ${m.role === 'parent' ? 'flex-row-reverse' : 'flex-row'}`}>
                         {/* Avatar */}
@@ -284,11 +371,22 @@ export default function CoachChatPage() {
                             m.role === 'parent'
                               ? 'bg-gradient-to-br from-orange-600 via-orange-500 to-amber-600 text-white border-orange-400'
                               : m.role === 'coach'
-                              ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-amber-50 text-slate-900 border-orange-300'
+                              ? m.isMentorReply
+                                ? 'bg-gradient-to-br from-blue-50 via-blue-100 to-blue-50 text-slate-900 border-blue-300'
+                                : 'bg-gradient-to-br from-amber-50 via-orange-50 to-amber-50 text-slate-900 border-orange-300'
                               : 'bg-gradient-to-br from-blue-50 to-cyan-50 text-slate-700 border-blue-300'
                           }`}
                           data-testid={m.role === 'coach' ? 'assistant-message' : undefined}
                         >
+                          {/* Mentor Reply Badge */}
+                          {m.isMentorReply && (
+                            <div className="flex items-center gap-2 mb-2 pb-2 border-b border-blue-200">
+                              <Shield className="w-4 h-4 text-blue-600" />
+                              <span className="text-xs font-bold text-blue-600 uppercase tracking-wide">
+                                Mentor Response
+                              </span>
+                            </div>
+                          )}
                           <p 
                             className={`leading-relaxed whitespace-pre-wrap font-semibold text-lg ${
                               m.role === 'coach' ? 'text-slate-800' : ''

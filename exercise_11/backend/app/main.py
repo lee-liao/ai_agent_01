@@ -74,4 +74,11 @@ async def readyz():
 app.include_router(coach.router)
 app.include_router(websocket.router)
 
+# Include HITL router if it exists
+try:
+    from .api import hitl
+    app.include_router(hitl.router)
+except ImportError:
+    pass  # HITL router not available
+
 
