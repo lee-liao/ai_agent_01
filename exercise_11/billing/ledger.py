@@ -338,6 +338,16 @@ def reset_ledger():
     _ledger_instance = None
 
 
+# Simple class for usage record return value
+class UsageRecord:
+    """Simple class to hold usage record with attribute access."""
+    def __init__(self, data: Dict):
+        self.total_tokens = data.get("total_tokens", 0)
+        self.prompt_tokens = data.get("prompt_tokens", 0)
+        self.completion_tokens = data.get("completion_tokens", 0)
+        self.cost = data.get("cost", 0.0)
+
+
 # Compatibility wrapper for CostTracker interface
 class CostTracker:
     """
@@ -438,7 +448,7 @@ class CostTracker:
                 span.set_attribute("billing.is_over_budget", is_over_budget)
                 span.set_attribute("billing.latency_ms", latency_ms)
                 
-                return {
+                return UsageRecord({
                     "session_id": session_id,
                     "model": model,
                     "prompt_tokens": prompt_tokens,
@@ -447,7 +457,7 @@ class CostTracker:
                     "cost": cost,
                     "daily_cost": daily_cost + cost,
                     "is_over_budget": is_over_budget
-                }
+                })
         else:
             # No observability - just do the work
             total_tokens = prompt_tokens + completion_tokens
@@ -475,7 +485,7 @@ class CostTracker:
                 f"(prompt: {prompt_tokens}, completion: {completion_tokens}) | Session: {session_id}"
             )
             
-            return {
+            return UsageRecord({
                 "session_id": session_id,
                 "model": model,
                 "prompt_tokens": prompt_tokens,
@@ -484,11 +494,28 @@ class CostTracker:
                 "cost": cost,
                 "daily_cost": daily_cost + cost,
                 "is_over_budget": is_over_budget
-            }
+            })
     
     def get_budget_status(self) -> Dict:
         """Get current budget status."""
-        return self.ledger.get_daily_stats()
+        stats = self.ledger.get_daily_stats()
+        # Add compatibility fields
+        stats["total_cost"] = stats.get("total_cost_usd", 0.0)
+        stats["daily_budget"] = stats.get("budget_limit_usd", self.daily_budget)
+        stats["percentage"] = (stats["total_cost"] / stats["daily_budget"] * 100) if stats["daily_budget"] > 0 else 0.0
+        is_over, _, _ = self.ledger.is_over_budget()
+        stats["over_budget"] = is_over
+        return stats
+    
+    def get_session_cost(self, session_id: str) -> float:
+        """Get total cost for a specific session."""
+        session_records = [r for r in self.ledger.turns if r.session_id == session_id]
+        return sum(r.cost_usd for r in session_records)
+    
+    def is_over_budget(self) -> bool:
+        """Check if daily budget is exceeded."""
+        is_over, _, _ = self.ledger.is_over_budget()
+        return is_over
     
     def print_summary(self):
         """Print summary of usage (for debugging)."""

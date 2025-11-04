@@ -49,7 +49,9 @@ class SafetyGuard:
             "phone": re.compile(r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"),
             "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"),
             "address": re.compile(r"\b\d+\s+[\w\s]+(?:street|st|avenue|ave|road|rd|drive|dr|lane|ln|boulevard|blvd|way|circle|cir)\b", re.IGNORECASE),
-            "name_pattern": re.compile(r"\b(?:my name is|i'm|i am|call me)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b", re.IGNORECASE)
+            # More strict name pattern: requires explicit "my name is" or proper name format after "I'm"
+            # Avoids matching common phrases like "I'm afraid", "I'm going", etc.
+            "name_pattern": re.compile(r"\b(?:my name is|call me)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b|\b(?:i'm|i am)\s+([A-Z][a-z]+\s+[A-Z][a-z]+)\b", re.IGNORECASE)
         }
     
     def classify_request(self, text: str) -> Tuple[str, Optional[Dict]]:
@@ -73,14 +75,9 @@ class SafetyGuard:
             
             matched_categories = []
             
-            # Check for PII first (highest priority for HITL)
-            pii_detected = self.detect_pii(text)
-            if pii_detected:
-                matched_categories.append('pii')
-                category = 'pii'
-                refusal_data = None  # PII goes to HITL, not refusal
-            # Check in priority order: crisis first (most urgent)
-            elif any(kw in text_lower for kw in self.policy.get('crisis_keywords', [])):
+            # Check in priority order: crisis first (most urgent), then categories
+            # PII check happens after category checks to avoid false positives
+            if any(kw in text_lower for kw in self.policy.get('crisis_keywords', [])):
                 matched_categories.append('crisis')
                 category = 'crisis'
                 refusal_data = self.get_refusal_template('crisis')
@@ -97,8 +94,15 @@ class SafetyGuard:
                 category = 'legal'
                 refusal_data = self.get_refusal_template('legal')
             else:
-                category = 'ok'
-                refusal_data = None
+                # Check for PII after category checks (to avoid false positives from common phrases)
+                pii_detected = self.detect_pii(text)
+                if pii_detected:
+                    matched_categories.append('pii')
+                    category = 'pii'
+                    refusal_data = None  # PII goes to HITL, not refusal
+                else:
+                    category = 'ok'
+                    refusal_data = None
             
             # Calculate latency
             latency_ms = (time.time() - start_time) * 1000
