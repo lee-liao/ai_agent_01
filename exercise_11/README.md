@@ -139,7 +139,7 @@ Complete the following to harden the MVP and prepare an internal alpha launch. E
 ### 🚢 CI/CD & Deployment
 - **[docs/deployment.md](./docs/deployment.md)** - 📦 Complete CI/CD pipeline and deployment guide (includes "How to Use" section)
 - **[docs/runbook.md](./docs/runbook.md)** - 🆘 Troubleshooting runbook for deployment issues and emergency procedures
-- **[.github/CONTRIBUTING.md](./.github/CONTRIBUTING.md)** - 🤝 Contributing guide with PR workflow and code review process
+- **[docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md)** - 🤝 Contributing guide with PR workflow and code review process
 
 ### 🔒 Safety & Security
 - **[docs/safety_scope.md](./docs/safety_scope.md)** - 🛡️ Safety boundaries, scope limitations, and handling procedures

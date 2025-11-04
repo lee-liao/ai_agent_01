@@ -10,9 +10,7 @@ jobs:
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
-    environment:
-      name: staging
-      url: https://staging.example.com  # Update with your staging URL
+    environment: staging
     steps:
       - uses: actions/checkout@v4
       
