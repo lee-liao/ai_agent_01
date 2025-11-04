@@ -138,6 +138,81 @@ For different environments (staging, production), you can also set secrets at th
 
 This is useful if you want different API keys for different deployment stages.
 
+#### 6. Setting Up Staging URL (Optional)
+
+**Important**: Staging environments are **not provided by GitHub**. You need to set up your own staging server.
+
+**For Learning/Demo Projects**: You can skip staging setup entirely. The CD workflow will:
+- ✅ Build and push Docker images successfully
+- ✅ Skip smoke tests (no staging URL configured)
+- ✅ Complete successfully
+
+**When You're Ready to Set Up Staging:**
+
+1. **Deploy Your Application to a Cloud Service**
+
+   Choose one of these options:
+
+   **Option A: Railway (Recommended for beginners)**
+   - Free tier available
+   - Easy Docker deployment
+   - Sign up at https://railway.app
+   - Connect your GitHub repo
+   - Deploy using Docker Compose or individual services
+   - Get your staging URL: `https://your-app.railway.app`
+
+   **Option B: Render**
+   - Free tier available
+   - Supports Docker deployments
+   - Sign up at https://render.com
+   - Create a new Web Service
+   - Connect your Docker image from GitHub Container Registry
+   - Get your staging URL: `https://your-app.onrender.com`
+
+   **Option C: Fly.io**
+   - Free tier available
+   - Good for Docker deployments
+   - Sign up at https://fly.io
+   - Deploy using `flyctl` CLI
+   - Get your staging URL: `https://your-app.fly.dev`
+
+   **Option D: AWS/GCP/Azure**
+   - More complex setup
+   - Usually costs money
+   - Best for production applications
+
+2. **Add Staging URL as GitHub Secret**
+
+   Once you have your staging URL:
+
+   1. Go to your GitHub repository → **Settings** → **Secrets and variables** → **Actions**
+   2. Click **New repository secret**
+   3. **Name**: `STAGING_URL`
+   4. **Secret**: Your staging URL (e.g., `https://exercise11-staging.railway.app`)
+   5. Click **Add secret**
+
+   **Note**: Do **not** include a trailing slash in the URL.
+
+3. **Verify Smoke Tests Run**
+
+   After adding the secret, the CD workflow will:
+   - Deploy to your staging environment
+   - Run smoke tests against `/healthz` and `/readyz` endpoints
+   - Verify the deployment was successful
+
+**Example Staging URL Format:**
+```
+https://exercise11-staging.railway.app
+https://exercise11-backend.onrender.com
+https://your-app.fly.dev
+```
+
+**Troubleshooting:**
+
+- **Smoke tests fail**: Verify your staging server is running and accessible
+- **Connection refused**: Check that your staging server is publicly accessible
+- **404 errors**: Ensure your staging server has the `/healthz` and `/readyz` endpoints
+
 ---
 
 ## CI Pipeline
@@ -208,9 +283,14 @@ Tag format: `v*.*.*` (e.g., `v1.0.0`, `v1.2.3`)
 1. **Extract Version**: Parses version from tag name
 2. **Build Docker Images**: Builds and tags backend/frontend images
 3. **Push to Registry**: Pushes images to GitHub Container Registry (ghcr.io)
-4. **Deploy to Staging**: Deploys new images to staging environment
-5. **Smoke Tests**: Runs basic health checks after deployment
+4. **Deploy to Staging**: *(Optional)* Deploys new images to staging environment (requires manual deployment setup)
+5. **Smoke Tests**: *(Optional)* Runs basic health checks after deployment (requires `STAGING_URL` secret)
 6. **Notify**: Sends deployment status notification
+
+**Note**: Steps 4-5 are optional. If no `STAGING_URL` secret is configured:
+- Images are still built and pushed to registry ✅
+- Deployment and smoke tests are skipped ✅
+- Workflow completes successfully ✅
 
 ### Image Tags
 

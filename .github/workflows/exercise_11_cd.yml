@@ -65,13 +65,21 @@ jobs:
           # Example: kubectl set image deployment/exercise11-frontend frontend=ghcr.io/${{ github.repository }}/exercise11-frontend:${{ steps.tag_version.outputs.VERSION }}
       
       - name: Run smoke tests
+        if: secrets.STAGING_URL != ''
         run: |
-          echo "Running smoke tests after deployment"
+          echo "Running smoke tests after deployment to ${{ secrets.STAGING_URL }}"
           # Wait for services to be ready
           sleep 30
           # Run smoke tests
-          curl -f https://staging.example.com/healthz || exit 1
-          curl -f https://staging.example.com/readyz || exit 1
+          curl -f ${{ secrets.STAGING_URL }}/healthz || exit 1
+          curl -f ${{ secrets.STAGING_URL }}/readyz || exit 1
+      
+      - name: Skip smoke tests (no staging URL configured)
+        if: secrets.STAGING_URL == ''
+        run: |
+          echo "⚠️  Skipping smoke tests - STAGING_URL secret not configured"
+          echo "To enable smoke tests, add STAGING_URL secret in repository settings"
+          echo "Example: https://staging.yourdomain.com"
       
       - name: Send deployment notification
         if: always()
