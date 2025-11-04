@@ -36,6 +36,10 @@ def generate_report(yesterday: bool = True, use_api: bool = True):
     
     target_date_str = target_date.isoformat()
     
+    # Initialize variables to avoid uninitialized variable warning
+    csv_path = None
+    stats = None
+    
     # Try to use API endpoint first (to access backend's ledger data)
     if use_api:
         try:
@@ -68,9 +72,12 @@ def generate_report(yesterday: bool = True, use_api: bool = True):
             print(f"⚠️  Warning: Could not connect to backend API ({e})")
             print(f"   Falling back to local ledger (may not have backend's data)\n")
             use_api = False
+            # Reset these so fallback block runs
+            csv_path = None
+            stats = None
     
-    # Fallback to local ledger
-    if not use_api:
+    # Fallback to local ledger (if API not used or failed)
+    if not use_api or csv_path is None or stats is None:
         ledger = get_ledger()
         csv_path = ledger.generate_daily_csv(target_date)
         stats = ledger.get_daily_stats(target_date)
