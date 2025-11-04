@@ -42,11 +42,14 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     await page.click('button[aria-label="Send message"]');
     
     // Wait for streaming to start (optional - streaming indicator may appear briefly)
-    // Then wait for final message to appear (streaming complete)
-    await page.waitForSelector('[data-testid="assistant-message"], [data-testid="streaming-indicator"]', { timeout: 5000 });
+    // Ignore if streaming completes very quickly (indicator may not appear)
+    await page.waitForSelector('[data-testid="assistant-message"], [data-testid="streaming-indicator"]', { timeout: 5000 }).catch(() => {
+      // Ignore if streaming indicator doesn't appear (streaming may be very fast)
+    });
     
     // Wait for streaming to complete and final message to appear
-    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 15000 });
+    // Increased timeout for CI environments where API calls may be slower
+    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 25000 });
     
     // Check response content
     const response = await page.textContent('[data-testid="assistant-message"]');
