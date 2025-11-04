@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import coachAPI from '@/lib/coachApi';
-import hitlAPI from '@/lib/hitlApi';
 import { Send, Sparkles, User, Bot, Loader2, CheckCircle2, Shield, Zap, Heart, Star, TrendingUp, AlertCircle } from 'lucide-react';
 import { RefusalMessage } from '@/components/RefusalMessage';
 
