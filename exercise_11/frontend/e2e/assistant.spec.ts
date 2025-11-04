@@ -83,7 +83,9 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     await page.fill('[data-testid="chat-input"]', 'How much screen time is okay for my 3-year-old?');
     await page.click('button[aria-label="Send message"]');
     
-    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 10000 });
+    // Wait for streaming to complete and final message to appear
+    // Increased timeout for CI environments where API calls may be slower
+    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 25000 });
     
     const response = await page.textContent('[data-testid="assistant-message"]');
     expect(response?.toLowerCase()).toMatch(/screen|hour|aap|limit/);
@@ -165,7 +167,9 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     await page.fill('[data-testid="chat-input"]', 'How do I handle tantrums?');
     await page.click('button[aria-label="Send message"]');
     
-    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 10000 });
+    // Wait for streaming to complete and final message to appear
+    // Increased timeout for CI environments where API calls may be slower
+    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 25000 });
     
     const response = await page.textContent('[data-testid="assistant-message"]');
     
