@@ -260,12 +260,17 @@ test.describe('Response Quality Checks', () => {
       await page.fill('[data-testid="chat-input"]', question);
       await page.click('button[aria-label="Send message"]');
       
-      // Wait for new message to appear
+      // Wait for streaming to start (optional - streaming indicator may appear briefly)
+      await page.waitForSelector('[data-testid="assistant-message"], [data-testid="streaming-indicator"]', { timeout: 5000 }).catch(() => {
+        // Ignore if streaming indicator doesn't appear (streaming may be very fast)
+      });
+      
+      // Wait for new message to appear (streaming complete)
       const messagesBefore = await page.locator('[data-testid="assistant-message"]').count();
       await page.waitForFunction(
         (count) => document.querySelectorAll('[data-testid="assistant-message"]').length > count,
         messagesBefore,
-        { timeout: 15000 }
+        { timeout: 25000 } // Increased timeout for CI environments where API calls may be slower
       );
       
       // Give time for citations to render (they might load after message)
