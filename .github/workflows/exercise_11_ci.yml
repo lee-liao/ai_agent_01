@@ -10,6 +10,10 @@ on:
     paths:
       - 'exercise_11/**'
 
+concurrency:
+  group: exercise-11-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-backend:
     name: Lint Backend (Python)

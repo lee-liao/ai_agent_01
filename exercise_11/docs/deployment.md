@@ -17,7 +17,7 @@ git add .
 git commit -m "feat: add new feature"
 
 # Push to trigger CI
-git push origin feature/my-feature
+git push origin feature/exercise-11-cicd-pipelines
 
 # Create PR on GitHub - CI will run automatically
 # Or use GitHub CLI:
