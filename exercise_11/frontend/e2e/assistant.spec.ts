@@ -41,8 +41,12 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     await page.fill('[data-testid="chat-input"]', 'How do I establish a bedtime routine?');
     await page.click('button[aria-label="Send message"]');
     
-    // Wait for response
-    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 10000 });
+    // Wait for streaming to start (optional - streaming indicator may appear briefly)
+    // Then wait for final message to appear (streaming complete)
+    await page.waitForSelector('[data-testid="assistant-message"], [data-testid="streaming-indicator"]', { timeout: 5000 });
+    
+    // Wait for streaming to complete and final message to appear
+    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 15000 });
     
     // Check response content
     const response = await page.textContent('[data-testid="assistant-message"]');
