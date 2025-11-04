@@ -2,6 +2,72 @@
 
 This document describes the CI/CD pipeline and deployment process for the Child Growth Assistant.
 
+## How to Use CI/CD
+
+### Trigger CI
+
+CI runs automatically on every push and pull request. To manually trigger CI:
+
+```bash
+# Create a feature branch
+git checkout -b feature/my-feature
+
+# Make your changes and commit
+git add .
+git commit -m "feat: add new feature"
+
+# Push to trigger CI
+git push origin feature/my-feature
+
+# Create PR on GitHub - CI will run automatically
+# Or use GitHub CLI:
+gh pr create --title "feat: add new feature" --body "Description"
+```
+
+**View CI status**:
+```bash
+# View CI workflow
+gh workflow view ci.yml
+
+# List recent CI runs
+gh run list --workflow=ci.yml
+
+# View specific run
+gh run view <run-id>
+```
+
+### Trigger CD
+
+CD deploys to staging when you push a version tag:
+
+```bash
+# Tag a version to deploy
+git tag v1.0.0
+git push origin v1.0.0
+
+# CD pipeline will automatically:
+# - Build Docker images
+# - Push to registry
+# - Deploy to staging
+# - Run smoke tests
+```
+
+**View CD status**:
+```bash
+# View CD workflow
+gh workflow view cd.yml
+
+# List recent deployments
+gh run list --workflow=cd.yml
+
+# View deployment logs
+gh run view <run-id> --log
+```
+
+**Tag format**: `v*.*.*` (e.g., `v1.0.0`, `v1.2.3`, `v2.0.0-beta.1`)
+
+---
+
 ## CI Pipeline
 
 The Continuous Integration (CI) pipeline runs on every push and pull request to `main` and `develop` branches. It includes:
