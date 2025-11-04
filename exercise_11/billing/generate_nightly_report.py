@@ -21,13 +21,14 @@ sys.path.insert(0, str(billing_dir.parent))
 from billing.ledger import get_ledger
 
 
-def generate_report(yesterday: bool = True, use_api: bool = True):
+def generate_report(yesterday: bool = True, use_api: bool = True, verbose: bool = False):
     """
     Generate CSV report for previous day (or today if yesterday=False).
     
     Args:
         yesterday: If True, generate for yesterday (default). If False, generate for today.
         use_api: If True, use API endpoint (recommended). If False, use local ledger.
+        verbose: If True, print detailed statistics. If False, only print summary (default).
     """
     if yesterday:
         target_date = date.today() - timedelta(days=1)
@@ -82,18 +83,26 @@ def generate_report(yesterday: bool = True, use_api: bool = True):
         csv_path = ledger.generate_daily_csv(target_date)
         stats = ledger.get_daily_stats(target_date)
     
-    print(f"Generated report for {target_date_str}")
-    print(f"CSV file: {csv_path}")
-    print(f"\nDaily Statistics:")
-    print(f"  Total turns: {stats['total_turns']}")
-    print(f"  Total cost: ${stats['total_cost_usd']:.4f}")
-    print(f"  Input tokens: {stats['total_input_tokens']:,}")
-    print(f"  Output tokens: {stats['total_output_tokens']:,}")
-    print(f"  Full mode: {stats['full_mode_turns']}")
-    print(f"  Lite mode: {stats['lite_mode_turns']}")
-    print(f"  Over budget turns: {stats['over_budget_turns']}")
-    print(f"  Budget limit: ${stats['budget_limit_usd']:.2f}")
-    print(f"  Budget remaining: ${stats['budget_remaining_usd']:.4f}")
+    # Log only non-sensitive metadata by default to avoid exposing financial data in logs
+    print(f"✅ Generated billing report for {target_date_str}")
+    print(f"📄 Report saved to: {csv_path}")
+    
+    # Only print detailed financial statistics if verbose mode is enabled
+    if verbose:
+        print(f"\nDaily Statistics:")
+        print(f"  Total turns: {stats['total_turns']}")
+        print(f"  Total cost: ${stats['total_cost_usd']:.4f}")
+        print(f"  Input tokens: {stats['total_input_tokens']:,}")
+        print(f"  Output tokens: {stats['total_output_tokens']:,}")
+        print(f"  Full mode: {stats['full_mode_turns']}")
+        print(f"  Lite mode: {stats['lite_mode_turns']}")
+        print(f"  Over budget turns: {stats['over_budget_turns']}")
+        print(f"  Budget limit: ${stats['budget_limit_usd']:.2f}")
+        print(f"  Budget remaining: ${stats['budget_remaining_usd']:.4f}")
+    else:
+        # Print only non-sensitive summary information
+        print(f"📊 Report contains {stats['total_turns']} turn(s)")
+        print(f"💡 Use --verbose flag to view detailed statistics")
     
     return csv_path, stats
 
@@ -112,13 +121,19 @@ if __name__ == "__main__":
         action="store_true",
         help="Don't use API endpoint (use local ledger only)"
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print detailed financial statistics (default: only summary)"
+    )
     
     args = parser.parse_args()
     
     try:
         csv_path, stats = generate_report(
             yesterday=not args.today,
-            use_api=not args.no_api
+            use_api=not args.no_api,
+            verbose=args.verbose
         )
         sys.exit(0)
     except Exception as e:
