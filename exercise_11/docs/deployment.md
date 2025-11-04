@@ -26,11 +26,11 @@ gh pr create --title "feat: add new feature" --body "Description"
 
 **View CI status**:
 ```bash
-# View CI workflow
-gh workflow view ci.yml
+# View CI workflow (note: workflow is at repository root)
+gh workflow view exercise_11_ci.yml
 
 # List recent CI runs
-gh run list --workflow=ci.yml
+gh run list --workflow=exercise_11_ci.yml
 
 # View specific run
 gh run view <run-id>
@@ -54,11 +54,11 @@ git push origin v1.0.0
 
 **View CD status**:
 ```bash
-# View CD workflow
-gh workflow view cd.yml
+# View CD workflow (note: workflow is at repository root)
+gh workflow view exercise_11_cd.yml
 
 # List recent deployments
-gh run list --workflow=cd.yml
+gh run list --workflow=exercise_11_cd.yml
 
 # View deployment logs
 gh run view <run-id> --log
