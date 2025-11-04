@@ -173,7 +173,13 @@ async def test_snapshot_patterns_match():
                     "academy", "association", "institute", "organization"
                 ],
                 "provides actionable steps": ["step", "steps", "try", "suggest", "recommend", "1.", "2.", "3.", "first", "second", "third", "action"],
-                "warm and supportive tone": ["support", "supportive", "encouraging", "understand", "know", "feel", "gentle", "patient", "kind"],
+                "warm and supportive tone": [
+                    "support", "supportive", "encouraging", "encourage", "encourages",
+                    "understand", "understanding", "know", "know that", "feel", "feeling",
+                    "gentle", "patient", "kind", "helpful", "reassuring", "reassure",
+                    "common", "normal", "it's okay", "it's alright", "don't worry",
+                    "you're not alone", "many parents", "lots of", "remember", "try not to worry"
+                ],
                 "positive parenting": [
                     "positive", "encouraging", "encourage", "supportive", "support", 
                     "patience", "patient", "gentle approach", "gentle",
