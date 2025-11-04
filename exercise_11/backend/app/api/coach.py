@@ -94,6 +94,11 @@ async def stream_advice(session_id: str, question: str):
             from app.guardrails import create_hitl_case
             import time as time_module
             
+            # For crisis scenarios, send refusal message first (with resources like 988)
+            # For PII, refusal_data is None, so skip refusal message
+            if category == 'crisis' and refusal_data:
+                yield f"data: {json.dumps({'type': 'refusal', 'data': refusal_data})}\n\n"
+            
             # Create HITL case (measure latency for SLO)
             start_time = time_module.time()
             hitl_id = create_hitl_case(
@@ -104,8 +109,10 @@ async def stream_advice(session_id: str, question: str):
             )
             routing_latency_ms = (time_module.time() - start_time) * 1000
             
-            # Send HITL queued message
-            yield f"data: {json.dumps({'type': 'hitl_queued', 'message': 'Thank you for reaching out. A mentor will review your message and respond shortly. Please know that your safety and your child\'s safety are our top priority.', 'hitl_id': hitl_id, 'category': category})}\n\n"
+            # For PII scenarios (no refusal_data), send HITL queued message
+            if category == 'pii':
+                yield f"data: {json.dumps({'type': 'hitl_queued', 'message': 'Thank you for reaching out. A mentor will review your message and respond shortly. Please know that your safety and your child\'s safety are our top priority.', 'hitl_id': hitl_id, 'category': category})}\n\n"
+            
             yield f"data: {json.dumps({'done': True})}\n\n"
             return
         
