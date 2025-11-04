@@ -164,12 +164,20 @@ async def stream_advice(session_id: str, question: str):
                 )
             except Exception as cost_error:
                 # Log cost tracking error but don't fail the request
+                # Log only error type, not full exception details to avoid exposure
                 import logging
-                logging.warning(f"Cost tracking failed: {cost_error}")
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Cost tracking failed: {type(cost_error).__name__}", exc_info=True)
             
         except Exception as e:
             # Error handling - only catch errors during streaming
-            error_msg = f"I apologize, but I'm having trouble generating a response right now. Please try again."
+            # Log error server-side for debugging (never expose to users)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error during advice streaming: {type(e).__name__}", exc_info=True)
+            
+            # Send safe, user-friendly error message (no stack traces or internal details)
+            error_msg = "I apologize, but I'm having trouble generating a response right now. Please try again."
             yield f"data: {json.dumps({'chunk': error_msg})}\n\n"
             yield f"data: {json.dumps({'done': True, 'citations': []})}\n\n"
     
