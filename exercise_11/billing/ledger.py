@@ -6,7 +6,7 @@ Tracks token usage and costs per turn/request.
 import json
 import csv
 import os
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, asdict
@@ -112,7 +112,7 @@ class BillingLedger:
         Returns:
             TurnRecord with recorded data
         """
-        turn_id = f"turn_{datetime.utcnow().isoformat().replace(':', '-')}_{len(self.turns)}"
+        turn_id = f"turn_{datetime.now(timezone.utc).isoformat().replace(':', '-')}_{len(self.turns)}"
         
         input_tokens = self.estimate_tokens(input_text)
         output_tokens = self.estimate_tokens(output_text)
@@ -121,7 +121,7 @@ class BillingLedger:
         record = TurnRecord(
             turn_id=turn_id,
             session_id=session_id,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd=cost_usd,

@@ -8,6 +8,7 @@ import openai
 from typing import AsyncGenerator, Optional
 from app.config import settings
 from app.observability import get_tracer
+from app.prompts import build_prompt_with_rag as build_prompt_with_rag_versioned
 
 
 # Initialize OpenAI client
@@ -26,43 +27,21 @@ def get_openai_client():
     )
 
 
-def build_prompt_with_rag(question: str, rag_context: list) -> list:
+def build_prompt_with_rag(question: str, rag_context: list, prompt_version: Optional[str] = None) -> list:
     """
-    Build prompt messages including RAG context.
+    Build prompt messages including RAG context using versioned prompts.
+    
+    This is a wrapper that delegates to the prompt loader module.
     
     Args:
         question: Parent's question
         rag_context: List of retrieved documents with 'source', 'content', 'url'
+        prompt_version: Optional prompt version to use (defaults to latest)
         
     Returns:
         List of message dicts for OpenAI API
     """
-    system_prompt = """You are a supportive parenting coach assistant. Your role is to provide evidence-based advice for parents.
-
-Guidelines:
-- Be warm, empathetic, and supportive
-- Provide 2-3 specific, actionable steps
-- Base advice on the provided research context
-- ALWAYS cite sources in your response using [Source Name]
-- Keep responses concise and practical
-- Focus on positive parenting approaches
-
-Remember: You only provide general parenting guidance. You do NOT provide medical advice, crisis intervention, legal counsel, or therapy."""
-
-    # Add RAG context if available
-    if rag_context:
-        context_text = "\n\n".join([
-            f"Source: {doc['source']}\nContent: {doc['content']}"
-            for doc in rag_context
-        ])
-        system_prompt += f"\n\nResearch Context:\n{context_text}\n\nPlease reference these sources in your response."
-    
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": question}
-    ]
-    
-    return messages
+    return build_prompt_with_rag_versioned(question, rag_context, prompt_version)
 
 
 async def generate_advice_streaming(

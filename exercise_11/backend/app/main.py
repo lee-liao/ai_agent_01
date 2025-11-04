@@ -24,6 +24,19 @@ setup_observability(
     enable_console_export=True
 )
 
+# Log active prompt version on startup
+try:
+    from app.prompts import get_active_prompt_version
+    import logging
+    logger = logging.getLogger(__name__)
+    prompt_version = get_active_prompt_version()
+    logger.info(f"📝 Active prompt version: {prompt_version}")
+except Exception as e:
+    # Non-critical, just log warning
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.warning(f"Could not load prompt version: {e}")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[

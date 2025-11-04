@@ -2,15 +2,15 @@
 
 **THE SINGLE SOURCE OF TRUTH** for your Child Growth Assistant project
 
-**Last Updated**: 2025-11-04  
-**Current Progress**: 10/15 tasks (67%)  
-**Status**: Demo ready for tasks 1-9, 11
+**Last Updated**: 2025-01-15  
+**Current Progress**: 11/15 tasks (73%)  
+**Status**: Demo ready for tasks 1-9, 10, 11
 
 ---
 
 ## 📊 PART 1: Implementation Status Overview
 
-### ✅ Completed Tasks (10/15)
+### ✅ Completed Tasks (11/15)
 
 | # | Task Name | OpenSpec | Tests | Status | Demo Ready |
 |---|-----------|----------|-------|--------|------------|
@@ -23,21 +23,21 @@
 | 7 | CI/CD Pipelines | 25/25 (100%) | Manual ✅ | ✅ Complete | Yes |
 | 8 | SLOs & Observability | 18/25 (72%) | Manual ✅ | ✅ Complete | Yes |
 | 9 | Guardrails + HITL Queue | 21/26 (81%) | Manual ✅ | ✅ Complete | Yes |
+| 10 | Prompt Versioning | 24/25 (96%) | Manual ✅ | ✅ Complete | Yes |
 | 11 | Token/Cost Watchdog | 15/25 (60%) | 4/4 ✅ | ✅ Complete | Yes |
 
-**Subtotal**: 198/240 completed tasks (83%)
+**Subtotal**: 222/240 completed tasks (93%)
 
-### 🚧 Pending Tasks (5/15)
+### 🚧 Pending Tasks (4/15)
 
 | # | Task Name | Priority | Est. Time | Next Action |
 |---|-----------|----------|-----------|-------------|
-| 10 | Prompt Versioning | Low | 1h | Quick win |
 | 12 | Load Testing | Medium | 1.5h | Use existing scaffolds |
 | 13 | Accessibility & UX | Medium | 1.5h | Polish for production |
 | 14 | Alpha Test Protocol | Low | 4h | Requires real users |
 | 15 | Demo & One-Pager | High | 1.5h | Final deliverable |
 
-**Total Remaining**: 16.5 hours estimated
+**Total Remaining**: 9 hours estimated
 
 ---
 
@@ -655,24 +655,66 @@ npm run dev
 
 ---
 
-### 🚧 Task 10: Prompt Versioning
+### ✅ Task 10: Prompt Versioning
 
-**Status**: ⏳ Not started (0/25 tasks)  
+**Status**: ✅ Complete (24/25 tasks)  
 **OpenSpec**: add-prompt-versioning-snapshots  
-**Estimated Time**: 1 hour
+**Commits**: Latest  
+**Estimated Time**: 1 hour (actual: ~1 hour)
 
-#### Planned Deliverables:
-- `prompts/child_coach_v1.json` - Versioned prompt
-- `prompts/CHANGELOG.md` - Change history
-- Snapshot tests
-- CI check for version bumps
+#### What Was Built:
+- ✅ `prompts/child_coach_v1.json` - Versioned prompt with metadata
+- ✅ `prompts/CHANGELOG.md` - Version history documentation
+- ✅ `backend/app/prompts.py` - Prompt loader with caching and validation
+- ✅ `backend/tests/test_prompts.py` - Snapshot and integration tests
+- ✅ `backend/tests/snapshots/prompt_responses.json` - Pattern-based snapshots
+- ✅ `.github/workflows/exercise_11_ci.yml` - CI check for version bumps
+- ✅ Updated `backend/app/llm.py` to use versioned prompts
+- ✅ Startup logging for active prompt version
 
-#### Testing Plan:
-- Change prompt without version bump
-- Verify CI fails
-- Snapshot tests catch changes
+#### How to Test:
+```bash
+# 1. Test prompt loading
+cd exercise_11/backend
+python -c "from app.prompts import load_prompt; print(load_prompt('1')['version'])"
+# Should output: 1.0.0
 
-#### Demo Value: ⭐⭐⭐ "Professional prompt management"
+# 2. Run snapshot tests
+pytest tests/test_prompts.py -v
+
+# 3. Test version selection
+export PROMPT_VERSION=1
+python -c "from app.prompts import get_active_prompt_version; print(get_active_prompt_version())"
+
+# 4. Test CI check (locally)
+# Modify prompts/child_coach_v1.json without incrementing version
+# Run: git diff HEAD~1 HEAD --name-only | grep prompts
+# CI should fail if version not incremented
+```
+
+#### Features:
+- **Versioned Prompts**: JSON files with version, author, date, description
+- **Automatic Loading**: Loads latest version by default, supports `PROMPT_VERSION` env var
+- **Caching**: Prompts cached after first load for performance
+- **Validation**: Structure validation on load
+- **CI Protection**: Fails if prompts change without version increment
+- **Changelog Requirement**: CI enforces CHANGELOG.md updates
+- **Snapshot Tests**: Pattern-based tests for prompt behavior
+
+#### Demo Points:
+- "Professional prompt management with versioning"
+- "CI automatically enforces version increments"
+- "Easy to rollback to previous prompt versions"
+- "Snapshot tests catch unintended changes"
+
+#### Deferred:
+- Section 5.5 (README documentation) - Can be added later if needed
+
+#### Pass Criteria: ✅ **PASS**
+- ✅ Prompt versioning system implemented
+- ✅ CI checks for version bumps
+- ✅ Snapshot tests working
+- ✅ Runtime version selection supported
 
 ---
 
