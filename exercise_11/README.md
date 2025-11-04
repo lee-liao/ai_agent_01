@@ -1,7 +1,7 @@
 # Exercise 11: Child Growth Assistant (Week 8)
 
-[![CI](https://github.com/YOUR_USERNAME/YOUR_REPO/workflows/CI/badge.svg)](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/ci.yml)
-[![CD](https://github.com/YOUR_USERNAME/YOUR_REPO/workflows/CD/badge.svg)](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/cd.yml)
+[![CI](https://github.com/lee-liao/mygitactions/actions/workflows/superlinter.yml/badge.svg)](https://github.com/lee-liao/mygitactions/actions/workflows/superlinter.yml)
+[![CD](https://github.com/lee-liao/mygitactions/actions/workflows/superlinter.yml/badge.svg)](https://github.com/lee-liao/mygitactions/actions/workflows/superlinter.yml)
 
 > **Note**: Replace `YOUR_USERNAME/YOUR_REPO` with your actual GitHub repository path to enable badges.
 
@@ -120,11 +120,22 @@ Complete the following to harden the MVP and prepare an internal alpha launch. E
 
 ## 📖 Documentation Index
 
+### Getting Started
 - **[WELCOME.md](./WELCOME.md)** - 👋 Start here! Introduction and overview
 - **[QUICKSTART.md](./QUICKSTART.md)** - 🚀 Setup guide and troubleshooting
 - **[SCRIPTS.md](./SCRIPTS.md)** - 🛠️ Scripts reference and commands
 - **[PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)** - 📁 Codebase layout and architecture
+
+### CI/CD & Deployment
+- **[docs/deployment.md](./docs/deployment.md)** - 📦 Complete CI/CD pipeline and deployment guide
+- **[docs/runbook.md](./docs/runbook.md)** - 🆘 Troubleshooting runbook for deployment issues
+- **[.github/CONTRIBUTING.md](./.github/CONTRIBUTING.md)** - 🤝 Contributing guide with PR workflow
+
+### Testing & Development
 - **[load/README.md](./load/README.md)** - 🧪 Load testing guide (K6 & Locust)
+- **[docs/SAFETY_SCOPE_IMPLEMENTATION_CHECK.md](./docs/SAFETY_SCOPE_IMPLEMENTATION_CHECK.md)** - 🛡️ Safety implementation guide
+
+### Project Management
 - **[OPENSPEC_SETUP_COMPLETE.md](./OPENSPEC_SETUP_COMPLETE.md)** - 📋 OpenSpec proposals for all 15 tasks
 - **[CLASS_NOTES_INTEGRATED.md](./CLASS_NOTES_INTEGRATED.md)** - 📝 Integration of class notes into OpenSpec
 
