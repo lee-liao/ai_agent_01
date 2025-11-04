@@ -22,6 +22,23 @@ INPUT_COST_PER_MILLION = 30.0   # $30 per 1M input tokens
 OUTPUT_COST_PER_MILLION = 60.0  # $60 per 1M output tokens
 
 
+def _sanitize_log_value(value: str) -> str:
+    """
+    Sanitize a value for safe logging to prevent log injection attacks.
+    Replaces newlines and carriage returns with safe alternatives.
+    
+    Args:
+        value: String value to sanitize
+        
+    Returns:
+        Sanitized string safe for logging
+    """
+    if not isinstance(value, str):
+        return str(value)
+    # Replace newlines and carriage returns to prevent log injection
+    return value.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+
+
 @dataclass
 class TurnRecord:
     """Record of a single turn/request."""
@@ -434,9 +451,11 @@ class CostTracker:
                 # Log to console (with emoji)
                 import logging
                 logger = logging.getLogger(__name__)
+                # Sanitize session_id to prevent log injection
+                safe_session_id = _sanitize_log_value(session_id)
                 logger.info(
                     f"💰 Cost: ${cost:.4f} | Tokens: {total_tokens} "
-                    f"(prompt: {prompt_tokens}, completion: {completion_tokens}) | Session: {session_id}"
+                    f"(prompt: {prompt_tokens}, completion: {completion_tokens}) | Session: {safe_session_id}"
                 )
                 
                 # Calculate latency and set final attributes
@@ -480,9 +499,11 @@ class CostTracker:
             
             import logging
             logger = logging.getLogger(__name__)
+            # Sanitize session_id to prevent log injection
+            safe_session_id = _sanitize_log_value(session_id)
             logger.info(
                 f"💰 Cost: ${cost:.4f} | Tokens: {total_tokens} "
-                f"(prompt: {prompt_tokens}, completion: {completion_tokens}) | Session: {session_id}"
+                f"(prompt: {prompt_tokens}, completion: {completion_tokens}) | Session: {safe_session_id}"
             )
             
             return UsageRecord({
