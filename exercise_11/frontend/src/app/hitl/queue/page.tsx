@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import hitlAPI, { HITLCase } from '@/lib/hitlApi';
-import { AlertCircle, Clock, CheckCircle2, Circle, ArrowRight, RefreshCw } from 'lucide-react';
+import { Clock, CheckCircle2, Circle, ArrowRight, RefreshCw } from 'lucide-react';
 
 export default function HITLQueuePage() {
   const router = useRouter();
