@@ -1,7 +1,7 @@
 # Exercise 11: Child Growth Assistant (Week 8)
 
-[![CI](https://github.com/YOUR_USERNAME/YOUR_REPO/workflows/CI/badge.svg)](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/ci.yml)
-[![CD](https://github.com/YOUR_USERNAME/YOUR_REPO/workflows/CD/badge.svg)](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/cd.yml)
+[![CI](https://github.com/lee-liao/mygitactions/actions/workflows/superlinter.yml/badge.svg)](https://github.com/lee-liao/mygitactions/actions/workflows/superlinter.yml)
+[![CD](https://github.com/lee-liao/mygitactions/actions/workflows/superlinter.yml/badge.svg)](https://github.com/lee-liao/mygitactions/actions/workflows/superlinter.yml)
 
 > **Note**: Replace `YOUR_USERNAME/YOUR_REPO` with your actual GitHub repository path to enable badges.
 
@@ -120,13 +120,53 @@ Complete the following to harden the MVP and prepare an internal alpha launch. E
 
 ## 📖 Documentation Index
 
+### 🚀 Getting Started
 - **[WELCOME.md](./WELCOME.md)** - 👋 Start here! Introduction and overview
 - **[QUICKSTART.md](./QUICKSTART.md)** - 🚀 Setup guide and troubleshooting
 - **[SCRIPTS.md](./SCRIPTS.md)** - 🛠️ Scripts reference and commands
 - **[PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)** - 📁 Codebase layout and architecture
-- **[load/README.md](./load/README.md)** - 🧪 Load testing guide (K6 & Locust)
-- **[OPENSPEC_SETUP_COMPLETE.md](./OPENSPEC_SETUP_COMPLETE.md)** - 📋 OpenSpec proposals for all 15 tasks
-- **[CLASS_NOTES_INTEGRATED.md](./CLASS_NOTES_INTEGRATED.md)** - 📝 Integration of class notes into OpenSpec
+
+### 🔧 Setup & Configuration
+- **[docs/OPENAI_SETUP.md](./docs/OPENAI_SETUP.md)** - 🔑 OpenAI API key configuration and setup
+- **[docs/QUICK_API_SETUP.md](./docs/QUICK_API_SETUP.md)** - ⚡ Quick API setup guide
+- **[docs/IMPLEMENTATION_GUIDE.md](./docs/IMPLEMENTATION_GUIDE.md)** - 📘 Step-by-step integration guide for frontend components
+
+### 🧪 Testing Guides
+- **[docs/MANUAL_TEST_GUIDE.md](./docs/MANUAL_TEST_GUIDE.md)** - 🧪 Manual testing procedures and test flows
+- **[docs/SAFETY_SCOPE_IMPLEMENTATION_CHECK.md](./docs/SAFETY_SCOPE_IMPLEMENTATION_CHECK.md)** - 🛡️ Safety implementation validation guide
+- **[load/README.md](./load/README.md)** - 🧪 Load testing guide (K6 & Locust scenarios)
+
+### 🚢 CI/CD & Deployment
+- **[docs/deployment.md](./docs/deployment.md)** - 📦 Complete CI/CD pipeline and deployment guide (includes "How to Use" section)
+- **[docs/runbook.md](./docs/runbook.md)** - 🆘 Troubleshooting runbook for deployment issues and emergency procedures
+- **[docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md)** - 🤝 Contributing guide with PR workflow and code review process
+
+### 🔒 Safety & Security
+- **[docs/safety_scope.md](./docs/safety_scope.md)** - 🛡️ Safety boundaries, scope limitations, and handling procedures
+- **[docs/SAFETY_SCOPE_IMPLEMENTATION_CHECK.md](./docs/SAFETY_SCOPE_IMPLEMENTATION_CHECK.md)** - ✅ Safety implementation checklist and validation
+
+### 📡 Technical Implementation
+- **[docs/SSE_STREAMING_COMPLETE.md](./docs/SSE_STREAMING_COMPLETE.md)** - 📡 Server-Sent Events (SSE) streaming implementation details
+- **[docs/DOCKER_COST_COMPLETE.md](./docs/DOCKER_COST_COMPLETE.md)** - 🐳 Docker deployment and cost tracking implementation summary
+- **[docs/DOCKER_QUICK_TEST.md](./docs/DOCKER_QUICK_TEST.md)** - 🧪 Quick Docker testing procedures
+
+### 📊 Project Status & Planning
+- **[docs/DEMO_READY.md](./docs/DEMO_READY.md)** - 🎯 Complete implementation & demo guide (single source of truth)
+- **[docs/TASKS_1-5_COMPLETE.md](./docs/TASKS_1-5_COMPLETE.md)** - ✅ Summary of tasks 1-5 implementation
+- **[docs/NEXT_4_HOURS_PLAN.md](./docs/NEXT_4_HOURS_PLAN.md)** - ⏱️ Implementation plan for next 4 hours (Option A: Docker + Cost, Option B: Polish)
+- **[docs/IMPLEMENTATION_COMPLETE.md](./docs/IMPLEMENTATION_COMPLETE.md)** - ✅ Overall implementation completion summary
+- **[docs/IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md)** - 📈 Detailed OpenSpec task tracking and status
+- **[docs/READY_FOR_DEMO.md](./docs/READY_FOR_DEMO.md)** - 🎬 Demo readiness checklist and preparation guide
+
+### 📋 OpenSpec & Project Management
+- **[docs/OPENSPEC_SETUP_COMPLETE.md](./docs/OPENSPEC_SETUP_COMPLETE.md)** - 📋 OpenSpec proposals for all 15 tasks
+- **[docs/CLASS_NOTES_INTEGRATED.md](./docs/CLASS_NOTES_INTEGRATED.md)** - 📝 Integration of class notes into OpenSpec
+- **[docs/QUICK_DEMO_PLAN.md](./docs/QUICK_DEMO_PLAN.md)** - 🎯 Quick demo implementation plan
+- **[docs/AGENTS.md](./docs/AGENTS.md)** - 🤖 AI agent instructions for OpenSpec workflow
+- **[openspec/AGENTS.md](./openspec/AGENTS.md)** - 🤖 OpenSpec agent instructions (canonical source)
+
+### 📚 Additional Resources
+- **[rag/sources/README.md](./rag/sources/README.md)** - 📚 RAG source documentation
 
 ## Tips
 

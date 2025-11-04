@@ -1,10 +1,14 @@
-name: CodeQL Security Analysis
+name: Exercise 11 CodeQL Security Analysis
 
 on:
   push:
     branches: [main, develop]
+    paths:
+      - 'exercise_11/**'
   pull_request:
     branches: [main, develop]
+    paths:
+      - 'exercise_11/**'
   schedule:
     - cron: '0 0 * * 0'  # Weekly on Sunday
 
@@ -30,6 +34,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
+          queries: +security-and-quality
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3

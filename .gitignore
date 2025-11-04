@@ -31,9 +31,10 @@ node_modules/
 exercise_* copy/
 
 
-.github/
-!exercise_11/.github/
-!exercise_11/.github/**
+# Ignore .github in subdirectories (but allow root .github)
+**/.github/
+!.github/
+!.github/**
 .gemini/
 .wucai-clipboard/
 .wucai/

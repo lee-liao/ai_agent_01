@@ -1,28 +1,26 @@
 version: 2
 updates:
-  # Python dependencies
+  # Exercise 11 - Python dependencies
   - package-ecosystem: "pip"
-    directory: "/backend"
+    directory: "/exercise_11/backend"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
-    reviewers:
-      - "default-reviewers"
     labels:
       - "dependencies"
       - "python"
+      - "exercise-11"
 
-  # Node.js dependencies
+  # Exercise 11 - Node.js dependencies
   - package-ecosystem: "npm"
-    directory: "/frontend"
+    directory: "/exercise_11/frontend"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
-    reviewers:
-      - "default-reviewers"
     labels:
       - "dependencies"
       - "javascript"
+      - "exercise-11"
     ignore:
       # Ignore major version updates for Next.js to prevent breaking changes
       - dependency-name: "next"
@@ -32,20 +30,28 @@ updates:
       - dependency-name: "react-dom"
         update-types: ["version-update:semver-major"]
 
-  # Docker dependencies
+  # Exercise 11 - Docker dependencies
   - package-ecosystem: "docker"
-    directory: "/backend"
+    directory: "/exercise_11/backend"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
+      - "exercise-11"
 
   - package-ecosystem: "docker"
-    directory: "/frontend"
+    directory: "/exercise_11/frontend"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
+      - "exercise-11"
 
-  # GitHub Actions
+  # GitHub Actions (root level)
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
