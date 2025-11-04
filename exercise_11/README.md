@@ -1,7 +1,8 @@
 # Exercise 11: Child Growth Assistant (Week 8)
 
-[![CI](https://github.com/lee-liao/mygitactions/actions/workflows/superlinter.yml/badge.svg)](https://github.com/lee-liao/mygitactions/actions/workflows/superlinter.yml)
-[![CD](https://github.com/lee-liao/mygitactions/actions/workflows/superlinter.yml/badge.svg)](https://github.com/lee-liao/mygitactions/actions/workflows/superlinter.yml)
+[![Exercise 11 CodeQL Security Analysis](https://github.com/lee-liao/ai_agent_01/actions/workflows/exercise_11_codeql.yml/badge.svg)](https://github.com/lee-liao/ai_agent_01/actions/workflows/exercise_11_codeql.yml)
+[![Exercise 11 CI](https://github.com/lee-liao/ai_agent_01/actions/workflows/exercise_11_ci.yml/badge.svg)](https://github.com/lee-liao/ai_agent_01/actions/workflows/exercise_11_ci.yml)
+[![Exercise 11 CD](https://github.com/lee-liao/ai_agent_01/actions/workflows/exercise_11_cd.yml/badge.svg)](https://github.com/lee-liao/ai_agent_01/actions/workflows/exercise_11_cd.yml)
 
 > **Note**: Replace `YOUR_USERNAME/YOUR_REPO` with your actual GitHub repository path to enable badges.
 
