@@ -10,8 +10,19 @@ if str(exercise11_dir) not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .api import coach, websocket
+from .observability import setup_observability
+from .config import settings
 
 app = FastAPI(title="Child Growth Assistant", version="0.1.0")
+
+# Initialize observability on startup
+# Read OTLP endpoint from settings (which loads from .env file)
+setup_observability(
+    service_name="child-growth-assistant",
+    service_version="1.0.0",
+    jaeger_endpoint=settings.OTEL_EXPORTER_OTLP_ENDPOINT,
+    enable_console_export=True
+)
 
 app.add_middleware(
     CORSMiddleware,

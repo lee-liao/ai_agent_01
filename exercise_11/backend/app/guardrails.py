@@ -4,8 +4,10 @@ Classifies requests as in-scope or out-of-scope and provides appropriate refusal
 """
 
 import json
+import time
 from pathlib import Path
 from typing import Tuple, Dict, Optional
+from app.observability import get_tracer
 
 
 class SafetyGuard:
@@ -41,23 +43,61 @@ class SafetyGuard:
             - category is 'ok', 'medical', 'crisis', 'legal', or 'therapy'
             - refusal_data is None for 'ok' or a dict with refusal template for others
         """
-        text_lower = text.lower()
+        tracer = get_tracer()
+        start_time = time.time()
         
-        # Check in priority order: crisis first (most urgent)
-        if any(kw in text_lower for kw in self.policy['crisis_keywords']):
-            return ('crisis', self.get_refusal_template('crisis'))
-        
-        if any(kw in text_lower for kw in self.policy['medical_keywords']):
-            return ('medical', self.get_refusal_template('medical'))
-        
-        # Check therapy before legal to avoid conflicts with multi-word keywords
-        if any(kw in text_lower for kw in self.policy['therapy_keywords']):
-            return ('therapy', self.get_refusal_template('therapy'))
-        
-        if any(kw in text_lower for kw in self.policy['legal_keywords']):
-            return ('legal', self.get_refusal_template('legal'))
-        
-        return ('ok', None)
+        with tracer.start_as_current_span("guard.check_message") as span:
+            text_lower = text.lower()
+            message_length = len(text)
+            
+            # Track attributes
+            span.set_attribute("guard.message_length", message_length)
+            
+            matched_categories = []
+            
+            # Check in priority order: crisis first (most urgent)
+            if any(kw in text_lower for kw in self.policy['crisis_keywords']):
+                matched_categories.append('crisis')
+                category = 'crisis'
+                refusal_data = self.get_refusal_template('crisis')
+            elif any(kw in text_lower for kw in self.policy['medical_keywords']):
+                matched_categories.append('medical')
+                category = 'medical'
+                refusal_data = self.get_refusal_template('medical')
+            elif any(kw in text_lower for kw in self.policy['therapy_keywords']):
+                matched_categories.append('therapy')
+                category = 'therapy'
+                refusal_data = self.get_refusal_template('therapy')
+            elif any(kw in text_lower for kw in self.policy['legal_keywords']):
+                matched_categories.append('legal')
+                category = 'legal'
+                refusal_data = self.get_refusal_template('legal')
+            else:
+                category = 'ok'
+                refusal_data = None
+            
+            # Calculate latency
+            latency_ms = (time.time() - start_time) * 1000
+            
+            # Set classification (SAFE, BLOCKED, ESCALATE)
+            if category == 'ok':
+                classification = 'SAFE'
+            elif category == 'crisis':
+                classification = 'ESCALATE'
+            else:
+                classification = 'BLOCKED'
+            
+            # Set span attributes
+            span.set_attribute("guard.classification", classification)
+            span.set_attribute("guard.latency_ms", latency_ms)
+            span.set_attribute("guard.primary_category", category)
+            span.set_attribute("guard.matched_categories_count", len(matched_categories))
+            
+            if refusal_data:
+                template_key = category
+                span.set_attribute("guard.template_used", template_key)
+            
+            return (category, refusal_data)
     
     def get_refusal_template(self, category: str) -> Dict:
         """

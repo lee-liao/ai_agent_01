@@ -70,30 +70,36 @@ async def stream_advice(session_id: str, question: str):
         # Stream advice from OpenAI
         try:
             token_count = 0
-            async for chunk in generate_advice_streaming(question, rag_context):
+            async for chunk in generate_advice_streaming(question, rag_context, session_id=session_id):
                 yield f"data: {json.dumps({'chunk': chunk})}\n\n"
                 token_count += len(chunk.split())  # Rough token estimate
                 # Small delay to prevent overwhelming the client
                 await asyncio.sleep(0.01)
             
-            # Estimate costs for streaming (can't get exact from stream)
-            # Rough estimate: ~1.3 tokens per word
-            from billing.ledger import get_tracker
-            tracker = get_tracker()
-            estimated_prompt = len(question.split()) * 1.3 + 200  # Question + system prompt
-            estimated_completion = token_count * 1.3
-            tracker.log_usage(
-                session_id=session_id,
-                model="gpt-3.5-turbo",
-                prompt_tokens=int(estimated_prompt),
-                completion_tokens=int(estimated_completion)
-            )
-            
-            # Send citations and done signal
+            # Send citations and done signal FIRST (before cost tracking)
+            # This ensures citations are sent even if cost tracking fails
             yield f"data: {json.dumps({'done': True, 'citations': citations})}\n\n"
             
+            # Estimate costs for streaming (can't get exact from stream)
+            # Do this after sending done signal so it doesn't block the response
+            try:
+                from billing.ledger import get_tracker
+                tracker = get_tracker()
+                estimated_prompt = len(question.split()) * 1.3 + 200  # Question + system prompt
+                estimated_completion = token_count * 1.3
+                tracker.log_usage(
+                    session_id=session_id,
+                    model="gpt-3.5-turbo",
+                    prompt_tokens=int(estimated_prompt),
+                    completion_tokens=int(estimated_completion)
+                )
+            except Exception as cost_error:
+                # Log cost tracking error but don't fail the request
+                import logging
+                logging.warning(f"Cost tracking failed: {cost_error}")
+            
         except Exception as e:
-            # Error handling
+            # Error handling - only catch errors during streaming
             error_msg = f"I apologize, but I'm having trouble generating a response right now. Please try again."
             yield f"data: {json.dumps({'chunk': error_msg})}\n\n"
             yield f"data: {json.dumps({'done': True, 'citations': []})}\n\n"

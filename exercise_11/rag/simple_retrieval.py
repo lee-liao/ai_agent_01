@@ -3,7 +3,15 @@ Simple keyword-based retrieval for demo purposes.
 For production, replace with vector embeddings (OpenAI, Pinecone, etc.)
 """
 
+import time
 from typing import List, Dict
+
+# Try to import observability (may not be available if not in backend context)
+try:
+    from app.observability import get_tracer
+    _has_observability = True
+except ImportError:
+    _has_observability = False
 
 
 # Curated knowledge base with citations
@@ -98,32 +106,85 @@ def retrieve_context(query: str, max_results: int = 2) -> List[Dict]:
     Returns:
         List of dicts with 'source', 'url', and 'content'
     """
-    query_lower = query.lower()
-    results = []
+    start_time = time.time()
     
-    # Keywords to topic mapping
-    topic_keywords = {
-        'bedtime': ['bedtime', 'sleep', 'routine', 'bed time', 'sleeping', 'nap'],
-        'screen_time': ['screen', 'tv', 'television', 'ipad', 'tablet', 'phone', 'video', 'youtube'],
-        'tantrums': ['tantrum', 'meltdown', 'crying', 'screaming', 'upset', 'angry'],
-        'picky_eating': ['picky', 'eat', 'eating', 'food', 'meal', 'vegetable', 'nutrition'],
-        'sibling_conflict': ['sibling', 'brother', 'sister', 'fight', 'arguing', 'sharing', 'jealous'],
-        'praise': ['praise', 'compliment', 'reward', 'encourage', 'motivation', 'positive'],
-        'discipline': ['discipline', 'punishment', 'consequence', 'behavior', 'misbehave', 'listen']
-    }
-    
-    # Find matching topics
-    matched_topics = []
-    for topic, keywords in topic_keywords.items():
-        if any(keyword in query_lower for keyword in keywords):
-            matched_topics.append(topic)
-    
-    # Get documents for matched topics
-    for topic in matched_topics[:max_results]:
-        if topic in KNOWLEDGE_BASE:
-            results.append(KNOWLEDGE_BASE[topic])
-    
-    return results
+    # Create span if observability is available
+    if _has_observability:
+        from opentelemetry import trace
+        tracer = get_tracer()
+        with tracer.start_as_current_span("retrieval.retrieve") as span:
+            # Set initial attributes
+            span.set_attribute("retrieval.query_length", len(query))
+            span.set_attribute("retrieval.max_results", max_results)
+            
+            query_lower = query.lower()
+            results = []
+            
+            # Keywords to topic mapping
+            topic_keywords = {
+                'bedtime': ['bedtime', 'sleep', 'routine', 'bed time', 'sleeping', 'nap'],
+                'screen_time': ['screen', 'tv', 'television', 'ipad', 'tablet', 'phone', 'video', 'youtube'],
+                'tantrums': ['tantrum', 'meltdown', 'crying', 'screaming', 'upset', 'angry'],
+                'picky_eating': ['picky', 'eat', 'eating', 'food', 'meal', 'vegetable', 'nutrition'],
+                'sibling_conflict': ['sibling', 'brother', 'sister', 'fight', 'arguing', 'sharing', 'jealous'],
+                'praise': ['praise', 'compliment', 'reward', 'encourage', 'motivation', 'positive'],
+                'discipline': ['discipline', 'punishment', 'consequence', 'behavior', 'misbehave', 'listen']
+            }
+            
+            # Find matching topics
+            matched_topics = []
+            for topic, keywords in topic_keywords.items():
+                if any(keyword in query_lower for keyword in keywords):
+                    matched_topics.append(topic)
+            
+            # Get documents for matched topics
+            for topic in matched_topics[:max_results]:
+                if topic in KNOWLEDGE_BASE:
+                    results.append(KNOWLEDGE_BASE[topic])
+            
+            # Calculate latency
+            latency_ms = (time.time() - start_time) * 1000
+            
+            # Set final attributes
+            span.set_attribute("retrieval.latency_ms", latency_ms)
+            span.set_attribute("retrieval.results_count", len(results))
+            span.set_attribute("retrieval.is_fallback", len(results) == 0)
+            
+            if results:
+                # For keyword-based, relevance score is 1.0 if matched
+                span.set_attribute("retrieval.top_relevance_score", 1.0)
+            else:
+                span.set_attribute("retrieval.top_relevance_score", 0.0)
+            
+            return results
+    else:
+        # No observability - just do the work
+        query_lower = query.lower()
+        results = []
+        
+        # Keywords to topic mapping
+        topic_keywords = {
+            'bedtime': ['bedtime', 'sleep', 'routine', 'bed time', 'sleeping', 'nap'],
+            'screen_time': ['screen', 'tv', 'television', 'ipad', 'tablet', 'phone', 'video', 'youtube'],
+            'tantrums': ['tantrum', 'meltdown', 'crying', 'screaming', 'upset', 'angry'],
+            'picky_eating': ['picky', 'eat', 'eating', 'food', 'meal', 'vegetable', 'nutrition'],
+            'sibling_conflict': ['sibling', 'brother', 'sister', 'fight', 'arguing', 'sharing', 'jealous'],
+            'praise': ['praise', 'compliment', 'reward', 'encourage', 'motivation', 'positive'],
+            'discipline': ['discipline', 'punishment', 'consequence', 'behavior', 'misbehave', 'listen']
+        }
+        
+        # Find matching topics
+        matched_topics = []
+        for topic, keywords in topic_keywords.items():
+            if any(keyword in query_lower for keyword in keywords):
+                matched_topics.append(topic)
+        
+        # Get documents for matched topics
+        for topic in matched_topics[:max_results]:
+            if topic in KNOWLEDGE_BASE:
+                results.append(KNOWLEDGE_BASE[topic])
+        
+        return results
 
 
 def format_with_citations(advice: str, citations: List[Dict]) -> Dict:
