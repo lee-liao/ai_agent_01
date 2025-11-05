@@ -15,12 +15,18 @@ const TEST_QUESTIONS = [
   'What are age-appropriate chores for preschoolers?',
 ];
 
+// Spike test: Sudden 10x traffic increase
 export const options = {
-  vus: Number(__ENV.VUS || 10),
-  duration: __ENV.DURATION || '15m',
+  stages: [
+    { duration: '1m', target: 10 },   // Normal load: 10 users
+    { duration: '30s', target: 100 },  // Spike: Sudden jump to 100 users (10x)
+    { duration: '1m', target: 100 },   // Sustain spike for 1 minute
+    { duration: '30s', target: 10 },   // Return to normal: 10 users
+    { duration: '1m', target: 10 },   // Normal load for 1 minute
+  ],
   thresholds: {
-    http_req_failed: ['rate<0.01'], // Failure rate < 1%
-    http_req_duration: ['p(95)<5000'], // p95 latency < 5s (SSE measures full stream, not just handshake)
+    http_req_failed: ['rate<0.05'], // More lenient for spike test (5% failure rate acceptable)
+    http_req_duration: ['p(95)<8000'], // More lenient latency threshold for spike (8s)
   },
 };
 
@@ -47,51 +53,36 @@ export default function () {
   const question = TEST_QUESTIONS[Math.floor(Math.random() * TEST_QUESTIONS.length)];
   
   // SSE endpoint - matches what the frontend uses
-  // GET /api/coach/stream/{session_id}?question=...
   const sseUrl = `${BASE_URL}/api/coach/stream/${session_id}?question=${encodeURIComponent(question)}`;
   
-  // Make SSE request (streaming HTTP GET)
-  // IMPORTANT: k6's http.get() will wait for the HTTP response to complete
-  // For SSE, this means it waits until the server closes the connection
-  // (which happens when the generator finishes after sending 'done: true')
-  // The timeout ensures we don't wait forever if something goes wrong
   const params = {
     headers: {
       'Accept': 'text/event-stream',
       'Cache-Control': 'no-cache',
     },
-    timeout: '30s', // 30 second timeout - enough for LLM responses, but prevents hanging
+    timeout: '30s',
     tags: { name: 'sse_stream' },
   };
   
-  // This call BLOCKS until the SSE stream completes (connection closes)
-  // The duration includes the time to receive the entire stream
   const sseResponse = http.get(sseUrl, params);
   
-  // Check SSE response
   check(sseResponse, {
     'sse status 200': (r) => r.status === 200,
     'sse has content': (r) => r.body && r.body.length > 0,
     'sse has data events': (r) => {
-      // SSE format: "data: {...}\n\n"
-      // Check if response contains SSE data format
       return r.body.includes('data:') || r.body.length > 0;
     },
   });
   
   // Parse SSE response to find completion
-  // SSE format: "data: {json}\n\n"
   let streamComplete = false;
   if (sseResponse.body) {
-    // Split by double newlines (SSE event separator)
     const events = sseResponse.body.split('\n\n').filter(e => e.trim());
     for (const event of events) {
-      // Extract data line (SSE format: "data: {...}")
       const dataMatch = event.match(/^data:\s*(.+)$/m);
       if (dataMatch) {
         try {
           const data = JSON.parse(dataMatch[1]);
-          // Check for completion signal
           if (data.done === true || data.type === 'refusal' || data.type === 'hitl_queued') {
             streamComplete = true;
             break;
@@ -110,3 +101,4 @@ export default function () {
   // Random sleep between 1-3 seconds to simulate realistic user behavior
   sleep(1 + Math.random() * 2);
 }
+

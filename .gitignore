@@ -27,6 +27,11 @@ node_modules/
 **/reports/*.txt
 !**/reports/.gitkeep
 
+# Load test reports (JSON files from k6)
+exercise_11/load/reports/*.json
+exercise_11/load/reports/*.csv
+!exercise_11/load/reports/SUMMARY_REPORT_TEMPLATE.md
+
 # Exercise copies
 exercise_* copy/
 

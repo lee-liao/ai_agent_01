@@ -221,7 +221,7 @@ export default function CoachChatPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-white via-orange-50/40 to-amber-50/60 flex items-center py-8">
+    <main className="min-h-screen bg-gradient-to-br from-white via-orange-50/40 to-amber-50/60 flex items-center py-8" role="main">
       <div className="container mx-auto px-4 md:px-6 max-w-6xl w-full">
         {/* Header Card */}
         <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 backdrop-blur-xl rounded-[2.5rem] shadow-2xl border-3 border-orange-300/50 p-8 mb-8 animate-slide-up relative overflow-hidden">
@@ -255,10 +255,17 @@ export default function CoachChatPage() {
             
             {connectionStatus === 'disconnected' ? (
               <button 
-                onClick={start} 
-                className="bg-white text-orange-700 rounded-2xl px-10 py-4 font-black text-lg hover:shadow-2xl hover:scale-110 transition-all duration-200 flex items-center gap-3 border-3 border-orange-300/50 shadow-xl"
+                onClick={start}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    start();
+                  }
+                }}
+                aria-label="Start coaching session"
+                className="bg-white text-orange-700 rounded-2xl px-10 py-4 font-black text-lg hover:shadow-2xl hover:scale-110 transition-all duration-200 flex items-center gap-3 border-3 border-orange-300/50 shadow-xl focus:ring-4 focus:ring-orange-500/40 focus:outline-2 focus:outline-orange-600"
               >
-                <Zap className="w-6 h-6 fill-orange-600 animate-pulse" />
+                <Zap className="w-6 h-6 fill-orange-600 animate-pulse" aria-hidden="true" />
                 Start Session
               </button>
             ) : connectionStatus === 'connecting' ? (
@@ -278,7 +285,13 @@ export default function CoachChatPage() {
         {/* Chat Container */}
         <div className="bg-white backdrop-blur-xl rounded-[2.5rem] shadow-2xl border-2 border-slate-100 overflow-hidden animate-scale-in">
           {/* Messages Area */}
-          <div className="h-[650px] overflow-y-auto p-8 md:p-10 space-y-8 bg-gradient-to-br from-slate-50/30 via-orange-50/20 to-amber-50/30">
+          <div 
+            role="log" 
+            aria-live="polite" 
+            aria-label="Chat messages"
+            aria-busy={isTyping}
+            className="h-[650px] overflow-y-auto p-8 md:p-10 space-y-8 bg-gradient-to-br from-slate-50/30 via-orange-50/20 to-amber-50/30"
+          >
             {messages.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center max-w-2xl">
@@ -396,7 +409,7 @@ export default function CoachChatPage() {
                           
                           {/* Citations */}
                           {m.citations && m.citations.length > 0 && (
-                            <div className="mt-4 flex flex-wrap gap-2">
+                            <div className="mt-4 flex flex-wrap gap-2" role="list" aria-label="Citations">
                               {m.citations.map((cite, i) => (
                                 <a
                                   key={i}
@@ -404,9 +417,10 @@ export default function CoachChatPage() {
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   data-testid="citation"
-                                  className="inline-flex items-center gap-1.5 text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-1.5 rounded-full font-bold transition-colors border border-blue-300 shadow-sm"
+                                  aria-label={`Citation source: ${cite.source}`}
+                                  className="inline-flex items-center gap-1.5 text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-1.5 rounded-full font-bold transition-colors border border-blue-300 shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-2 focus:outline-blue-700"
                                 >
-                                  <span>📚</span>
+                                  <span aria-hidden="true">📚</span>
                                   <span>[{cite.source}]</span>
                                 </a>
                               ))}
@@ -427,23 +441,30 @@ export default function CoachChatPage() {
                 
                 {/* Streaming Text Indicator - Shows tokens as they arrive */}
                 {isTyping && (
-                  <div className="flex gap-4 animate-slide-up" data-testid="streaming-indicator">
+                  <div 
+                    className="flex gap-4 animate-slide-up" 
+                    data-testid="streaming-indicator"
+                    id="typing-indicator"
+                    role="status"
+                    aria-live="polite"
+                    aria-label="Assistant is typing"
+                  >
                     <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br from-amber-400 to-orange-500 shadow-xl border-3 border-orange-300">
-                      <Bot className="w-7 h-7 text-white" />
+                      <Bot className="w-7 h-7 text-white" aria-hidden="true" />
                     </div>
                     <div className="bg-gradient-to-br from-amber-50 to-orange-100 border-3 border-orange-300 rounded-3xl px-7 py-5 shadow-xl min-w-[200px]">
                       {streamingText ? (
                         // Show streaming text as it arrives
                         <p className="text-slate-800 font-semibold text-lg leading-relaxed">
                           {streamingText}
-                          <span className="inline-block w-2 h-5 bg-orange-500 ml-1 animate-pulse" /> {/* Cursor */}
+                          <span className="inline-block w-2 h-5 bg-orange-500 ml-1 animate-pulse" aria-hidden="true" /> {/* Cursor */}
                         </p>
                       ) : (
                         // Loading dots before first token
-                        <div className="flex gap-2">
-                          <div className="w-4 h-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full animate-bounce shadow-lg" />
-                          <div className="w-4 h-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full animate-bounce shadow-lg" style={{ animationDelay: '0.2s' }} />
-                          <div className="w-4 h-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full animate-bounce shadow-lg" style={{ animationDelay: '0.4s' }} />
+                        <div className="flex gap-2" aria-label="Loading response">
+                          <div className="w-4 h-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full animate-bounce shadow-lg" aria-hidden="true" />
+                          <div className="w-4 h-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full animate-bounce shadow-lg" style={{ animationDelay: '0.2s' }} aria-hidden="true" />
+                          <div className="w-4 h-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full animate-bounce shadow-lg" style={{ animationDelay: '0.4s' }} aria-hidden="true" />
                         </div>
                       )}
                     </div>
@@ -459,6 +480,7 @@ export default function CoachChatPage() {
             <div className="flex gap-4">
               <input
                 ref={inputRef}
+                type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { 
@@ -466,19 +488,32 @@ export default function CoachChatPage() {
                     e.preventDefault(); 
                     send(); 
                   } 
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    inputRef.current?.blur();
+                  }
                 }}
                 placeholder={sessionId ? 'Ask about routines, conflicts, screen time…' : 'Start session to begin chatting'}
                 disabled={!sessionId || isTyping}
+                aria-label={sessionId ? 'Enter your parenting question' : 'Start session to begin chatting'}
+                aria-busy={isTyping}
+                aria-describedby={isTyping ? 'typing-indicator' : undefined}
                 data-testid="chat-input"
-                className="flex-1 border-3 border-orange-300 rounded-2xl px-7 py-5 focus:ring-4 focus:ring-orange-500/40 focus:border-orange-500 disabled:bg-slate-100 disabled:cursor-not-allowed outline-none transition-all text-slate-900 text-lg font-semibold placeholder:text-slate-500 hover:border-orange-400 bg-white shadow-inner"
+                className="flex-1 border-3 border-orange-300 rounded-2xl px-7 py-5 focus:ring-4 focus:ring-orange-500/40 focus:border-orange-500 focus:outline-2 focus:outline-orange-600 disabled:bg-slate-100 disabled:cursor-not-allowed outline-none transition-all text-slate-900 text-lg font-semibold placeholder:text-slate-500 hover:border-orange-400 bg-white shadow-inner"
               />
               <button
                 onClick={send}
                 disabled={!sessionId || !input.trim() || isTyping}
                 aria-label="Send message"
-                className="bg-gradient-to-r from-orange-600 via-orange-500 to-amber-600 text-white rounded-2xl px-10 py-5 font-black disabled:opacity-40 disabled:cursor-not-allowed hover:shadow-2xl hover:shadow-orange-500/50 hover:scale-110 transition-all duration-200 flex items-center gap-3 group border-3 border-orange-400/50 shadow-xl"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                className="bg-gradient-to-r from-orange-600 via-orange-500 to-amber-600 text-white rounded-2xl px-10 py-5 font-black disabled:opacity-40 disabled:cursor-not-allowed hover:shadow-2xl hover:shadow-orange-500/50 hover:scale-110 transition-all duration-200 flex items-center gap-3 group border-3 border-orange-400/50 shadow-xl focus:ring-4 focus:ring-orange-500/40 focus:outline-2 focus:outline-white"
               >
-                <Send className="w-7 h-7 group-hover:translate-x-1 transition-transform" />
+                <Send className="w-7 h-7 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
                 <span className="hidden sm:inline text-xl">Send</span>
               </button>
             </div>
@@ -516,6 +551,6 @@ export default function CoachChatPage() {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

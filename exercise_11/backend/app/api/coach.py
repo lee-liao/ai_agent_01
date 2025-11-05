@@ -79,6 +79,9 @@ async def stream_advice(session_id: str, question: str):
     """
     
     async def generate():
+        # Track if we've already sent the done signal to avoid overwriting citations
+        done_sent = False
+        
         # Wrap entire generator in try/except to prevent stack trace exposure
         try:
             # Import here to avoid circular dependency
@@ -123,6 +126,7 @@ async def stream_advice(session_id: str, question: str):
                 
                 try:
                     yield f"data: {json.dumps({'done': True})}\n\n"
+                    done_sent = True
                 except Exception:
                     # Silently fail if final yield fails (connection likely closed)
                     pass
@@ -138,11 +142,13 @@ async def stream_advice(session_id: str, question: str):
                         # Fallback message if refusal_data is None
                         yield f"data: {json.dumps({'type': 'refusal', 'data': {'empathy': 'Thank you for reaching out.', 'message': 'I\'m not able to help with that specific question. Please consult a professional for guidance.', 'resources': []}})}\n\n"
                     yield f"data: {json.dumps({'done': True})}\n\n"
+                    done_sent = True
                 except Exception:
                     # If JSON serialization fails, send generic error (no exception details)
                     try:
                         yield f"data: {json.dumps({'type': 'error', 'message': 'An error occurred'})}\n\n"
                         yield f"data: {json.dumps({'done': True})}\n\n"
+                        done_sent = True
                     except Exception:
                         pass
                 return
@@ -179,6 +185,7 @@ async def stream_advice(session_id: str, question: str):
             # This ensures citations are sent even if cost tracking fails
             try:
                 yield f"data: {json.dumps({'done': True, 'citations': citations})}\n\n"
+                done_sent = True  # Mark that we've sent the done signal
             except Exception:
                 # If final yield fails, connection likely closed
                 pass
@@ -210,16 +217,23 @@ async def stream_advice(session_id: str, question: str):
             logger = logging.getLogger(__name__)
             logger.error(f"Error during advice streaming: {type(e).__name__}", exc_info=True)
             
-            # Send safe, user-friendly error message (no stack traces or internal details)
-            # Wrap in try/except to ensure no exception leaks even from error handling
-            try:
-                error_msg = "I apologize, but I'm having trouble generating a response right now. Please try again."
-                yield f"data: {json.dumps({'chunk': error_msg})}\n\n"
-                yield f"data: {json.dumps({'done': True, 'citations': []})}\n\n"
-            except Exception:
-                # If even error message fails to send, connection is likely closed
-                # No need to log or expose anything
-                pass
+            # Only send error message if we haven't already sent the done signal
+            # If done_sent is True, the response was already successfully sent with citations
+            # Don't overwrite it with an error message
+            if not done_sent:
+                # Send safe, user-friendly error message (no stack traces or internal details)
+                # Wrap in try/except to ensure no exception leaks even from error handling
+                try:
+                    error_msg = "I apologize, but I'm having trouble generating a response right now. Please try again."
+                    yield f"data: {json.dumps({'chunk': error_msg})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'citations': []})}\n\n"
+                except Exception:
+                    # If even error message fails to send, connection is likely closed
+                    # No need to log or expose anything
+                    pass
+            else:
+                # Response already sent successfully, just log the error
+                logger.warning(f"Error occurred after response was sent: {type(e).__name__} (likely cost tracking)")
     
     return StreamingResponse(
         generate(),

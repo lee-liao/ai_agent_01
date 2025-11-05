@@ -23,7 +23,7 @@ export default function CoachEntryPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-orange-50/40 to-amber-50/60 p-6 relative overflow-hidden">
+    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-orange-50/40 to-amber-50/60 p-6 relative overflow-hidden" role="main">
       {/* Animated Background Orbs */}
       <div className="absolute inset-0">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-orange-200/30 rounded-full blur-3xl animate-pulse" />
@@ -36,14 +36,14 @@ export default function CoachEntryPage() {
           <div className="text-center mb-10">
             <div className="relative inline-block mb-8">
               <div className="w-28 h-28 bg-gradient-to-br from-orange-500 via-amber-500 to-orange-600 rounded-[2rem] flex items-center justify-center shadow-2xl shadow-orange-500/50">
-                <Sparkles className="w-14 h-14 text-white animate-pulse" />
+                <Sparkles className="w-14 h-14 text-white animate-pulse" aria-hidden="true" />
               </div>
               {/* Floating Badges */}
               <div className="absolute -top-3 -right-3 w-12 h-12 bg-gradient-to-br from-rose-500 to-pink-500 rounded-full flex items-center justify-center shadow-xl animate-bounce">
-                <Heart className="w-6 h-6 text-white fill-white" />
+                <Heart className="w-6 h-6 text-white fill-white" aria-hidden="true" />
               </div>
               <div className="absolute -bottom-3 -left-3 w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-full flex items-center justify-center shadow-xl animate-bounce" style={{ animationDelay: '0.5s' }}>
-                <Shield className="w-6 h-6 text-white" />
+                <Shield className="w-6 h-6 text-white" aria-hidden="true" />
               </div>
             </div>
             
@@ -67,15 +67,24 @@ export default function CoachEntryPage() {
               <div className="relative">
                 <input 
                   name="parent_name"
+                  type="text"
                   value={name} 
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-7 py-5 bg-gradient-to-br from-slate-50 to-orange-50/50 border-3 border-orange-300 rounded-2xl focus:ring-4 focus:ring-orange-500/40 focus:border-orange-500 transition-all outline-none text-slate-900 text-xl font-semibold placeholder:text-slate-400 hover:border-orange-400 shadow-inner"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && name.trim()) {
+                      e.preventDefault();
+                      submit(e as any);
+                    }
+                  }}
+                  aria-label="Enter your name"
+                  aria-required="true"
+                  className="w-full px-7 py-5 bg-gradient-to-br from-slate-50 to-orange-50/50 border-3 border-orange-300 rounded-2xl focus:ring-4 focus:ring-orange-500/40 focus:border-orange-500 focus:outline-2 focus:outline-orange-600 transition-all outline-none text-slate-900 text-xl font-semibold placeholder:text-slate-400 hover:border-orange-400 shadow-inner"
                   placeholder="Enter your name"
                   required
                   autoFocus
                 />
                 <div className="absolute right-5 top-1/2 -translate-y-1/2">
-                  {name && <CheckCircle className="w-6 h-6 text-green-500" />}
+                  {name && <CheckCircle className="w-6 h-6 text-green-500" aria-label="Name entered" aria-hidden="false" />}
                 </div>
               </div>
             </div>
@@ -83,7 +92,9 @@ export default function CoachEntryPage() {
             <button 
               type="submit"
               disabled={loading || !name.trim()}
-              className="w-full bg-gradient-to-r from-orange-600 via-orange-500 to-amber-600 text-white rounded-2xl px-8 py-6 font-black text-2xl shadow-2xl shadow-orange-500/50 hover:shadow-orange-500/70 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center gap-4 group border-3 border-orange-400/50 relative overflow-hidden"
+              aria-label={loading ? "Starting session" : "Start coaching session"}
+              aria-busy={loading}
+              className="w-full bg-gradient-to-r from-orange-600 via-orange-500 to-amber-600 text-white rounded-2xl px-8 py-6 font-black text-2xl shadow-2xl shadow-orange-500/50 hover:shadow-orange-500/70 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center gap-4 group border-3 border-orange-400/50 relative overflow-hidden focus:ring-4 focus:ring-orange-500/40 focus:outline-2 focus:outline-white"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-orange-400 to-amber-400 opacity-0 group-hover:opacity-20 transition-opacity" />
               {loading ? (
@@ -142,11 +153,11 @@ export default function CoachEntryPage() {
             href="/" 
             className="inline-flex items-center gap-2 text-base text-slate-600 hover:text-orange-600 transition-colors font-bold bg-white px-8 py-4 rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all border-2 border-slate-200 hover:border-orange-300"
           >
-            <ArrowRight className="w-5 h-5 rotate-180" />
+            <ArrowRight className="w-5 h-5 rotate-180" aria-hidden="true" />
             Back to Home
           </a>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

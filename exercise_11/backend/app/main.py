@@ -1,4 +1,5 @@
 import sys
+import os
 from pathlib import Path
 
 # Add parent directory to path so 'rag' module can be found
@@ -17,11 +18,12 @@ app = FastAPI(title="Child Growth Assistant", version="0.1.0")
 
 # Initialize observability on startup
 # Read OTLP endpoint from settings (which loads from .env file)
+# Disable console export for load testing (set ENABLE_CONSOLE_EXPORT=false in .env)
 setup_observability(
     service_name="child-growth-assistant",
     service_version="1.0.0",
     jaeger_endpoint=settings.OTEL_EXPORTER_OTLP_ENDPOINT,
-    enable_console_export=True
+    enable_console_export=settings.ENABLE_CONSOLE_EXPORT
 )
 
 # Log active prompt version on startup
