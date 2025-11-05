@@ -102,16 +102,31 @@ See the **"Getting Checks to Appear"** section below for detailed steps.
    - This ensures even administrators must follow the rules
    - Prevents accidental bypasses
 
-### Step 7: Enable Automatic Branch Deletion
+### Step 7: Enable Branch Deletion
 
 Scroll down to the **"Rules applied to everyone including administrators"** section:
 
 1. **Do NOT** check **"Allow force pushes"** (leave unchecked for security)
    - Prevents rewriting history on protected branch
 
-2. **Check "Allow deletions"** 
-   - This enables automatic cleanup of merged feature branches
-   - Allows deletion of branches after PRs are merged
+2. **Check "Allow deletions"**
+   - This allows users with push access to delete branches (including the protected branch itself)
+   - **Note**: This does NOT automatically delete branches after PR merge
+   - This only allows manual deletion if needed
+
+**Automatic Branch Deletion After PR Merge:**
+- GitHub automatically deletes the source branch when you merge a PR **if you check the "Delete branch" option during merge**
+- This is a **per-PR checkbox** that appears when you merge a pull request
+- The checkbox is usually **checked by default** for most users
+- There is **no global repository setting** to enable automatic deletion for all PRs
+- The deletion happens via the checkbox on each PR's merge button
+
+**To delete a branch after PR merge:**
+1. When merging a PR, look for the checkbox "Delete [branch-name]" near the merge button
+2. Make sure it's checked (it usually is by default)
+3. After merging, the branch will be automatically deleted
+
+**Note**: The "Allow deletions" option in branch protection only allows manual deletion permissions - it doesn't control automatic deletion after PR merge.
 
 ### Step 8: Save the Rule
 
