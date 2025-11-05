@@ -1,0 +1,137 @@
+============================================================================================================
+uses Websocket
+------------------------------------------------------------------------------------------------------------
+(base) PS D:\MyCode\AI\Victoria\lesson8\ai_agent_01\exercise_11\load\k6> k6 run coach_scenario.js --duration 15m --vus 10
+
+         /\      Grafana   /‾‾/
+    /\  /  \     |\  __   /  /
+   /  \/    \    | |/ /  /   ‾‾\
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/
+
+     execution: local
+        script: coach_scenario.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 10 max VUs, 15m30s max duration (incl. graceful stop):
+              * default: 10 looping VUs for 15m0s (gracefulStop: 30s)
+
+
+
+  █ THRESHOLDS
+
+    http_req_duration
+    ✓ 'p(95)<2500' p(95)=1.62ms
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+
+
+  █ TOTAL RESULTS
+
+    checks_total.......: 6153    6.794672/s
+    checks_succeeded...: 100.00% 6153 out of 6153
+    checks_failed......: 0.00%   0 out of 6153
+
+    ✓ health 200
+    ✓ start 200
+    ✓ ws connected/closed
+
+    HTTP
+    http_req_duration..............: avg=1.14ms min=0s      med=911.1µs max=71.42ms p(90)=1.28ms p(95)=1.62ms
+      { expected_response:true }...: avg=1.14ms min=0s      med=911.1µs max=71.42ms p(90)=1.28ms p(95)=1.62ms
+    http_req_failed................: 0.00%  0 out of 4102
+    http_reqs......................: 4102   4.529781/s
+
+    EXECUTION
+    iteration_duration.............: avg=4.39s  min=2.37s   med=4.26s   max=12.73s  p(90)=5.86s  p(95)=6.41s
+    iterations.....................: 2051   2.264891/s
+    vus............................: 1      min=1         max=10
+    vus_max........................: 10     min=10        max=10
+
+    NETWORK
+    data_received..................: 3.9 MB 4.3 kB/s
+    data_sent......................: 1.1 MB 1.2 kB/s
+
+    WEBSOCKET
+    ws_connecting..................: avg=1.75ms min=503.9µs med=1.63ms  max=53.5ms  p(90)=2.04ms p(95)=2.31ms
+    ws_msgs_received...............: 4099   4.526468/s
+    ws_msgs_sent...................: 2051   2.264891/s
+    ws_session_duration............: avg=2.39s  min=1.03s   med=2.12s   max=10s     p(90)=3.69s  p(95)=4.18s
+    ws_sessions....................: 2051   2.264891/s
+
+
+
+
+running (15m05.6s), 00/10 VUs, 2051 complete and 0 interrupted iterations
+default ✓ [======================================] 10 VUs  15m0s
+
+============================================================================================================
+uses SSE (Server-Sent Events) 
+------------------------------------------------------------------------------------------------------------
+(base) PS D:\MyCode\AI\Victoria\lesson8\ai_agent_01\exercise_11\load\k6> k6 run coach_scenario.js --duration 15m --vus 10
+
+         /\      Grafana   /‾‾/
+    /\  /  \     |\  __   /  /
+   /  \/    \    | |/ /  /   ‾‾\
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/
+
+     execution: local
+        script: coach_scenario.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 10 max VUs, 15m30s max duration (incl. graceful stop):
+              * default: 10 looping VUs for 15m0s (gracefulStop: 30s)
+
+WARN[0614] Request Failed                                error="request timeout"
+
+
+  █ THRESHOLDS
+
+    http_req_duration
+    ✗ 'p(95)<2500' p(95)=4.36s
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.02%
+
+
+  █ TOTAL RESULTS
+
+    checks_total.......: 9234   10.191883/s
+    checks_succeeded...: 99.95% 9230 out of 9234
+    checks_failed......: 0.04%  4 out of 9234
+
+    ✓ health 200
+    ✓ start 200
+    ✗ sse status 200
+      ↳  99% — ✓ 1538 / ✗ 1
+    ✗ sse has content
+      ↳  99% — ✓ 1538 / ✗ 1
+    ✗ sse has data events
+      ↳  99% — ✓ 1538 / ✗ 1
+    ✗ stream completed
+      ↳  99% — ✓ 1538 / ✗ 1
+
+    HTTP
+    http_req_duration..............: avg=1.28s min=0s    med=2.23ms max=30s    p(90)=4.03s p(95)=4.36s
+      { expected_response:true }...: avg=1.27s min=0s    med=2.23ms max=16.57s p(90)=4.03s p(95)=4.36s
+    http_req_failed................: 0.02%  1 out of 4617
+    http_reqs......................: 4617   5.095942/s
+
+    EXECUTION
+    iteration_duration.............: avg=5.86s min=3.41s med=5.78s  max=32.73s p(90)=6.88s p(95)=7.22s
+    iterations.....................: 1539   1.698647/s
+    vus............................: 1      min=1         max=10
+    vus_max........................: 10     min=10        max=10
+
+    NETWORK
+    data_received..................: 11 MB  12 kB/s
+    data_sent......................: 720 kB 795 B/s
+
+
+
+
+running (15m06.0s), 00/10 VUs, 1539 complete and 0 interrupted iterations
+default ✓ [======================================] 10 VUs  15m0s
+ERRO[0906] thresholds on metrics 'http_req_duration' have been crossed
