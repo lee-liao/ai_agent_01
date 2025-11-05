@@ -176,3 +176,5 @@ Complete the following to harden the MVP and prepare an internal alpha launch. E
 - Add feature flags for streaming vs non‑streaming and model choices.
 - Prefer small, reviewable PRs; ensure CI is green before merging.
 - Follow the recommended implementation order in `OPENSPEC_SETUP_COMPLETE.md` for best results.
+
+# CI trigger for branch protection
