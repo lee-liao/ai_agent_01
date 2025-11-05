@@ -20,6 +20,13 @@ The system SHALL run automated tests on every pull request.
 - **THEN** the PR shows green status
 - **AND** can be merged after approval
 
+#### Scenario: Branch protection enforces CI
+- **WHEN** branch protection is configured for `main`
+- **THEN** PRs require all status checks to pass
+- **AND** PRs require code review approval
+- **AND** merge is blocked until both conditions are met
+- **NOTE**: See `exercise_11/docs/BRANCH_PROTECTION_SETUP.md` for setup instructions
+
 ### Requirement: Continuous Deployment
 The system SHALL automatically deploy to staging on version tags.
 
