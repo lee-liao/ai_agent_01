@@ -18,7 +18,7 @@
 | 2 | Refusal Templates UI | 27/28 (96%) | Manual ✅ | ✅ Complete | Yes |
 | 3 | Curated RAG Pack | 20/25 (80%) | Manual ✅ | ✅ Complete | Yes |
 | 4 | SSE Streaming | 20/22 (91%) | Manual ✅ | ✅ Complete | Yes |
-| 5 | Playwright E2E Suite | 16/23 (70%) | 6/8 ⚠️ | ✅ Complete | Yes |
+| 5 | Playwright E2E Suite | 22/23 (96%) | 8/8 ✅ | ✅ Complete | Yes |
 | 6 | Docker & Health Checks | 24/25 (96%) | Manual ✅ | ✅ Complete | Yes |
 | 7 | CI/CD Pipelines | 25/25 (100%) | Manual ✅ | ✅ Complete | Yes |
 | 8 | SLOs & Observability | 18/25 (72%) | Manual ✅ | ✅ Complete | Yes |

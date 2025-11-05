@@ -31,7 +31,13 @@
 - [x] 4.3 Block merge if tests fail (enforced via branch protection)
 - [x] 4.4 Upload test artifacts on failure (configured with retention-days: 7)
 
-**Status**: ✅ Complete - 22/23 tasks (8 scenarios, 6 passing, CI integration complete)  
-**Pass Criteria**: ⚠️ Partial - 6/8 tests passing (75%)  
+**Status**: ✅ Complete - 22/23 tasks (8 scenarios, 8 passing, CI integration complete)  
+**Pass Criteria**: ✅ Complete - 8/8 tests passing (100%)  
 **Commit**: 469516d
+
+## Test Fixes (Latest)
+- Fixed session connection wait logic to handle backend API response timing
+- Added proper wait for input to become enabled after streaming completes
+- Fixed citation counting to only count citations from latest message (not all messages on page)
+- All 8 tests now passing: bedtime routine, screen time, medical refusal, crisis escalation, structure check, streaming behavior, empathy/resources check, citation rate
 

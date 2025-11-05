@@ -31,10 +31,16 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     // Wait for navigation to chat page
     await page.waitForURL('**/coach/chat');
     
-    // Wait for and click "Start Session" button to establish WebSocket
+    // Wait for and click "Start Session" button
     await page.click('button:has-text("Start Session")', { timeout: 5000 });
     
-    // Wait for WebSocket connection (input becomes enabled)
+    // Wait for "Connecting..." to disappear (session either connected or failed)
+    await page.waitForSelector('text=/Connecting.../', { state: 'hidden', timeout: 15000 }).catch(() => {
+      // If "Connecting..." never appears, that's also fine - session might connect instantly
+    });
+    
+    // Wait for input to become enabled (sessionId is set and connection succeeded)
+    // If backend is down, this will timeout but that's expected behavior
     await page.waitForSelector('[data-testid="chat-input"]:not([disabled])', { timeout: 10000 });
     
     // Ask bedtime question
@@ -77,6 +83,11 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     await page.click('button:has-text("Start")');
     await page.waitForURL('**/coach/chat');
     await page.click('button:has-text("Start Session")');
+    // Wait for "Connecting..." to disappear (session either connected or failed)
+    await page.waitForSelector('text=/Connecting.../', { state: 'hidden', timeout: 15000 }).catch(() => {
+      // If "Connecting..." never appears, that's also fine - session might connect instantly
+    });
+    // Wait for input to become enabled (sessionId is set and connection succeeded)
     await page.waitForSelector('[data-testid="chat-input"]:not([disabled])', { timeout: 10000 });
     
     // Ask screen time question
@@ -102,6 +113,11 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     await page.click('button:has-text("Start")');
     await page.waitForURL('**/coach/chat');
     await page.click('button:has-text("Start Session")');
+    // Wait for "Connecting..." to disappear (session either connected or failed)
+    await page.waitForSelector('text=/Connecting.../', { state: 'hidden', timeout: 15000 }).catch(() => {
+      // If "Connecting..." never appears, that's also fine - session might connect instantly
+    });
+    // Wait for input to become enabled (sessionId is set and connection succeeded)
     await page.waitForSelector('[data-testid="chat-input"]:not([disabled])', { timeout: 10000 });
     
     // Ask medical question
@@ -132,6 +148,11 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     await page.click('button:has-text("Start")');
     await page.waitForURL('**/coach/chat');
     await page.click('button:has-text("Start Session")');
+    // Wait for "Connecting..." to disappear (session either connected or failed)
+    await page.waitForSelector('text=/Connecting.../', { state: 'hidden', timeout: 15000 }).catch(() => {
+      // If "Connecting..." never appears, that's also fine - session might connect instantly
+    });
+    // Wait for input to become enabled (sessionId is set and connection succeeded)
     await page.waitForSelector('[data-testid="chat-input"]:not([disabled])', { timeout: 10000 });
     
     // Trigger crisis detection
@@ -161,6 +182,11 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     await page.click('button:has-text("Start")');
     await page.waitForURL('**/coach/chat');
     await page.click('button:has-text("Start Session")');
+    // Wait for "Connecting..." to disappear (session either connected or failed)
+    await page.waitForSelector('text=/Connecting.../', { state: 'hidden', timeout: 15000 }).catch(() => {
+      // If "Connecting..." never appears, that's also fine - session might connect instantly
+    });
+    // Wait for input to become enabled (sessionId is set and connection succeeded)
     await page.waitForSelector('[data-testid="chat-input"]:not([disabled])', { timeout: 10000 });
     
     // Ask about tantrums
@@ -198,6 +224,11 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     await page.click('button:has-text("Start")');
     await page.waitForURL('**/coach/chat');
     await page.click('button:has-text("Start Session")');
+    // Wait for "Connecting..." to disappear (session either connected or failed)
+    await page.waitForSelector('text=/Connecting.../', { state: 'hidden', timeout: 15000 }).catch(() => {
+      // If "Connecting..." never appears, that's also fine - session might connect instantly
+    });
+    // Wait for input to become enabled (sessionId is set and connection succeeded)
     await page.waitForSelector('[data-testid="chat-input"]:not([disabled])', { timeout: 10000 });
     
     await page.fill('[data-testid="chat-input"]', 'Tips for picky eaters?');
@@ -208,6 +239,9 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     
     // Wait for response to appear
     await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 15000 });
+    
+    // Wait for input to be enabled again (streaming complete)
+    await page.waitForSelector('[data-testid="chat-input"]:not([disabled])', { timeout: 5000 });
     
     const response = await page.textContent('[data-testid="assistant-message"]');
     expect(response).toBeTruthy();
@@ -225,6 +259,11 @@ test.describe('Response Quality Checks', () => {
     await page.click('button:has-text("Start")');
     await page.waitForURL('**/coach/chat');
     await page.click('button:has-text("Start Session")');
+    // Wait for "Connecting..." to disappear (session either connected or failed)
+    await page.waitForSelector('text=/Connecting.../', { state: 'hidden', timeout: 15000 }).catch(() => {
+      // If "Connecting..." never appears, that's also fine - session might connect instantly
+    });
+    // Wait for input to become enabled (sessionId is set and connection succeeded)
     await page.waitForSelector('[data-testid="chat-input"]:not([disabled])', { timeout: 10000 });
     
     // Test medical refusal
@@ -261,6 +300,11 @@ test.describe('Response Quality Checks', () => {
     await page.click('button:has-text("Start")');
     await page.waitForURL('**/coach/chat');
     await page.click('button:has-text("Start Session")');
+    // Wait for "Connecting..." to disappear (session either connected or failed)
+    await page.waitForSelector('text=/Connecting.../', { state: 'hidden', timeout: 15000 }).catch(() => {
+      // If "Connecting..." never appears, that's also fine - session might connect instantly
+    });
+    // Wait for input to become enabled (sessionId is set and connection succeeded)
     await page.waitForSelector('[data-testid="chat-input"]:not([disabled])', { timeout: 10000 });
     
     for (const question of questions) {
@@ -280,11 +324,16 @@ test.describe('Response Quality Checks', () => {
         { timeout: 25000 } // Increased timeout for CI environments where API calls may be slower
       );
       
+      // Wait for input to be enabled again (streaming complete and ready for next question)
+      await page.waitForSelector('[data-testid="chat-input"]:not([disabled])', { timeout: 5000 });
+      
       // Give time for citations to render (they might load after message)
       await page.waitForTimeout(1000);
       
-      // Check if there are any citations in the page
-      const citationCount = await page.locator('[data-testid="citation"]').count();
+      // Count citations only from the latest assistant message (not all messages on page)
+      // Get the latest assistant message and count citations within it
+      const latestMessage = page.locator('[data-testid="assistant-message"]').last();
+      const citationCount = await latestMessage.locator('[data-testid="citation"]').count();
       
       if (citationCount > 0) {
         responsesWithCitations++;
