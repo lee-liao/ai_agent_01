@@ -49,13 +49,16 @@ pip install -r requirements.txt
 ### Option 1: Run All Tests (Automated)
 ```bash
 # Linux/Mac
-cd load
-chmod +x run_tests.sh
-./run_tests.sh
+cd exercise_11
+chmod +x load/run_tests.sh
+./load/run_tests.sh
 
 # Windows
-cd load
-run_tests.bat
+cd exercise_11
+load\run_tests.bat
+
+# Note: Scripts automatically change to exercise_11 directory
+# You can run from any location, but it's recommended to run from exercise_11
 ```
 
 ### Option 2: Run Individual Tests

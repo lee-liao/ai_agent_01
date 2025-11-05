@@ -1,8 +1,19 @@
 #!/bin/bash
 # Load Testing Automation Script
 # Runs k6 load tests with different scenarios and generates reports
+# This script automatically changes to the exercise_11 directory
 
 set -e
+
+# Change to exercise_11 directory (assuming script is in exercise_11/load/)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.." || exit 1
+
+if [ ! -f "load/k6/coach_scenario.js" ]; then
+    echo "ERROR: Cannot find load test scripts. Please ensure script is in exercise_11/load/"
+    echo "Current directory: $(pwd)"
+    exit 1
+fi
 
 BASE_URL="${BASE_URL:-http://localhost:8011}"
 REPORTS_DIR="load/reports"
@@ -12,6 +23,7 @@ TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
 mkdir -p "$REPORTS_DIR"
 
 echo "🚀 Starting Load Tests..."
+echo "Working directory: $(pwd)"
 echo "Base URL: $BASE_URL"
 echo "Reports will be saved to: $REPORTS_DIR"
 echo ""

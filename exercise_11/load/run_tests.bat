@@ -1,6 +1,15 @@
 @echo off
 REM Load Testing Automation Script for Windows
 REM Runs k6 load tests with different scenarios and generates reports
+REM This script should be run from the exercise_11 directory
+
+REM Change to exercise_11 directory (assuming script is in exercise_11/load/)
+cd /d "%~dp0\.."
+if not exist "load\k6\coach_scenario.js" (
+    echo ERROR: Cannot find load test scripts. Please run from exercise_11 directory.
+    echo Current directory: %CD%
+    exit /b 1
+)
 
 set BASE_URL=%BASE_URL%
 if "%BASE_URL%"=="" set BASE_URL=http://localhost:8011
@@ -14,6 +23,7 @@ REM Create reports directory if it doesn't exist
 if not exist "%REPORTS_DIR%" mkdir "%REPORTS_DIR%"
 
 echo Starting Load Tests...
+echo Working directory: %CD%
 echo Base URL: %BASE_URL%
 echo Reports will be saved to: %REPORTS_DIR%
 echo.
@@ -55,4 +65,5 @@ echo To view results, use:
 echo   k6 stats %REPORTS_DIR%\k6_*.json
 echo   or
 echo   k6 report %REPORTS_DIR%\k6_*.json
+
 
