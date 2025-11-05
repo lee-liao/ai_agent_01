@@ -51,7 +51,8 @@ async def coach_ws(websocket: WebSocket, session_id: str):
                         user_message=user_text,
                         conversation_history=[]  # Could track history if needed
                     )
-                    routing_latency_ms = (time_module.time() - start_time) * 1000
+                    # Calculate routing latency for SLO tracking (not currently used, but measured for future use)
+                    _routing_latency_ms = (time_module.time() - start_time) * 1000
                     
                     # Send holding message to parent
                     await websocket.send_json({

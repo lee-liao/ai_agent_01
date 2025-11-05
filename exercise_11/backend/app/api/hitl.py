@@ -5,7 +5,7 @@ Handles mentor queue and replies for crisis situations.
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 from ..guardrails import (
     get_hitl_queue,
     get_hitl_item,

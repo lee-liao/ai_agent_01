@@ -130,7 +130,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     try:
-        csv_path, stats = generate_report(
+        # Generate report (return values not needed for CLI)
+        generate_report(
             yesterday=not args.today,
             use_api=not args.no_api,
             verbose=args.verbose

@@ -4,10 +4,10 @@ Billing API endpoints for cost tracking and reports.
 
 import sys
 from pathlib import Path
-from datetime import date, timedelta
+from datetime import date
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional
 
 # Add billing directory to path
 billing_dir = Path(__file__).parent.parent.parent.parent / "billing"

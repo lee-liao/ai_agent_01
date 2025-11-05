@@ -5,12 +5,10 @@ Tracks token usage and costs per turn/request.
 
 import json
 import csv
-import os
 from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, asdict
-from decimal import Decimal
 
 # Configuration
 # Typical token estimates (4 characters ≈ 1 token, but varies)
@@ -440,7 +438,8 @@ class CostTracker:
                 input_text = "x" * (prompt_tokens * 4)  # Rough estimate
                 output_text = "x" * (completion_tokens * 4)
                 
-                record = self.ledger.record_turn(
+                # Record the turn in the ledger (return value not needed)
+                self.ledger.record_turn(
                     session_id=session_id,
                     input_text=input_text,
                     output_text=output_text,
@@ -453,9 +452,10 @@ class CostTracker:
                 logger = logging.getLogger(__name__)
                 # Sanitize session_id to prevent log injection
                 safe_session_id = _sanitize_log_value(session_id)
+                # Use parameterized logging to prevent log injection (CodeQL-safe)
                 logger.info(
-                    f"💰 Cost: ${cost:.4f} | Tokens: {total_tokens} "
-                    f"(prompt: {prompt_tokens}, completion: {completion_tokens}) | Session: {safe_session_id}"
+                    "💰 Cost: $%.4f | Tokens: %d (prompt: %d, completion: %d) | Session: %s",
+                    cost, total_tokens, prompt_tokens, completion_tokens, safe_session_id
                 )
                 
                 # Calculate latency and set final attributes
@@ -489,7 +489,8 @@ class CostTracker:
             input_text = "x" * (prompt_tokens * 4)
             output_text = "x" * (completion_tokens * 4)
             
-            record = self.ledger.record_turn(
+            # Record the turn in the ledger (return value not needed)
+            self.ledger.record_turn(
                 session_id=session_id,
                 input_text=input_text,
                 output_text=output_text,
@@ -501,9 +502,10 @@ class CostTracker:
             logger = logging.getLogger(__name__)
             # Sanitize session_id to prevent log injection
             safe_session_id = _sanitize_log_value(session_id)
+            # Use parameterized logging to prevent log injection (CodeQL-safe)
             logger.info(
-                f"💰 Cost: ${cost:.4f} | Tokens: {total_tokens} "
-                f"(prompt: {prompt_tokens}, completion: {completion_tokens}) | Session: {safe_session_id}"
+                "💰 Cost: $%.4f | Tokens: %d (prompt: %d, completion: %d) | Session: %s",
+                cost, total_tokens, prompt_tokens, completion_tokens, safe_session_id
             )
             
             return UsageRecord({

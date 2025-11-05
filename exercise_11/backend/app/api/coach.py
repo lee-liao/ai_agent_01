@@ -4,7 +4,7 @@ from pydantic import BaseModel
 import uuid
 import json
 import asyncio
-from app.sse_manager import sse_manager, create_sse_stream
+from app.sse_manager import create_sse_stream
 
 router = APIRouter(prefix="/api/coach", tags=["Coach"])
 
@@ -79,65 +79,67 @@ async def stream_advice(session_id: str, question: str):
     """
     
     async def generate():
-        # Import here to avoid circular dependency
-        from app.guardrails import get_guard
-        from rag.simple_retrieval import retrieve_context
-        from app.llm import generate_advice_streaming
-        
-        # Check guardrails first
-        guard = get_guard()
-        category, refusal_data = guard.classify_request(question)
-        
-        # Handle HITL-triggering categories (crisis, pii)
-        if category in ['crisis', 'pii']:
-            # Import HITL functions
-            from app.guardrails import create_hitl_case
-            import time as time_module
-            
-            # For crisis scenarios, send refusal message first (with resources like 988)
-            # For PII, refusal_data is None, so skip refusal message
-            if category == 'crisis' and refusal_data:
-                yield f"data: {json.dumps({'type': 'refusal', 'data': refusal_data})}\n\n"
-            
-            # Create HITL case (measure latency for SLO)
-            start_time = time_module.time()
-            hitl_id = create_hitl_case(
-                session_id=session_id,
-                category=category,
-                user_message=question,
-                conversation_history=[]  # Could track history if needed
-            )
-            routing_latency_ms = (time_module.time() - start_time) * 1000
-            
-            # For PII scenarios (no refusal_data), send HITL queued message
-            if category == 'pii':
-                yield f"data: {json.dumps({'type': 'hitl_queued', 'message': 'Thank you for reaching out. A mentor will review your message and respond shortly. Please know that your safety and your child\'s safety are our top priority.', 'hitl_id': hitl_id, 'category': category})}\n\n"
-            
-            yield f"data: {json.dumps({'done': True})}\n\n"
-            return
-        
-        # Handle other out-of-scope categories (medical, legal, therapy)
-        if category != 'ok':
-            # Only send refusal if refusal_data exists
-            if refusal_data:
-                yield f"data: {json.dumps({'type': 'refusal', 'data': refusal_data})}\n\n"
-            else:
-                # Fallback message if refusal_data is None
-                yield f"data: {json.dumps({'type': 'refusal', 'data': {'empathy': 'Thank you for reaching out.', 'message': 'I\'m not able to help with that specific question. Please consult a professional for guidance.', 'resources': []}})}\n\n"
-            yield f"data: {json.dumps({'done': True})}\n\n"
-            return
-        
-        # Get RAG context
-        rag_context = retrieve_context(question, max_results=2)
-        
-        # Extract citations for frontend
-        citations = [
-            {'source': doc['source'], 'url': doc['url']}
-            for doc in rag_context
-        ]
-        
-        # Stream advice from OpenAI
+        # Wrap entire generator in try/except to prevent stack trace exposure
         try:
+            # Import here to avoid circular dependency
+            from app.guardrails import get_guard
+            from rag.simple_retrieval import retrieve_context
+            from app.llm import generate_advice_streaming
+            
+            # Check guardrails first
+            guard = get_guard()
+            category, refusal_data = guard.classify_request(question)
+            
+            # Handle HITL-triggering categories (crisis, pii)
+            if category in ['crisis', 'pii']:
+                # Import HITL functions
+                from app.guardrails import create_hitl_case
+                import time as time_module
+                
+                # For crisis scenarios, send refusal message first (with resources like 988)
+                # For PII, refusal_data is None, so skip refusal message
+                if category == 'crisis' and refusal_data:
+                    yield f"data: {json.dumps({'type': 'refusal', 'data': refusal_data})}\n\n"
+                
+                # Create HITL case (measure latency for SLO)
+                start_time = time_module.time()
+                hitl_id = create_hitl_case(
+                    session_id=session_id,
+                    category=category,
+                    user_message=question,
+                    conversation_history=[]  # Could track history if needed
+                )
+                # Calculate routing latency for SLO tracking (not currently used, but measured for future use)
+                _routing_latency_ms = (time_module.time() - start_time) * 1000
+                
+                # For PII scenarios (no refusal_data), send HITL queued message
+                if category == 'pii':
+                    yield f"data: {json.dumps({'type': 'hitl_queued', 'message': 'Thank you for reaching out. A mentor will review your message and respond shortly. Please know that your safety and your child\'s safety are our top priority.', 'hitl_id': hitl_id, 'category': category})}\n\n"
+                
+                yield f"data: {json.dumps({'done': True})}\n\n"
+                return
+            
+            # Handle other out-of-scope categories (medical, legal, therapy)
+            if category != 'ok':
+                # Only send refusal if refusal_data exists
+                if refusal_data:
+                    yield f"data: {json.dumps({'type': 'refusal', 'data': refusal_data})}\n\n"
+                else:
+                    # Fallback message if refusal_data is None
+                    yield f"data: {json.dumps({'type': 'refusal', 'data': {'empathy': 'Thank you for reaching out.', 'message': 'I\'m not able to help with that specific question. Please consult a professional for guidance.', 'resources': []}})}\n\n"
+                yield f"data: {json.dumps({'done': True})}\n\n"
+                return
+            
+            # Get RAG context
+            rag_context = retrieve_context(question, max_results=2)
+            
+            # Extract citations for frontend
+            citations = [
+                {'source': doc['source'], 'url': doc['url']}
+                for doc in rag_context
+            ]
+            
+            # Stream advice from OpenAI
             token_count = 0
             async for chunk in generate_advice_streaming(question, rag_context, session_id=session_id):
                 yield f"data: {json.dumps({'chunk': chunk})}\n\n"
@@ -170,7 +172,7 @@ async def stream_advice(session_id: str, question: str):
                 logger.warning(f"Cost tracking failed: {type(cost_error).__name__}", exc_info=True)
             
         except Exception as e:
-            # Error handling - only catch errors during streaming
+            # Catch all exceptions to prevent stack trace exposure to users
             # Log error server-side for debugging (never expose to users)
             import logging
             logger = logging.getLogger(__name__)

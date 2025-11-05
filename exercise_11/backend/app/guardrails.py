@@ -287,7 +287,7 @@ def create_hitl_case(
         
         # Try to get running event loop
         try:
-            loop = asyncio.get_running_loop()
+            _loop = asyncio.get_running_loop()
             # Schedule task if loop is running
             asyncio.create_task(sse_manager.send_to_session("mentor_queue", {
                 "type": "new_case",
@@ -369,7 +369,7 @@ def update_hitl_item(hitl_id: str, mentor_reply: str) -> bool:
         
         # Try to get running event loop
         try:
-            loop = asyncio.get_running_loop()
+            _loop = asyncio.get_running_loop()
             # Schedule task if loop is running
             asyncio.create_task(sse_manager.send_to_session("mentor_queue", {
                 "type": "case_updated",

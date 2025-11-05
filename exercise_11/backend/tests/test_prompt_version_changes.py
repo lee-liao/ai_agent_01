@@ -60,7 +60,6 @@ def changed_files():
 def test_prompt_files_have_valid_filenames(changed_files):
     """Test that changed prompt files follow the naming convention."""
     repo_root, _ = get_repo_paths()
-    errors = []
     
     prompt_changes = [
         f for f in changed_files 
@@ -86,7 +85,6 @@ def test_prompt_files_have_valid_filenames(changed_files):
 def test_prompt_filename_version_matches_json_version(changed_files):
     """Test that prompt file versions in filename match JSON version field."""
     repo_root, prompts_dir = get_repo_paths()
-    errors = []
     
     prompt_changes = [
         f for f in changed_files 
