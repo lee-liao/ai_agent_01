@@ -11,9 +11,13 @@
 
 ## 2. Branch Protection
 - [ ] 2.1 Configure branch protection rules for `main` (Manual GitHub setup)
+  - 📖 See [BRANCH_PROTECTION_SETUP.md](../../docs/BRANCH_PROTECTION_SETUP.md) for step-by-step instructions
 - [ ] 2.2 Require CI passing before merge (Manual GitHub setup)
+  - 📖 See [BRANCH_PROTECTION_SETUP.md](../../docs/BRANCH_PROTECTION_SETUP.md) - Step 4
 - [ ] 2.3 Require code review approval (Manual GitHub setup)
+  - 📖 See [BRANCH_PROTECTION_SETUP.md](../../docs/BRANCH_PROTECTION_SETUP.md) - Step 5
 - [ ] 2.4 Enable automatic branch deletion (Manual GitHub setup)
+  - 📖 See [BRANCH_PROTECTION_SETUP.md](../../docs/BRANCH_PROTECTION_SETUP.md) - Step 6
 
 ## 3. CD Workflow
 - [x] 3.1 Create `.github/workflows/cd.yml`

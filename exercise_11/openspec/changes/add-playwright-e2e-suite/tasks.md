@@ -26,12 +26,12 @@
 - [x] 3.5 Assert appropriate tone and language
 
 ## 4. CI Integration
-- [ ] 4.1 Add Playwright to CI pipeline (DEFERRED - Task 6)
-- [ ] 4.2 Run tests on every PR (DEFERRED - Task 6)
-- [ ] 4.3 Block merge if tests fail (DEFERRED - Task 6)
-- [ ] 4.4 Upload test artifacts on failure (DEFERRED - Task 6)
+- [x] 4.1 Add Playwright to CI pipeline (completed in exercise_11_ci.yml)
+- [x] 4.2 Run tests on every PR (configured in CI workflow)
+- [x] 4.3 Block merge if tests fail (enforced via branch protection)
+- [x] 4.4 Upload test artifacts on failure (configured with retention-days: 7)
 
-**Status**: ✅ Minimal implementation complete - 18/23 tasks (8 scenarios, 6 passing)  
+**Status**: ✅ Complete - 22/23 tasks (8 scenarios, 6 passing, CI integration complete)  
 **Pass Criteria**: ⚠️ Partial - 6/8 tests passing (75%)  
 **Commit**: 469516d
 
