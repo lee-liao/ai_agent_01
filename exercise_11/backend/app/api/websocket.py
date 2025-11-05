@@ -41,18 +41,14 @@ async def coach_ws(websocket: WebSocket, session_id: str):
                 if category in ['crisis', 'pii']:
                     # Import HITL functions
                     from app.guardrails import create_hitl_case
-                    import time as time_module
                     
-                    # Create HITL case (measure latency for SLO)
-                    start_time = time_module.time()
+                    # Create HITL case
                     hitl_id = create_hitl_case(
                         session_id=session_id,
                         category=category,
                         user_message=user_text,
                         conversation_history=[]  # Could track history if needed
                     )
-                    # Calculate routing latency for SLO tracking (not currently used, but measured for future use)
-                    _routing_latency_ms = (time_module.time() - start_time) * 1000
                     
                     # Send holding message to parent
                     await websocket.send_json({

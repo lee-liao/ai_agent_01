@@ -99,35 +99,52 @@ async def stream_advice(session_id: str, question: str):
                 # For crisis scenarios, send refusal message first (with resources like 988)
                 # For PII, refusal_data is None, so skip refusal message
                 if category == 'crisis' and refusal_data:
-                    yield f"data: {json.dumps({'type': 'refusal', 'data': refusal_data})}\n\n"
+                    try:
+                        yield f"data: {json.dumps({'type': 'refusal', 'data': refusal_data})}\n\n"
+                    except Exception:
+                        # If JSON serialization fails, send generic error (no exception details)
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'An error occurred'})}\n\n"
                 
-                # Create HITL case (measure latency for SLO)
-                start_time = time_module.time()
+                # Create HITL case
                 hitl_id = create_hitl_case(
                     session_id=session_id,
                     category=category,
                     user_message=question,
                     conversation_history=[]  # Could track history if needed
                 )
-                # Calculate routing latency for SLO tracking (not currently used, but measured for future use)
-                _routing_latency_ms = (time_module.time() - start_time) * 1000
                 
                 # For PII scenarios (no refusal_data), send HITL queued message
                 if category == 'pii':
-                    yield f"data: {json.dumps({'type': 'hitl_queued', 'message': 'Thank you for reaching out. A mentor will review your message and respond shortly. Please know that your safety and your child\'s safety are our top priority.', 'hitl_id': hitl_id, 'category': category})}\n\n"
+                    try:
+                        yield f"data: {json.dumps({'type': 'hitl_queued', 'message': 'Thank you for reaching out. A mentor will review your message and respond shortly. Please know that your safety and your child\'s safety are our top priority.', 'hitl_id': hitl_id, 'category': category})}\n\n"
+                    except Exception:
+                        # If JSON serialization fails, send generic error (no exception details)
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'An error occurred'})}\n\n"
                 
-                yield f"data: {json.dumps({'done': True})}\n\n"
+                try:
+                    yield f"data: {json.dumps({'done': True})}\n\n"
+                except Exception:
+                    # Silently fail if final yield fails (connection likely closed)
+                    pass
                 return
             
             # Handle other out-of-scope categories (medical, legal, therapy)
             if category != 'ok':
                 # Only send refusal if refusal_data exists
-                if refusal_data:
-                    yield f"data: {json.dumps({'type': 'refusal', 'data': refusal_data})}\n\n"
-                else:
-                    # Fallback message if refusal_data is None
-                    yield f"data: {json.dumps({'type': 'refusal', 'data': {'empathy': 'Thank you for reaching out.', 'message': 'I\'m not able to help with that specific question. Please consult a professional for guidance.', 'resources': []}})}\n\n"
-                yield f"data: {json.dumps({'done': True})}\n\n"
+                try:
+                    if refusal_data:
+                        yield f"data: {json.dumps({'type': 'refusal', 'data': refusal_data})}\n\n"
+                    else:
+                        # Fallback message if refusal_data is None
+                        yield f"data: {json.dumps({'type': 'refusal', 'data': {'empathy': 'Thank you for reaching out.', 'message': 'I\'m not able to help with that specific question. Please consult a professional for guidance.', 'resources': []}})}\n\n"
+                    yield f"data: {json.dumps({'done': True})}\n\n"
+                except Exception:
+                    # If JSON serialization fails, send generic error (no exception details)
+                    try:
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'An error occurred'})}\n\n"
+                        yield f"data: {json.dumps({'done': True})}\n\n"
+                    except Exception:
+                        pass
                 return
             
             # Get RAG context
@@ -141,15 +158,30 @@ async def stream_advice(session_id: str, question: str):
             
             # Stream advice from OpenAI
             token_count = 0
-            async for chunk in generate_advice_streaming(question, rag_context, session_id=session_id):
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-                token_count += len(chunk.split())  # Rough token estimate
-                # Small delay to prevent overwhelming the client
-                await asyncio.sleep(0.01)
+            try:
+                async for chunk in generate_advice_streaming(question, rag_context, session_id=session_id):
+                    try:
+                        yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                    except Exception:
+                        # If JSON serialization fails during streaming, break loop
+                        break
+                    token_count += len(chunk.split())  # Rough token estimate
+                    # Small delay to prevent overwhelming the client
+                    await asyncio.sleep(0.01)
+            except Exception:
+                # If streaming fails, send error message
+                try:
+                    yield f"data: {json.dumps({'chunk': 'I apologize, but I\'m having trouble generating a response right now. Please try again.'})}\n\n"
+                except Exception:
+                    pass
             
             # Send citations and done signal FIRST (before cost tracking)
             # This ensures citations are sent even if cost tracking fails
-            yield f"data: {json.dumps({'done': True, 'citations': citations})}\n\n"
+            try:
+                yield f"data: {json.dumps({'done': True, 'citations': citations})}\n\n"
+            except Exception:
+                # If final yield fails, connection likely closed
+                pass
             
             # Estimate costs for streaming (can't get exact from stream)
             # Do this after sending done signal so it doesn't block the response
@@ -179,9 +211,15 @@ async def stream_advice(session_id: str, question: str):
             logger.error(f"Error during advice streaming: {type(e).__name__}", exc_info=True)
             
             # Send safe, user-friendly error message (no stack traces or internal details)
-            error_msg = "I apologize, but I'm having trouble generating a response right now. Please try again."
-            yield f"data: {json.dumps({'chunk': error_msg})}\n\n"
-            yield f"data: {json.dumps({'done': True, 'citations': []})}\n\n"
+            # Wrap in try/except to ensure no exception leaks even from error handling
+            try:
+                error_msg = "I apologize, but I'm having trouble generating a response right now. Please try again."
+                yield f"data: {json.dumps({'chunk': error_msg})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'citations': []})}\n\n"
+            except Exception:
+                # If even error message fails to send, connection is likely closed
+                # No need to log or expose anything
+                pass
     
     return StreamingResponse(
         generate(),
