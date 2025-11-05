@@ -1,5 +1,4 @@
 import sys
-import os
 from pathlib import Path
 
 # Add parent directory to path so 'rag' module can be found
