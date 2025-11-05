@@ -30,9 +30,18 @@
 - [x] 4.5 Export dashboard configs to `observability/dashboards/`
 
 ## 5. SLO Validation
-- [ ] 5.1 Run K6 load test for 15 minutes (manual testing required)
-- [ ] 5.2 Collect metrics during test (manual testing required)
-- [ ] 5.3 Calculate p95 latency (manual testing required)
-- [ ] 5.4 Calculate failure rate (manual testing required)
-- [ ] 5.5 Assert p95 ≤ 2.5s and failure rate ≤ 1% (manual testing required)
+- [x] 5.1 Update K6 test script for 15-minute duration (updated `load/k6/coach_scenario.js`)
+- [x] 5.2 Create SLO validation guide (`load/k6/RUN_SLO_VALIDATION.md`)
+- [ ] 5.3 Run K6 load test for 15 minutes (manual testing required - see `load/k6/RUN_SLO_VALIDATION.md`)
+- [ ] 5.4 Collect metrics during test (k6 output provides p95 and failure rate automatically)
+- [ ] 5.5 Calculate p95 latency (from k6 output: `http_req_duration p(95)`)
+- [ ] 5.6 Calculate failure rate (from k6 output: `http_req_failed` rate)
+- [ ] 5.7 Assert p95 ≤ 2.5s and failure rate ≤ 1% (validate against k6 thresholds)
+
+**Note:** K6 test script is configured with:
+- Default duration: 15 minutes
+- Default VUs: 10
+- Thresholds: p95 < 2500ms, failure rate < 1%
+- Varied test questions for realistic load
+- See `load/k6/RUN_SLO_VALIDATION.md` for detailed instructions
 

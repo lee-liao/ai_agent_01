@@ -2,13 +2,14 @@
 
 This folder contains scaffolds to run basic HTTP and WebSocket load tests against the Child Growth Assistant backend.
 
-## K6 (HTTP + WebSocket)
+## K6 (HTTP + SSE)
 
 - Script: k6/coach_scenario.js
 - Requirements: k6 CLI
+- **Note:** Uses SSE endpoint (`/api/coach/stream/{session_id}`) to match frontend behavior
 - Run examples:
-  - BASE_URL=http://localhost:8000 k6 run k6/coach_scenario.js
-  - BASE_URL=http://localhost:8000 VUS=20 DURATION=1m k6 run k6/coach_scenario.js
+  - BASE_URL=http://localhost:8011 k6 run k6/coach_scenario.js
+  - BASE_URL=http://localhost:8011 VUS=20 DURATION=1m k6 run k6/coach_scenario.js
 
 ## Locust (HTTP)
 
