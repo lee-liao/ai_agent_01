@@ -126,7 +126,6 @@ async def stream_advice(session_id: str, question: str):
                 
                 try:
                     yield f"data: {json.dumps({'done': True})}\n\n"
-                    done_sent = True
                 except Exception:
                     # Silently fail if final yield fails (connection likely closed)
                     pass
@@ -142,13 +141,11 @@ async def stream_advice(session_id: str, question: str):
                         # Fallback message if refusal_data is None
                         yield f"data: {json.dumps({'type': 'refusal', 'data': {'empathy': 'Thank you for reaching out.', 'message': 'I\'m not able to help with that specific question. Please consult a professional for guidance.', 'resources': []}})}\n\n"
                     yield f"data: {json.dumps({'done': True})}\n\n"
-                    done_sent = True
                 except Exception:
                     # If JSON serialization fails, send generic error (no exception details)
                     try:
                         yield f"data: {json.dumps({'type': 'error', 'message': 'An error occurred'})}\n\n"
                         yield f"data: {json.dumps({'done': True})}\n\n"
-                        done_sent = True
                     except Exception:
                         pass
                 return
