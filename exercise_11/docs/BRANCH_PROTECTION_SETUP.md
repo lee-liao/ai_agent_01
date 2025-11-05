@@ -46,49 +46,72 @@ See the **"Getting Checks to Appear"** section below for detailed steps.
    - This will protect the `main` branch
    - You can also add `develop` if you want to protect that branch too
 
-### Step 4: Enable Required Status Checks
+### Step 4: Require Pull Request Before Merging
+
+1. **Check the box "Require a pull request before merging"**
+   - This is the FIRST thing you should enable - it unlocks the review options below
+   - After checking this, you'll see additional options appear
+
+2. **Configure pull request requirements** (these appear after checking step 1):
+   - Check **"Require pull request reviews before merging"**
+   - Set **Required number of approvals**: `1` (or more if your team prefers)
+   - (Optional) Check **"Dismiss stale pull request approvals when new commits are pushed"**
+     - This ensures reviewers re-review if code changes after approval
+   - (Optional) Check **"Require review from Code Owners"** if you have a CODEOWNERS file
+
+### Step 5: Enable Required Status Checks
 
 > **⚠️ If you see "No required checks" or "No checks have been added":**
 > 
 > **STOP HERE** and go to the **"Getting Checks to Appear"** section below. You must trigger the CI workflow first before checks will appear in this dropdown.
 
-1. Check the box **Require status checks to pass before merging**
-2. Check **Require branches to be up to date before merging**
+1. Check the box **"Require status checks to pass before merging"**
+2. Check **"Require branches to be up to date before merging"**
    - This ensures PRs are rebased/updated with the latest `main` branch
 
-3. In the **Status checks that are required** section, you should see a searchable list. Select the following checks:
-   - ✅ `lint-backend` - Lint Backend (Python)
-   - ✅ `type-check-backend` - Type Check Backend (Python)
-   - ✅ `test-backend` - Unit Tests (Python)
-   - ✅ `lint-frontend` - Lint Frontend (TypeScript)
-   - ✅ `test-e2e` - E2E Tests (Playwright)
-   - ✅ `build` - Build Docker Images
+3. In the **"Status checks that are required"** section, you'll see a search box with placeholder "Search for status checks in the last week for this repository".
+   **IMPORTANT**: You must **type the job names** in the search box - they won't auto-populate!
+   
+   Type each of the following job names one by one and select them:
+   - Type `lint-backend` and select it
+   - Type `type-check-backend` and select it
+   - Type `test-backend` and select it
+   - Type `lint-frontend` and select it
+   - Type `test-e2e` and select it
+   - Type `build` and select it
 
-   **If checks are still missing**: See the "Getting Checks to Appear" section below.
+   **Note**: The search box uses exact matching - type the exact job name as shown above. After typing, the check should appear and you can click to select it.
 
-### Step 5: Require Pull Request Reviews
+   **If checks don't appear when typing**: See the "Getting Checks to Appear" section below.
 
-1. Check **Require pull request reviews before merging**
-2. Set **Required number of approvals**: `1` (or more if your team prefers)
-3. (Optional) Check **Dismiss stale pull request approvals when new commits are pushed**
-   - This ensures reviewers re-review if code changes after approval
-4. (Optional) Check **Require review from Code Owners** if you have a CODEOWNERS file
+### Step 6: Additional Protection (Recommended)
 
-### Step 6: Enable Automatic Branch Deletion
+1. Check **"Require conversation resolution before merging"**
+   - Ensures all PR comments/threads are resolved before merging
+   - This is highly recommended for code quality
 
-1. Check **Allow specified actors to bypass required pull requests**
-   - Leave this unchecked unless you have specific admin needs
-2. Scroll down and check **Allow deletion of branches**
+2. **Do NOT** check **"Require signed commits"** (optional, usually not needed unless your organization requires it)
+
+3. **Do NOT** check **"Require linear history"** (optional, prevents merge commits - usually not necessary)
+
+4. **Do NOT** check **"Require deployments to succeed before merging"** (unless you have deployment environments set up)
+
+5. **Do NOT** check **"Lock branch"** (makes branch read-only - too restrictive)
+
+6. **Check "Do not allow bypassing the above settings"** (recommended for security)
+   - This ensures even administrators must follow the rules
+   - Prevents accidental bypasses
+
+### Step 7: Enable Automatic Branch Deletion
+
+Scroll down to the **"Rules applied to everyone including administrators"** section:
+
+1. **Do NOT** check **"Allow force pushes"** (leave unchecked for security)
+   - Prevents rewriting history on protected branch
+
+2. **Check "Allow deletions"** 
    - This enables automatic cleanup of merged feature branches
-
-### Step 7: Additional Protection (Recommended)
-
-1. Check **Require conversation resolution before merging**
-   - Ensures all PR comments/threads are resolved
-2. Check **Require signed commits** (optional, for enhanced security)
-3. Check **Require linear history** (optional, prevents merge commits)
-4. **Do NOT** check **Restrict pushes that create files larger than 100 MB** unless you have large files
-5. **Do NOT** check **Do not allow bypassing the above settings** unless you want to prevent even admins from bypassing
+   - Allows deletion of branches after PRs are merged
 
 ### Step 8: Save the Rule
 
@@ -134,7 +157,13 @@ If you see **"No required checks"** or **"No checks have been added"** when conf
    - Go back to Settings → Branches → Branch protection rules
    - Edit your `main` branch rule
    - Scroll to "Status checks that are required"
-   - **The checks should now appear in the dropdown!**
+   - **Click in the search box and type each job name** (they won't auto-populate!):
+     - Type `lint-backend` and select it
+     - Type `type-check-backend` and select it
+     - Type `test-backend` and select it
+     - Type `lint-frontend` and select it
+     - Type `test-e2e` and select it
+     - Type `build` and select it
 
 ### Option 2: Push Directly to Main (If you have access)
 
@@ -152,7 +181,17 @@ If you see **"No required checks"** or **"No checks have been added"** when conf
    - Find the "Exercise 11 CI" workflow run
    - Wait for it to complete
 
-3. **Return to branch protection settings** - checks should appear
+3. **Return to branch protection settings:**
+   - Go to Settings → Branches → Branch protection rules
+   - Edit your `main` branch rule
+   - Scroll to "Status checks that are required"
+   - **Click in the search box and type each job name** (they won't auto-populate!):
+     - Type `lint-backend` and select it
+     - Type `type-check-backend` and select it
+     - Type `test-backend` and select it
+     - Type `lint-frontend` and select it
+     - Type `test-e2e` and select it
+     - Type `build` and select it
 
 ### Option 3: Manual Workflow Trigger (If Available)
 
@@ -162,7 +201,17 @@ If you see **"No required checks"** or **"No checks have been added"** when conf
 4. Select branch: `main` or any feature branch
 5. Click **"Run workflow"**
 6. Wait for completion (~5-10 minutes)
-7. Return to branch protection settings
+7. Return to branch protection settings:
+   - Go to Settings → Branches → Branch protection rules
+   - Edit your `main` branch rule
+   - Scroll to "Status checks that are required"
+   - **Click in the search box and type each job name** (they won't auto-populate!):
+     - Type `lint-backend` and select it
+     - Type `type-check-backend` and select it
+     - Type `test-backend` and select it
+     - Type `lint-frontend` and select it
+     - Type `test-e2e` and select it
+     - Type `build` and select it
 
 ### Verify Checks Are Available
 
@@ -172,13 +221,14 @@ After triggering CI, verify checks appear:
 2. Click **Edit** on your branch protection rule
 3. Scroll to **"Require status checks to pass before merging"**
 4. Click in the **"Search for status checks"** field
-5. You should see all 6 checks listed:
-   - `lint-backend`
-   - `type-check-backend`
-   - `test-backend`
-   - `lint-frontend`
-   - `test-e2e`
-   - `build`
+5. **Type each job name** in the search box - they won't auto-populate! Type:
+   - `lint-backend` (should appear after typing)
+   - `type-check-backend` (should appear after typing)
+   - `test-backend` (should appear after typing)
+   - `lint-frontend` (should appear after typing)
+   - `test-e2e` (should appear after typing)
+   - `build` (should appear after typing)
+6. Select each check as it appears
 
 If checks still don't appear after 10-15 minutes:
 - Check that `.github/workflows/exercise_11_ci.yml` exists and is valid
@@ -245,19 +295,38 @@ The following status checks are configured in `.github/workflows/exercise_11_ci.
 
 **Problem**: Required status checks don't show up in the dropdown (shows "No required checks")
 
-**This is the most common issue!** GitHub only shows checks that have run at least once.
+**This is the most common issue!** There are two common causes:
+
+#### Cause 1: Checks Haven't Run Yet
+GitHub only shows checks that have run at least once.
 
 **Solution**:
 1. **First, trigger the CI workflow** using one of the methods in the "Getting Checks to Appear" section above
 2. Ensure the CI workflow file exists: `.github/workflows/exercise_11_ci.yml`
 3. Wait for the workflow to **complete successfully** (not just started)
 4. Wait 1-2 minutes after completion for GitHub to index the checks
-5. Return to branch protection settings - checks should now appear
-6. If still missing after 15 minutes:
-   - Check workflow file syntax in `.github/workflows/exercise_11_ci.yml`
-   - Verify job names match exactly: `lint-backend`, `type-check-backend`, etc.
-   - Check the Actions tab to ensure workflow ran without errors
-   - Try refreshing the branch protection page
+
+#### Cause 2: You Need to Type the Job Names (Most Common!)
+**IMPORTANT**: The search box does NOT auto-populate! You must **type each job name manually**.
+
+**Solution**:
+1. Click in the search box that says "Search for status checks in the last week for this repository"
+2. **Type the exact job name** (e.g., `lint-backend`)
+3. The check should appear as you type - click it to select
+4. Repeat for each check:
+   - `lint-backend`
+   - `type-check-backend`
+   - `test-backend`
+   - `lint-frontend`
+   - `test-e2e`
+   - `build`
+
+**If checks still don't appear after typing**:
+- Verify the workflow ran successfully on the `main` branch (not just on PRs)
+- Check workflow file syntax in `.github/workflows/exercise_11_ci.yml`
+- Verify job names match exactly what you're typing
+- Check the Actions tab to ensure workflow ran without errors
+- Try refreshing the branch protection page
 
 ### Cannot Merge Even After Checks Pass
 
