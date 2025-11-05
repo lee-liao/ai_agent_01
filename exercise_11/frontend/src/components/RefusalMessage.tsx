@@ -34,9 +34,14 @@ export function RefusalMessage({ data }: RefusalMessageProps) {
   }
 
   return (
-    <div className="bg-amber-50 border-l-4 border-amber-500 rounded-lg p-4 shadow-sm">
+    <div 
+      className="bg-amber-50 border-l-4 border-amber-500 rounded-lg p-4 shadow-sm"
+      role="alert"
+      aria-live="polite"
+      aria-label="Important message"
+    >
       {/* Empathy statement - prominent and warm */}
-      <p className="font-semibold text-amber-900 mb-2 text-base" data-testid="refusal-empathy">
+      <p className="font-semibold text-amber-900 mb-2 text-base" data-testid="refusal-empathy" role="heading" aria-level={3}>
         {data.empathy}
       </p>
       
@@ -47,7 +52,7 @@ export function RefusalMessage({ data }: RefusalMessageProps) {
       
       {/* Resource links */}
       {data.resources && data.resources.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-2" role="list" aria-label="Helpful resources">
           {data.resources.map((resource, index) => (
             <a
               key={index}
@@ -55,6 +60,7 @@ export function RefusalMessage({ data }: RefusalMessageProps) {
               target="_blank"
               rel="noopener noreferrer"
               data-testid="refusal-resource"
+              aria-label={`${resource.text} - Opens in new tab`}
               className="
                 block w-full
                 bg-amber-600 hover:bg-amber-700
@@ -62,7 +68,7 @@ export function RefusalMessage({ data }: RefusalMessageProps) {
                 px-4 py-2.5 rounded-md
                 transition-colors duration-200
                 text-center
-                focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2
+                focus:outline-2 focus:outline-white focus:ring-2 focus:ring-amber-500 focus:ring-offset-2
               "
             >
               {resource.text} →
