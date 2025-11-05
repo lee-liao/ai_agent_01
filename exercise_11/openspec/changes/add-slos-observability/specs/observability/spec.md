@@ -45,13 +45,14 @@ The system SHALL provide dashboard configurations for visualization.
 The system SHALL meet defined SLOs under load.
 
 #### Scenario: 15-minute load test
-- **WHEN** K6 load test runs for 15 minutes
-- **THEN** p95 latency ≤ 2.5 seconds
+- **WHEN** K6 load test runs for 15 minutes using SSE endpoint
+- **THEN** p95 latency ≤ 5 seconds (SSE measures full stream, not just handshake)
 - **AND** failure rate ≤ 1%
 - **AND** SLO compliance is validated
+- **NOTE**: SSE threshold is 5s because `http_req_duration` includes complete streaming response time
 
 #### Scenario: SLO breach alerting
-- **WHEN** p95 latency exceeds 2.5s
+- **WHEN** p95 latency exceeds 5s (SSE full stream)
 - **THEN** an alert is triggered
 - **AND** oncall is notified
 

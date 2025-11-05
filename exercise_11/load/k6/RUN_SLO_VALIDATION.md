@@ -105,18 +105,18 @@ http_req_failed........: 0.00%  ✓ 0.00% < 1.00%
 ### SLO Compliance
 
 **✅ PASS Criteria:**
-- `p(95)` (p95 latency) **≤ 2.5 seconds** (2500ms)
+- `p(95)` (p95 latency) **≤ 5 seconds** (5000ms) - SSE measures full stream
 - `http_req_failed` (failure rate) **≤ 1%** (0.01)
 
 **Example Good Results:**
 ```
-http_req_duration......: p(95)=2.1s    ✅ PASS (2.1s < 2.5s)
+http_req_duration......: p(95)=4.1s    ✅ PASS (4.1s < 5s)
 http_req_failed........: 0.00%         ✅ PASS (0% < 1%)
 ```
 
 **Example Failing Results:**
 ```
-http_req_duration......: p(95)=3.2s    ❌ FAIL (3.2s > 2.5s)
+http_req_duration......: p(95)=6.2s    ❌ FAIL (6.2s > 5s)
 http_req_failed........: 1.5%          ❌ FAIL (1.5% > 1%)
 ```
 
@@ -157,7 +157,7 @@ http_req_failed........: 1.5%          ❌ FAIL (1.5% > 1%)
 
 ## Troubleshooting
 
-### High p95 Latency (> 2.5s)
+### High p95 Latency (> 5s)
 
 **Possible causes:**
 - OpenAI API is slow or rate-limited
@@ -206,7 +206,7 @@ After running the test, document your results:
 - Test Date: 2024-01-XX
 
 **Results:**
-- p95 Latency: 2.1s ✅ (target: ≤ 2.5s) - **PASS**
+- p95 Latency: 4.1s ✅ (target: ≤ 5s) - **PASS**
 - Failure Rate: 0.3% ✅ (target: ≤ 1%) - **PASS**
 - Total Requests: 1,234
 - Failed Requests: 4
@@ -218,7 +218,7 @@ All SLOs met. System is performing within acceptable limits.
 ## Next Steps
 
 1. ✅ Run the 15-minute load test
-2. ✅ Verify p95 ≤ 2.5s and failure rate ≤ 1%
+2. ✅ Verify p95 ≤ 5s (SSE full stream) and failure rate ≤ 1%
 3. ✅ Document results in OpenSpec tasks.md
 4. ✅ Update proposal.md with validation status
 

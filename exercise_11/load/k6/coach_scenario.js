@@ -20,7 +20,7 @@ export const options = {
   duration: __ENV.DURATION || '15m',
   thresholds: {
     http_req_failed: ['rate<0.01'], // Failure rate < 1%
-    http_req_duration: ['p(95)<2500'], // p95 latency < 2.5s
+    http_req_duration: ['p(95)<5000'], // p95 latency < 5s (SSE measures full stream, not just handshake)
   },
 };
 
