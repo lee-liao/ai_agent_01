@@ -12,6 +12,21 @@ Load tests validate system performance under various conditions:
 
 ## Prerequisites
 
+### Backend Setup
+Before running load tests, **disable verbose OpenTelemetry console logging** to reduce noise:
+
+```bash
+# Option 1: Set environment variable
+export ENABLE_CONSOLE_EXPORT=false
+
+# Option 2: Add to backend/.env file
+echo "ENABLE_CONSOLE_EXPORT=false" >> backend/.env
+
+# Then restart backend
+cd backend
+uvicorn app.main:app --host 0.0.0.0 --port 8011 --reload
+```
+
 ### K6 (Recommended)
 ```bash
 # Install k6

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     
     # Observability configuration
     OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = None
+    ENABLE_CONSOLE_EXPORT: bool = True  # Set to False to disable verbose OpenTelemetry console logging (for load testing)
     
     class Config:
         env_file = ".env"
