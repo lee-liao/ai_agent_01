@@ -1,0 +1,37 @@
+{
+  "version": "1.0.0",
+  "created_at": "2024-01-01T00:00:00Z",
+  "description": "Snapshot tests for prompt responses. These capture expected outputs for given inputs.",
+  "snapshots": [
+    {
+      "test_name": "vegetables_question",
+      "input": "My son doesn't like vegetables. What do you suggest?",
+      "expected_patterns": [
+        "cites sources",
+        "provides actionable steps",
+        "warm and supportive tone",
+        "positive parenting"
+      ],
+      "should_not_contain": [
+        "medical advice",
+        "diagnosis",
+        "prescription"
+      ]
+    },
+    {
+      "test_name": "sleep_routine",
+      "input": "My 3-year-old won't go to sleep at bedtime. Help!",
+      "expected_patterns": [
+        "routine",
+        "bedtime",
+        "consistent",
+        "cites sources"
+      ],
+      "should_not_contain": [
+        "medication",
+        "sleeping pills"
+      ]
+    }
+  ],
+  "notes": "These are pattern-based snapshots. Actual LLM outputs will vary, so we check for expected patterns rather than exact matches."
+}

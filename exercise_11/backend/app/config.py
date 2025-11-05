@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # Optional settings with defaults
     CORS_ORIGINS: str = "http://localhost:3082,http://localhost:3000"
     
+    # Observability configuration
+    OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = None
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

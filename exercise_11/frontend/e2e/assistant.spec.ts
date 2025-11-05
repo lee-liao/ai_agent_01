@@ -41,8 +41,15 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     await page.fill('[data-testid="chat-input"]', 'How do I establish a bedtime routine?');
     await page.click('button[aria-label="Send message"]');
     
-    // Wait for response
-    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 10000 });
+    // Wait for streaming to start (optional - streaming indicator may appear briefly)
+    // Ignore if streaming completes very quickly (indicator may not appear)
+    await page.waitForSelector('[data-testid="assistant-message"], [data-testid="streaming-indicator"]', { timeout: 5000 }).catch(() => {
+      // Ignore if streaming indicator doesn't appear (streaming may be very fast)
+    });
+    
+    // Wait for streaming to complete and final message to appear
+    // Increased timeout for CI environments where API calls may be slower
+    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 25000 });
     
     // Check response content
     const response = await page.textContent('[data-testid="assistant-message"]');
@@ -76,7 +83,9 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     await page.fill('[data-testid="chat-input"]', 'How much screen time is okay for my 3-year-old?');
     await page.click('button[aria-label="Send message"]');
     
-    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 10000 });
+    // Wait for streaming to complete and final message to appear
+    // Increased timeout for CI environments where API calls may be slower
+    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 25000 });
     
     const response = await page.textContent('[data-testid="assistant-message"]');
     expect(response?.toLowerCase()).toMatch(/screen|hour|aap|limit/);
@@ -158,7 +167,9 @@ test.describe('Child Growth Assistant E2E Tests', () => {
     await page.fill('[data-testid="chat-input"]', 'How do I handle tantrums?');
     await page.click('button[aria-label="Send message"]');
     
-    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 10000 });
+    // Wait for streaming to complete and final message to appear
+    // Increased timeout for CI environments where API calls may be slower
+    await page.waitForSelector('[data-testid="assistant-message"]', { timeout: 25000 });
     
     const response = await page.textContent('[data-testid="assistant-message"]');
     
@@ -256,12 +267,17 @@ test.describe('Response Quality Checks', () => {
       await page.fill('[data-testid="chat-input"]', question);
       await page.click('button[aria-label="Send message"]');
       
-      // Wait for new message to appear
+      // Wait for streaming to start (optional - streaming indicator may appear briefly)
+      await page.waitForSelector('[data-testid="assistant-message"], [data-testid="streaming-indicator"]', { timeout: 5000 }).catch(() => {
+        // Ignore if streaming indicator doesn't appear (streaming may be very fast)
+      });
+      
+      // Wait for new message to appear (streaming complete)
       const messagesBefore = await page.locator('[data-testid="assistant-message"]').count();
       await page.waitForFunction(
         (count) => document.querySelectorAll('[data-testid="assistant-message"]').length > count,
         messagesBefore,
-        { timeout: 15000 }
+        { timeout: 25000 } // Increased timeout for CI environments where API calls may be slower
       );
       
       // Give time for citations to render (they might load after message)

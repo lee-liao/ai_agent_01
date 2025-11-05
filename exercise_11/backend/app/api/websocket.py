@@ -7,6 +7,10 @@ router = APIRouter(tags=["WebSocket"])
 
 @router.websocket("/ws/coach/{session_id}")
 async def coach_ws(websocket: WebSocket, session_id: str):
+    """
+    WebSocket endpoint for coach chat.
+    Used by load tests (k6). Frontend uses SSE instead.
+    """
     await websocket.accept()
     try:
         await websocket.send_json({
@@ -33,8 +37,31 @@ async def coach_ws(websocket: WebSocket, session_id: str):
                 guard = get_guard()
                 category, refusal_data = guard.classify_request(user_text)
                 
+                # Handle HITL-triggering categories (crisis, pii)
+                if category in ['crisis', 'pii']:
+                    # Import HITL functions
+                    from app.guardrails import create_hitl_case
+                    
+                    # Create HITL case
+                    hitl_id = create_hitl_case(
+                        session_id=session_id,
+                        category=category,
+                        user_message=user_text,
+                        conversation_history=[]  # Could track history if needed
+                    )
+                    
+                    # Send holding message to parent
+                    await websocket.send_json({
+                        "type": "hitl_queued",
+                        "message": "Thank you for reaching out. A mentor will review your message and respond shortly. Please know that your safety and your child's safety are our top priority.",
+                        "hitl_id": hitl_id,
+                        "category": category,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    })
+                    continue
+                
                 if category != 'ok':
-                    # Send refusal message
+                    # Send refusal message for other out-of-scope categories
                     await websocket.send_json({
                         "type": "refusal",
                         "data": refusal_data,

@@ -15,10 +15,24 @@ interface RefusalData {
 }
 
 interface RefusalMessageProps {
-  data: RefusalData;
+  data: RefusalData | null;
 }
 
 export function RefusalMessage({ data }: RefusalMessageProps) {
+  // Safety check: if data is null, show a default message
+  if (!data) {
+    return (
+      <div className="bg-amber-50 border-l-4 border-amber-500 rounded-lg p-4 shadow-sm">
+        <p className="font-semibold text-amber-900 mb-2 text-base">
+          Thank you for reaching out.
+        </p>
+        <p className="text-gray-700 mb-4 leading-relaxed">
+          I'm not able to help with that specific question. Please consult a professional for guidance.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-amber-50 border-l-4 border-amber-500 rounded-lg p-4 shadow-sm">
       {/* Empathy statement - prominent and warm */}

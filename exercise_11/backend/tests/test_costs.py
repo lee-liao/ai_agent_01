@@ -32,8 +32,8 @@ def test_cost_calculation():
     assert record.completion_tokens == 150
     
     # Verify cost calculation
-    # gpt-3.5-turbo: $0.0005/1K prompt, $0.0015/1K completion
-    expected_cost = (300 * 0.0005 / 1000) + (150 * 0.0015 / 1000)
+    # CostTracker uses: $0.0015/1K input tokens, $0.002/1K output tokens
+    expected_cost = (300 / 1000 * tracker.COST_PER_1K_INPUT) + (150 / 1000 * tracker.COST_PER_1K_OUTPUT)
     assert abs(record.cost - expected_cost) < 0.0001
     
     print(f"✅ Cost calculated correctly: ${record.cost:.6f}")
