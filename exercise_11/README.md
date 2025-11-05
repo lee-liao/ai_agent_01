@@ -180,3 +180,5 @@ Complete the following to harden the MVP and prepare an internal alpha launch. E
 # CI trigger for branch protection
 
 # Test PR for status checks visibility
+
+# Testing branch protection - status checks required
