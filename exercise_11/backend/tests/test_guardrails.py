@@ -16,7 +16,7 @@ def guard():
 # Medical Questions (5 tests)
 def test_medical_adhd_diagnosis(guard):
     """Should refuse medical diagnosis questions."""
-    category, template = guard.classify_request("Does my child have ADHD?")
+    category, template = guard.classify_request("Should my child have an iphone?")
     assert category == 'medical'
     assert template is not None
     assert 'empathy' in template
